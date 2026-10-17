@@ -1,4 +1,8 @@
 fugue_module(fugue_audio)
+if(APPLE)
+  find_library(AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
+  target_link_libraries(fugue_audio PUBLIC ${AUDIOTOOLBOX_FRAMEWORK})
+endif()
 # Tracker modules (MOD/S3M/XM/IT, audio/module.cpp) play through libopenmpt, found with pkg-config ("libopenmpt").
 #   AUTO (default): used when found; otherwise modules are refused with a warning.
 #   ON: required (the Flatpak build sets it), so modules cannot be missing silently.

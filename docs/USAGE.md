@@ -11,6 +11,8 @@ fugue-qt --help                       # options (also `pager --help`, `client --
 fugue-qt --version                    # prints e.g. "fugue-qt 0.5.0" (accepted by every mode; also `fugue-qt version`)
 ```
 
+On macOS, use `Fugue.app/Contents/MacOS/Fugue` in place of `fugue-qt`, or open the app from Finder.
+
 * `pager -list` prints the saved server list and a readiness checklist. `pager -dry-run -join host:port` prints the
   command that would run.
 * `pager -warm -join host:port` downloads the world's whole resource list into the cache and exits. The launcher
@@ -18,7 +20,8 @@ fugue-qt --version                    # prints e.g. "fugue-qt 0.5.0" (accepted b
 * `pager -login` signs in with a BYOND account. The password comes from `$FUGUE_BYOND_PASSWORD` or a prompt and is
   stored nowhere. The launcher window has the same sign-in.
 * `pager -install-desktop` adds Fugue to the application menu and makes it the handler for `byond://` links. It
-  writes only under `$XDG_DATA_HOME` (default `~/.local/share`).
+  writes only under `$XDG_DATA_HOME` (default `~/.local/share`). This command is Linux-only; on macOS, copy `Fugue.app`
+  to Applications and open it to register `byond://` links.
 * Installed or symlinked under the name `dreamseeker`, the binary accepts DreamSeeker's own command line, for example
   `dreamseeker "byond://host:port" -pager`, so existing launch scripts and `byond://` handlers work.
 * Guests and signed-in players both work; signing in lets servers that require a BYOND key accept you.
@@ -46,7 +49,7 @@ Both are disclosure, not enforcement (see [SECURITY.md](../SECURITY.md)).
 
 ## State directories
 
-All under `$HOME`:
+All under `$HOME` (on both Linux and macOS):
 
 | Path | Contents |
 |---|---|
@@ -71,7 +74,7 @@ A command-line flag, where one exists, wins.
 
 `--audio` or `FUGUE_AUDIO` selects the sink:
 
-* `auto` (default): tries `pw-play`, then `paplay`, then `aplay`
+* `auto` (default): Core Audio on macOS; on Linux, tries `pw-play`, then `paplay`, then `aplay`
 * `none`
 * `wav:<path>`: write a WAV file instead of playing
 * `cmd:prog,arg,...`: pipe raw signed 16-bit little-endian stereo PCM to a command

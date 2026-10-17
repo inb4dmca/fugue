@@ -28,6 +28,39 @@ jobs:
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
         run: ctest --test-dir build --output-on-failure
 
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install prerequisites
+        run: brew install cmake ninja pkgconf qtbase qtwebengine qtwebchannel qtsvg jpeg-turbo libopenmpt
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build -DFUGUE_RELEASE=ON -DFUGUE_OPENMPT=ON
+          -DFUGUE_COMPILE_JOBS=2 -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+          -DPKG_CONFIG_EXECUTABLE="$(brew --prefix)/bin/pkg-config"
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          FUGUE_AUDIO: none
+        run: ctest --test-dir build --output-on-failure
+      - name: Deploy and verify the standalone bundle
+        run: |
+          cmake --install build --prefix "$PWD/build/macos"
+          build/macos/Fugue.app/Contents/MacOS/Fugue --version
+          codesign --verify --deep --strict build/macos/Fugue.app
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Fugue.app "Fugue-$(uname -m).zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fugue-${{ matrix.os }}
+          path: Fugue-*.zip
+
   flatpak:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build

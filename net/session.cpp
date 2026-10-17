@@ -1,4 +1,5 @@
 #include "net/session.h"
+#include "platform/posix.h"
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netdb.h>
@@ -76,7 +77,7 @@ void Session::wire(const char* dir, uint16_t type, ByteSpan body) {
 bool Session::writeAll(const Bytes& b) {
     size_t off = 0;
     while (off < b.size()) {
-        ssize_t n = ::send(fd_, b.data() + off, b.size() - off, MSG_NOSIGNAL);
+        ssize_t n = platform::sendNoSignal(fd_, b.data() + off, b.size() - off);
         if (n < 0) {
             if (errno == EINTR) continue;
             if (errno == EAGAIN) { pollfd p{fd_, POLLOUT, 0}; ::poll(&p, 1, 1000); continue; }
@@ -132,7 +133,7 @@ std::string Session::connectAndLogin() {
         return std::string("resolve ") + cfg_.host + ": " + gai_strerror(gai);
     std::string lastErr = "no address";
     for (addrinfo* a = res; a && fd_ < 0; a = a->ai_next) {
-        int fd = ::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        int fd = platform::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
         int fl = ::fcntl(fd, F_GETFL, 0);
         ::fcntl(fd, F_SETFL, fl | O_NONBLOCK);

@@ -23,6 +23,7 @@ function(fugue_shell_test name stem)
   set_tests_properties(${name} PROPERTIES ENVIRONMENT "${_shell_test_env}")
 endfunction()
 
+fugue_shell_test(shell_urlopener urlopener_test)   # macOS QFileOpenEvent URL delivery, without Launch Services
 fugue_shell_test(shell          shell_test)       # one QtTest executable
 fugue_shell_test(shell_input    input_test)       # pointer events -> MapPointer, arrow keys -> builtinMove, command routing
 fugue_shell_test(shell_live     live_test)        # winset -> widgets, menu bar, skin button / menu commands, cross-thread sync

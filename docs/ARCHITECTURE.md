@@ -9,14 +9,16 @@
 | `model/` | the world model built from decoded messages (map, atoms, appearances, HUD, stat panel, verbs, browsers, chat) |
 | `skin/` | `.dmf` skin parser, layout, `winset` / `winget` rules, macros |
 | `render/` | icon (`.dmi`) decoding and the compositor: planes and layers, overlays, colour and alpha, transforms, animation, maptext, filters |
-| `audio/` | sound: Ogg Vorbis (vendored stb_vorbis), WAV, tracker modules (libopenmpt), the channel mixer, and the output sinks |
+| `audio/` | sound: Ogg Vorbis (vendored stb_vorbis), WAV, tracker modules (libopenmpt), the channel mixer, and the output sinks (Core Audio on macOS, external PCM players on Linux) |
 | `shell/` | the Qt Widgets/WebEngine window: skin window, map widget, stat panel, input, HTML browser panes and the loopback origin |
 | `account/` | account files, `key.txt` handling, login records, hub primitives |
 | `pager/` | the launcher: server list, sign-in, join logic, DreamSeeker command-line compatibility, window UI |
 | `app/` | the `fugue-qt` executable: the `pager` and `client` modes |
 | `tools/` | the canonical JSON writer and `gdifont`, the generator for the bitmap-font width tables |
 | `tests/`, `*/tests/` | tests and their recorded data |
+| `platform/` | shared Linux/macOS socket and close-on-exec pipe helpers |
 | `packaging/flatpak/` | Flatpak manifest, desktop entry, AppStream metadata, icons and their sources |
+| `packaging/macos/` | app bundle metadata, icon generation, Qt/WebEngine deployment and dependency relocation |
 | `cmake/` | the `fugue_module()` helper |
 
 `pager/`, `account/` and `render/` have their own `README.md` with a file table.

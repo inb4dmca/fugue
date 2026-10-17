@@ -1,4 +1,5 @@
 #include "pager/hublink.h"
+#include "platform/posix.h"
 #include <algorithm>
 #include <netdb.h>
 #include <poll.h>
@@ -23,7 +24,7 @@ bool HubLink::dial(const std::string& addr, std::string* err) {
     if (int rc = ::getaddrinfo(host.c_str(), port.c_str(), &hints, &res); rc != 0) { *err = "hub: dial " + addr + ": " + gai_strerror(rc); return false; }
     std::string last = "no address";
     for (addrinfo* ai = res; ai; ai = ai->ai_next) {
-        int fd = ::socket(ai->ai_family, ai->ai_socktype | SOCK_CLOEXEC | SOCK_NONBLOCK, ai->ai_protocol);
+        int fd = platform::socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol, true);
         if (fd < 0) { last = std::strerror(errno); continue; }
         if (::connect(fd, ai->ai_addr, ai->ai_addrlen) != 0 && errno != EINPROGRESS) { last = std::strerror(errno); ::close(fd); continue; }
         pollfd p{fd, POLLOUT, 0};
@@ -48,7 +49,7 @@ bool HubLink::writeFrame(uint16_t type, const Bytes& payload, std::string* err) 
         pollfd p{fd_, POLLOUT, 0};
         int pr = ::poll(&p, 1, remainingMs());
         if (pr <= 0) { *err = pr == 0 ? "timed out" : std::strerror(errno); return false; }
-        ssize_t n = ::send(fd_, w.data() + off, w.size() - off, MSG_NOSIGNAL);
+        ssize_t n = platform::sendNoSignal(fd_, w.data() + off, w.size() - off);
         if (n < 0) { if (errno == EAGAIN || errno == EINTR) continue; *err = std::strerror(errno); return false; }
         off += size_t(n);
     }

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+  <key>CFBundleIdentifier</key><string>io.github.toomykins.Fugue</string>
+  <key>CFBundleName</key><string>Fugue</string>
+  <key>CFBundleDisplayName</key><string>Fugue</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>Fugue.icns</string>
+  <key>CFBundleShortVersionString</key><string>${PROJECT_VERSION}</string>
+  <key>CFBundleVersion</key><string>${PROJECT_VERSION}</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+  <key>CFBundleURLTypes</key>
+  <array><dict>
+    <key>CFBundleURLName</key><string>BYOND server</string>
+    <key>CFBundleTypeRole</key><string>Viewer</string>
+    <key>CFBundleURLSchemes</key><array><string>byond</string></array>
+  </dict></array>
+</dict>
+</plist>

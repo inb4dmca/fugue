@@ -7,6 +7,8 @@ tests/PUBLIC_TESTS
 tests/testenv.h
 
 # --- headless client logic, inline bytes only
+tests/audio_sink_test.cpp
+tests/platform_test.cpp
 tests/browsing_test.cpp
 tests/cauth_test.cpp
 tests/headlessacks_test.cpp
@@ -41,6 +43,7 @@ shell/tests/paste_scan_test.cpp
 shell/tests/prompt_skin.h
 shell/tests/prompt_test.cpp
 shell/tests/shell_test.cpp
+shell/tests/urlopener_test.cpp
 
 # --- account and pager (temp HOME, synthetic identities)
 account/tests/account_codec_test.cpp

@@ -9,6 +9,8 @@
   owner-only.
 * Passwords are never put on a command line or in a log. They are read from the environment variable
   `FUGUE_BYOND_PASSWORD` or a prompt, used for one request, and wiped.
+* Release clients disable core dumps. Linux also disables ptrace via `PR_SET_DUMPABLE`; macOS debugger access follows
+  the operating system's code-signing policy (ad-hoc-signed local builds do not provide equivalent ptrace protection).
 * Fugue marks its `computer_id` so server operators can recognise it (see
   [docs/USAGE.md](docs/USAGE.md#for-server-operators)). A modified build could drop the mark, so it is not a security
   guarantee.

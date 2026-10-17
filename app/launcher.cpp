@@ -33,6 +33,7 @@
 #include "pager/target.h"
 #include "pager/ui/pagerwindow.h"
 #include "shell/fugueicon.h"
+#include "shell/urlopener.h"
 
 int clientMain(int argc, char** argv);   // app/main.cpp
 
@@ -55,7 +56,7 @@ const char* kPagerUsage =
     "  -list               print the saved server list and this box's readiness checklist, then exit\n"
     "  -login              sign in: fetch the account's key block from the hub (password: $FUGUE_BYOND_PASSWORD or prompt; stored nowhere)\n"
     "  -keytxt <path>      key.txt to use for this run\n"
-    "  -install-desktop    add Fugue (io.github.toomykins.Fugue.desktop + its icon) to this user's menu and make it the byond:// handler\n"
+    "  -install-desktop    Linux only: add Fugue (io.github.toomykins.Fugue.desktop + its icon) to this user's menu and make it the byond:// handler\n"
     "                      (writes under $XDG_DATA_HOME only)\n"
     "  --                  everything after is passed to the client verbatim\n";
 
@@ -148,6 +149,10 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     const std::string self = QCoreApplication::applicationFilePath().toStdString();
 
     if (o.install) {
+#ifdef __APPLE__
+        std::fprintf(stderr, "pager: on macOS, copy Fugue.app to Applications and open it to register byond:// links.\n");
+        return 1;
+#endif
         auto r = pager::installDesktop(self, fugue::shell::fugueIconPngs());   // Fugue's icon into hicolor (shell/fugueicon.h)
         if (!r.ok) { std::fprintf(stderr, "pager: install-desktop: %s\n", r.err.c_str()); return 1; }
         std::printf("wrote %s -> %s\n", r.desktopPath.c_str(), self.c_str());
@@ -453,6 +458,16 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     });
     QObject::connect(app.get(), &QCoreApplication::aboutToQuit, &win, stopChild);
     QObject::connect(app.get(), &QCoreApplication::aboutToQuit, &win, stopWarmer);   // a download in progress keeps what arrived
+    fugue::shell::UrlOpener urlOpener(&win, [&](const QUrl& url) {
+        std::string error;
+        auto addr = pager::parseTarget(url.toString(QUrl::FullyEncoded).toStdString(), &error);
+        if (!addr) { win.setStatus(QString::fromStdString(error), true); return; }
+        // Use the same account selection, validation and environment scrubbing as the Join button.
+        stopChild();
+        emit win.joinRequested(QString::fromStdString(*addr), false, QString());
+        win.raise();
+        win.activateWindow();
+    });
     win.show();
     // Signed out (and not a remembered guest), the Sign in window opens over the pager. With "Sign in automatically"
     // off, a saved account waits there to be confirmed. An -account override is not held.
@@ -479,6 +494,10 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#ifdef Q_OS_MACOS
+    // BYOND's CTRL macros refer to the physical Control key, not Command.
+    QCoreApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
+#endif
     // Mode selection: pager/dsargv.h chooseMode. Installed as dreamseeker (a symlink or copy, any case), the whole
     // command line is DreamSeeker's, so the mode is the client even in a release build.
     std::vector<std::string> args;

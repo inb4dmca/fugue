@@ -31,6 +31,9 @@
 #include "shell/browserpane.h"
 #include "shell/focusfilter.h"
 #include "shell/fugueicon.h"
+#include "shell/urlopener.h"
+#include "pager/launch.h"
+#include <QProcess>
 #include "shell/inputrouter.h"
 #include "shell/macrodialog.h"
 #include "shell/mapwidget.h"
@@ -44,7 +47,11 @@
 #include <QPointer>
 #include <signal.h>
 #include <cstdlib>
+#ifdef __linux__
 #include <sys/prctl.h>
+#elif defined(__APPLE__)
+#include <sys/resource.h>
+#endif
 #include "account/login.h"
 #include "account/records.h"
 #include "account/store.h"
@@ -63,8 +70,14 @@ bool prefetchMain(int argc, char** argv, int* rc);   // app/prefetchmode.cpp
 int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main() (mode switch)
     { int prc = 0; if (prefetchMain(argc, argv, &prc)) return prc; }   // --prefetch: headless cache warm-up, no QApplication
 #ifdef FUGUE_RELEASE
+#ifdef __linux__
     // A release client holds a bearer token in memory: refuse ptrace and /proc/<pid>/{environ,mem} reads.
     prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+#elif defined(__APPLE__)
+    // macOS has no PR_SET_DUMPABLE. Disable core dumps; debugger access is governed by macOS code signing.
+    const rlimit noCore{0, 0};
+    setrlimit(RLIMIT_CORE, &noCore);
+#endif
 #endif
     // Both MUST precede QApplication: byond:// interception and the shared GL context WebEngine wants.
     fugue::shell::registerSchemes();
@@ -75,6 +88,14 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     std::vector<const char*> preQtPtrs;
     for (int i = 1; i < argc; i++) { preQtArgs.push_back(argv[i]); preQtPtrs.push_back(argv[i]); }
     QApplication app(argc, argv);
+    fugue::shell::UrlOpener urlOpener(&app, [](const QUrl& url) {
+        // A link delivered to an already-running game opens through the pager, never as arbitrary arguments.
+        QProcess pager;
+        pager.setProgram(QCoreApplication::applicationFilePath());
+        pager.setArguments({"pager", url.toString(QUrl::FullyEncoded)});
+        pager.setProcessEnvironment(fugue::pager::childEnvironment());
+        pager.startDetached();
+    });
     fugue::shell::installTrueTypeMetrics();   // MeasureText's TrueType faces (render/dsmaptext.h)
     fugue::shell::installMaptextGlyphs();     // map text glyphs (render/maptextpaint.h)
     // DreamSeeker is light whatever the desktop theme: its controls use fixed system colours. Fusion with this palette
@@ -134,7 +155,7 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     QCommandLineOption oAccount("account", "BYOND key to log in as (identity from the pager's cache; empty = guest)", "key");
     QCommandLineOption oIdent("identity-file", "path of the account's 0600 identity file (default ~/.fugue/identity-<ckey>)", "path");
     QCommandLineOption oHub("hub", "the target is hub-registered (accepted; every account login answers a hub-registered server's 0x001c certificate challenge regardless)");
-    QCommandLineOption oAudio("audio", "sound output: auto (pw-play/paplay/aplay, the default), none, wav:<path> (record the mix), "
+    QCommandLineOption oAudio("audio", "sound output: auto (system output, the default), none, wav:<path> (record the mix), "
                                        "cmd:a,b,c (pipe s16le stereo 44.1 kHz to your own player). Empty = $FUGUE_AUDIO, then auto", "spec");
     cp.addOptions({oConnect, oState, oRsc, oShot, oAfter, oSize, oPace, oAccount, oIdent, oHub, oAudio});
     // DreamSeeker's own command line is accepted too (pager/dsargv.h), so `dreamseeker "byond://host:port" -pager` works

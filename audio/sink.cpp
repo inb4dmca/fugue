@@ -9,6 +9,7 @@
 #include "audio/clip.h"
 #if !defined(_WIN32)
 #include <fcntl.h>
+#include "platform/posix.h"
 #include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -120,10 +121,12 @@ std::unique_ptr<Sink> openExecSink(const std::vector<std::string>& argv, std::st
 #else
     if (argv.empty() || argv[0].empty()) { if (err) *err = "empty command"; return nullptr; }
     int in[2], er[2];
-    if (::pipe2(in, O_CLOEXEC) != 0) { if (err) *err = "pipe failed"; return nullptr; }
-    if (::pipe2(er, O_CLOEXEC) != 0) { ::close(in[0]); ::close(in[1]); if (err) *err = "pipe failed"; return nullptr; }
+    if (platform::pipeCloseOnExec(in) != 0) { if (err) *err = "pipe failed"; return nullptr; }
+    if (platform::pipeCloseOnExec(er) != 0) { ::close(in[0]); ::close(in[1]); if (err) *err = "pipe failed"; return nullptr; }
     // A small pipe: what sits in it is latency on top of the player's own 80 ms. 8 KiB = ~46 ms of 44.1 kHz s16 stereo.
+#ifdef F_SETPIPE_SZ
     (void)::fcntl(in[1], F_SETPIPE_SZ, 8192);
+#endif
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_adddup2(&fa, in[0], 0);
@@ -190,6 +193,10 @@ std::unique_ptr<Sink> openSink(const std::string& specIn, int rate, std::string*
         argv.push_back(cur);
         if (auto s = openExecSink(argv, &why)) return s;
     } else if (spec == "auto") {
+#ifdef __APPLE__
+        if (auto s = openCoreAudioSink(rate, &why)) return s;
+        why = "Core Audio: " + why + " - running SILENT";
+#else
         std::string all;
         for (const auto& argv : execPlayers(rate)) {
             std::string e;
@@ -197,6 +204,7 @@ std::unique_ptr<Sink> openSink(const std::string& specIn, int rate, std::string*
             all += (all.empty() ? "" : "; ") + e;
         }
         why = "no working PCM player (" + all + ") - running SILENT";
+#endif
     } else {
         why = "unknown sink spec \"" + spec + "\"";
     }

@@ -21,7 +21,7 @@ if(_metainfo)
 endif()
 
 # Release build: the player-facing binary. The pager is the no-argument default. Test hooks (FUGUE_AUTO_*, pager
-# --auto-join/--quit-after) are compiled out, and the client sets PR_SET_DUMPABLE=0.
+# --auto-join/--quit-after) are compiled out, and the client disables core dumps (PR_SET_DUMPABLE=0 on Linux).
 option(FUGUE_RELEASE "build the shippable fugue-qt (pager default, no dev hooks)" OFF)
 
 # Headless-only build: just the Qt-free/Core modules, tools and tests (no window, no pager UI). This is an explicit opt-out;

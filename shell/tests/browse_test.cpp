@@ -76,7 +76,9 @@ private slots:
         auto st = host->store();
         st->put(1, "app.js", kAppJs);
         st->put(2, "app.css", kAppCss);
-        st->put(3, "px.png", std::string("\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\1\0\0\0\1\x08\x06\0\0\0\x1f\x15\xc4\x89\0\0\0\rIDATx\x9cc\xf8\xff\xff?\0\5\xfe\2\xfe\xa7\x35\x81\x84\0\0\0\0IEND\xaeB`\x82", 74));
+        static constexpr char png[] = "\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\1\0\0\0\1\x08\x06\0\0\0\x1f\x15\xc4\x89"
+                                      "\0\0\0\rIDATx\x9c" "c\xf8\xff\xff?\0\5\xfe\2\xfe\xa7\x35\x81\x84\0\0\0\0IEND\xae" "B`\x82";
+        st->put(3, "px.png", std::string(png, sizeof png - 1));
     }
     void cleanupTestCase() { delete topics; delete cmds; delete host; delete anchor; }
 
@@ -153,19 +155,23 @@ private slots:
         o.setBridge([](int, const QByteArray& body) { return QString("ok:") + QString::fromUtf8(body); });
         st->declare("", 500);                                          // an unnamed record that never lands
         QNetworkAccessManager nam;
-        struct R { QNetworkReply* r; QElapsedTimer t; qint64 ms = -1; };
+        // Separate pools keep Qt's connection reuse/scheduling from queuing a request behind a held one. This test
+        // measures the origin's hold budget, not QNetworkAccessManager's platform-dependent connection scheduler.
+        struct R { std::unique_ptr<QNetworkAccessManager> nam; QNetworkReply* r; QElapsedTimer t; qint64 ms = -1; };
         std::vector<std::unique_ptr<R>> rs;
         auto fire = [&](const QString& file) {
             auto x = std::make_unique<R>();
+            x->nam = std::make_unique<QNetworkAccessManager>();
             x->t.start();
-            x->r = nam.get(QNetworkRequest(QUrl(o.base() + file)));
+            x->r = x->nam->get(QNetworkRequest(QUrl(o.base() + file)));
             R* raw = x.get();
-            QObject::connect(x->r, &QNetworkReply::finished, [raw] { raw->ms = raw->t.elapsed(); });
+            QObject::connect(x->r, &QNetworkReply::finished, x->r, [raw] { raw->ms = raw->t.elapsed(); });
             rs.push_back(std::move(x));
             return raw;
         };
         auto status = [](R* x) { return x->r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(); };
         R* u1 = fire("missing1.png");
+        QVERIFY(QTest::qWaitFor([&] { return o.held() == 1; }, 3000));  // make u1 deterministically the oldest
         R* u2 = fire("missing2.png");
         QVERIFY(QTest::qWaitFor([&] { return o.held() == 2; }, 3000));
         R* u3 = fire("missing3.png");                                  // a third unknown name: not held

@@ -2,6 +2,7 @@
 // The session half runs against an in-process fake server that answers the handshake and decrypts each login record.
 // Temp dirs only.
 #include <arpa/inet.h>
+#include "platform/posix.h"
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -70,7 +71,7 @@ struct FakeServer {
                 Bytes enc = encryptBody(plain, base);
                 Bytes f = {0x00, 0x01, uint8_t(enc.size() >> 8), uint8_t(enc.size())};
                 f.insert(f.end(), enc.begin(), enc.end());
-                ::send(fd, f.data(), f.size(), MSG_NOSIGNAL);
+                fugue::platform::sendNoSignal(fd, f.data(), f.size());
                 if (readN(fd, h, 6)) {  // c2s header: [seq BE][type BE][len BE]
                     Bytes c((size_t(h[4]) << 8) | h[5]);
                     if (readN(fd, c.data(), c.size()) && ((h[2] << 8) | h[3]) == 0x001a) decryptBody(c, loginKey(base, nonce), login);

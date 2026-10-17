@@ -3,6 +3,7 @@
 #include <QtTest>
 #include <QTemporaryDir>
 #include <arpa/inet.h>
+#include "platform/posix.h"
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -60,7 +61,7 @@ struct FakeHub {
     static void writeFrame(int fd, uint16_t t, const Bytes& p) {
         Bytes w{uint8_t(t >> 8), uint8_t(t), uint8_t(p.size() >> 8), uint8_t(p.size())};
         w.insert(w.end(), p.begin(), p.end());
-        ::send(fd, w.data(), w.size(), MSG_NOSIGNAL);
+        fugue::platform::sendNoSignal(fd, w.data(), w.size());
     }
     void serve() {
         int c = ::accept(lfd, nullptr, nullptr);

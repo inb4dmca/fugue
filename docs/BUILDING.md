@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-A C++20 compiler (g++ 12 or newer), CMake 3.20 or newer, Ninja, pkg-config, and:
+A C++20 compiler (g++ 12 or newer, or a recent Xcode/Apple Clang), CMake 3.20 or newer, Ninja, pkg-config, and:
 
 * Qt 6.4 or newer: Base (Core, Gui, Widgets, Network, Test), WebEngine (Widgets) and WebChannel
 * libjpeg (libjpeg-turbo)
@@ -16,7 +16,8 @@ A C++20 compiler (g++ 12 or newer), CMake 3.20 or newer, Ninja, pkg-config, and:
 | Fedora | `sudo dnf install gcc-c++ cmake ninja-build pkgconf-pkg-config qt6-qtbase-devel qt6-qtwebengine-devel qt6-qtwebchannel-devel libjpeg-turbo-devel zlib-devel libopenmpt-devel mesa-libGL-devel` |
 | Arch | `sudo pacman -S base-devel cmake ninja pkgconf qt6-base qt6-webengine qt6-webchannel libjpeg-turbo zlib libopenmpt` |
 
-For audio at run time one of `pw-play` (PipeWire), `paplay` (PulseAudio) or `aplay` (ALSA) must be on the `PATH`.
+On Linux, audio at run time requires one of `pw-play` (PipeWire), `paplay` (PulseAudio) or `aplay` (ALSA) on the `PATH`.
+macOS uses the system Core Audio framework; no external audio player is needed.
 
 ## Build
 
@@ -29,7 +30,7 @@ ninja -C build install        # installs fugue-qt to bin/ under the install pref
 ```
 
 `-DFUGUE_RELEASE=ON` builds the player-facing binary: it starts as the launcher, the developer test hooks are compiled
-out, and the client refuses ptrace. Without it, `fugue-qt` with no subcommand is the game client.
+out, and the client disables core dumps (and refuses ptrace on Linux). Without it, `fugue-qt` with no subcommand is the game client.
 
 | Option | Meaning |
 |---|---|
@@ -37,6 +38,48 @@ out, and the client refuses ptrace. Without it, `fugue-qt` with no subcommand is
 | `-DFUGUE_RELEASE=ON` | the release build described above |
 | `-DFUGUE_HEADLESS_ONLY=ON` | only the Qt-light modules, tools and tests; no window binary and no WebEngine |
 | `-DFUGUE_COMPILE_JOBS=N` | cap on concurrent compile jobs (default 6). A Qt-heavy translation unit can use about 300 MB, so lower this on small machines. |
+
+## macOS
+
+Install Xcode Command Line Tools (`xcode-select --install`) and [Homebrew](https://brew.sh), then:
+
+```bash
+brew install cmake ninja pkgconf qtbase qtwebengine qtwebchannel qtsvg jpeg-turbo libopenmpt
+cmake -G Ninja -S . -B build -DFUGUE_RELEASE=ON -DFUGUE_OPENMPT=ON \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+  -DPKG_CONFIG_EXECUTABLE="$(brew --prefix)/bin/pkg-config"
+cmake --build build
+open build/app/Fugue.app
+```
+
+Use a native Homebrew installation for your architecture (Apple Silicon or Intel); do not mix arm64 and x86_64
+libraries. The minimum supported macOS version is determined by your Qt distribution. Official Qt installations
+also work (include the Qt SVG module for bundle deployment): set `CMAKE_PREFIX_PATH` to the Qt macOS kit and the prefixes containing libjpeg/libopenmpt.
+
+The build-tree app uses your installed libraries. To make a self-contained app, including Qt WebEngine's helper,
+resources, plugins, and third-party libraries:
+
+```bash
+cmake --install build --prefix "$PWD/build/macos"
+open build/macos/Fugue.app
+# Optional: copy build/macos/Fugue.app to /Applications or ~/Applications.
+```
+
+Installation runs the selected Qt's `macdeployqt` and ad-hoc signs/verifies the complete bundle. No Homebrew packages
+are needed on the destination Mac. This is **not** Developer ID signing or notarization; public distribution requires
+those additional Apple signing steps. CI builds and tests both architectures and uploads ad-hoc-signed app archives.
+
+Command-line options are unchanged; the executable is inside the bundle:
+
+```bash
+build/app/Fugue.app/Contents/MacOS/Fugue --version
+build/app/Fugue.app/Contents/MacOS/Fugue client --connect host:port
+```
+
+Finder launch opens the launcher in release builds. Opening the app registers its `byond://` scheme with Launch
+Services; clicked links are handled both at startup and while the launcher is running. `pager -install-desktop`
+is Linux-only. Settings and credentials remain under `~/.fugue`, as on Linux. BYOND CTRL macros use the physical
+Control key on macOS, not Command.
 
 ## Tests
 
@@ -48,7 +91,11 @@ QT_QPA_PLATFORM=offscreen ctest --test-dir build -R rscstore -V      # one test,
 ```
 
 `QT_QPA_PLATFORM=offscreen` lets the widget and WebEngine tests run without a display. Some tests skip with a message
-when optional input is absent.
+when optional input is absent. The Core Audio device smoke test is opt-in (it writes silence):
+
+```bash
+FUGUE_TEST_COREAUDIO=1 ctest --test-dir build -R '^audio_sink$' --output-on-failure
+```
 
 ## Flatpak
 

@@ -1,6 +1,6 @@
 # Fugue
 
-Fugue is a native Linux client and launcher for BYOND games, written in C++20 with Qt 6. It replaces DreamSeeker on
+Fugue is a native Linux and macOS client and launcher for BYOND games, written in C++20 with Qt 6. It replaces DreamSeeker on
 servers that run stock BYOND, without a BYOND install and without Wine. It is engineered for /vg/station. It is
 unofficial and not affiliated with BYOND.
 
@@ -15,7 +15,8 @@ cmake -G Ninja -S . -B build -DFUGUE_RELEASE=ON
 ninja -C build
 ```
 
-Or build the Flatpak, also described in [docs/BUILDING.md](docs/BUILDING.md).
+On macOS, follow the [Homebrew and app bundle instructions](docs/BUILDING.md#macos).
+On Linux, you can also build the Flatpak described in [docs/BUILDING.md](docs/BUILDING.md).
 
 ## Run
 
@@ -23,6 +24,8 @@ Or build the Flatpak, also described in [docs/BUILDING.md](docs/BUILDING.md).
 build/app/fugue-qt                              # the launcher: server list and sign-in
 build/app/fugue-qt client --connect host:port   # the game window, as a guest
 ```
+
+On macOS, open `build/app/Fugue.app`, or run `build/app/Fugue.app/Contents/MacOS/Fugue` with the same arguments.
 
 All options, state directories and environment variables are in [docs/USAGE.md](docs/USAGE.md).
 
