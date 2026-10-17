@@ -1,0 +1,224 @@
+#include "pager/launch.h"
+#include <signal.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <QDir>
+#include <QFile>
+#include <QProcess>
+#include <QSaveFile>
+#include <atomic>
+#include <cerrno>
+#include <cstring>
+#include <cstdlib>
+#include "pager/model.h"
+
+namespace fugue::pager {
+
+const char* const kPasswordVars[] = {"FUGUE_BYOND_PASSWORD", nullptr};
+
+std::vector<std::string> buildArgs(const account::Config& cfg, const account::Server& srv) {
+    std::vector<std::string> a{"--connect", srv.addr};
+    if (!cfg.account.empty()) {
+        a.insert(a.end(), {"--account", cfg.account});
+        if (srv.hub) a.push_back("--hub");
+        std::string e;
+        std::string p = account::identityPath(cfg.account, &e);
+        if (!p.empty()) a.insert(a.end(), {"--identity-file", p});   // a PATH, 0600; the client reads the file itself
+    }
+    a.insert(a.end(), srv.flags.begin(), srv.flags.end());
+    return a;
+}
+
+bool buildCommand(const account::Config& cfg, const account::Server& srv, const std::string& selfExe,
+                  const std::vector<std::string>& passthrough, std::vector<std::string>* argv, std::string* err) {
+    std::vector<std::string> prefix;
+    if (!resolveClientArgv(cfg.client, CheckOptions{true, selfExe}, &prefix, err)) return false;
+    *argv = prefix;
+    for (auto& s : buildArgs(cfg, srv)) argv->push_back(s);
+    for (auto& s : passthrough) argv->push_back(s);
+    return true;
+}
+
+std::string displayCommand(const std::vector<std::string>& argv) {
+    std::string o;
+    for (size_t i = 0; i < argv.size(); i++) { if (i) o += ' '; o += argv[i]; }
+    return o;
+}
+
+QProcessEnvironment childEnvironment() {
+    QProcessEnvironment e = QProcessEnvironment::systemEnvironment();
+    for (const char* const* v = kPasswordVars; *v; v++) e.remove(QString::fromLatin1(*v));
+    return e;
+}
+
+std::string clientLogPath() {
+    auto h = account::homeDir();
+    return h ? *h + "/.fugue/client.log" : std::string();
+}
+
+std::string guestChoicePath() {
+    std::string d = account::qtStateDir();
+    return d.empty() ? std::string() : d + "/pager-guest";
+}
+bool guestRemembered() {
+    std::string p = guestChoicePath();
+    struct stat st;
+    return !p.empty() && ::stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+bool rememberGuest(bool on, std::string* err) {
+    std::string p = guestChoicePath();
+    if (p.empty()) { if (err) *err = "$HOME is not defined"; return false; }
+    if (on) return account::atomicWrite(p, "guest\n", err);
+    if (::unlink(p.c_str()) != 0 && errno != ENOENT) { if (err) *err = "remove " + p + ": " + std::strerror(errno); return false; }
+    return true;
+}
+
+std::string autoSignInOffPath() {
+    std::string d = account::qtStateDir();
+    return d.empty() ? std::string() : d + "/pager-no-autosignin";
+}
+bool autoSignIn() {
+    std::string p = autoSignInOffPath();
+    struct stat st;
+    return p.empty() || ::stat(p.c_str(), &st) != 0;
+}
+bool setAutoSignIn(bool on, std::string* err) {
+    std::string p = autoSignInOffPath();
+    if (p.empty()) { if (err) *err = "$HOME is not defined"; return false; }
+    if (!on) return account::atomicWrite(p, "off\n", err);
+    if (::unlink(p.c_str()) != 0 && errno != ENOENT) { if (err) *err = "remove " + p + ": " + std::strerror(errno); return false; }
+    return true;
+}
+
+namespace {
+std::atomic<int> gSignal{0};
+void onSignal(int) { gSignal = 1; }
+}  // namespace
+
+int runHeadless(const std::vector<std::string>& argv, FILE* out) {
+    if (argv.empty()) return 2;
+    QProcess p;
+    p.setProcessChannelMode(QProcess::MergedChannels);
+    p.setProcessEnvironment(childEnvironment());
+    QStringList args;
+    for (size_t i = 1; i < argv.size(); i++) args << QString::fromStdString(argv[i]);
+    p.start(QString::fromStdString(argv[0]), args);
+    if (!p.waitForStarted(10000)) { std::fprintf(out, "[pager] could not start %s: %s\n", argv[0].c_str(), p.errorString().toUtf8().constData()); return 127; }
+    FILE* logf = nullptr;
+    std::string lp = clientLogPath();
+    if (!lp.empty()) {
+        std::string dir = lp.substr(0, lp.rfind('/'));
+        ::mkdir(dir.c_str(), 0700);
+        int fd = ::open(lp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        if (fd >= 0) logf = ::fdopen(fd, "w");
+    }
+    struct sigaction sa {};
+    sa.sa_handler = onSignal;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
+    std::fprintf(out, "[pager] client pid %lld\n", (long long)p.processId());
+    std::fflush(out);
+    bool forwarded = false;
+    auto drain = [&] {
+        QByteArray b = p.readAll();
+        if (b.isEmpty()) return;
+        std::fwrite(b.constData(), 1, size_t(b.size()), out);
+        std::fflush(out);
+        if (logf) { std::fwrite(b.constData(), 1, size_t(b.size()), logf); std::fflush(logf); }
+    };
+    while (p.state() != QProcess::NotRunning) {
+        p.waitForReadyRead(100);
+        drain();
+        if (gSignal && !forwarded) { forwarded = true; ::kill(pid_t(p.processId()), SIGINT); }
+    }
+    p.waitForFinished(5000);
+    drain();
+    if (logf) std::fclose(logf);
+    return p.exitStatus() == QProcess::NormalExit ? p.exitCode() : 128 + 2;
+}
+
+// ---------------- desktop ----------------
+std::string desktopQuote(const std::string& s) {
+    if (s.find_first_of(" \t\n\"'\\><~|&;$*?#()`%") == std::string::npos) return s;
+    std::string o = "\"";
+    for (char c : s) {
+        if (c == '\\') o += "\\\\";
+        else if (c == '"') o += "\\\"";
+        else if (c == '`') o += "\\`";
+        else if (c == '$') o += "\\$";
+        else if (c == '%') o += "%%";
+        else o += c;
+    }
+    return o + "\"";
+}
+
+std::string desktopEntry(const std::string& exe) {
+    // StartupWMClass: Qt's X11 WM_CLASS is the application name, "fugue-qt". A desktop that matches windows to .desktop
+    // files by WM_CLASS needs it, because this file is named by app id.
+    return "[Desktop Entry]\nType=Application\nName=Fugue\nComment=Join Space Station 13 servers\nExec=" + desktopQuote(exe) +
+           " pager %u\nIcon=" + kAppId + "\nTerminal=false\nCategories=Game;\nMimeType=x-scheme-handler/byond;\nStartupWMClass=fugue-qt\n";
+}
+
+DesktopResult installDesktop(const std::string& exe, const std::vector<std::pair<int, QByteArray>>& icons) {
+    DesktopResult r;
+    std::string base;
+    if (const char* x = std::getenv("XDG_DATA_HOME"); x && *x) base = x;
+    else if (auto h = account::homeDir()) base = *h + "/.local/share";
+    else { r.err = "no XDG_DATA_HOME and no HOME"; return r; }
+    QString dir = QString::fromStdString(base) + "/applications";
+    if (!QDir().mkpath(dir)) { r.err = "cannot create " + dir.toStdString(); return r; }
+    r.desktopPath = dir.toStdString() + "/" + kDesktopFile;
+    {
+        QSaveFile f(QString::fromStdString(r.desktopPath));
+        if (!f.open(QIODevice::WriteOnly)) { r.err = "cannot write " + r.desktopPath; return r; }
+        f.write(QByteArray::fromStdString(desktopEntry(exe)));
+        if (!f.commit()) { r.err = "cannot write " + r.desktopPath; return r; }
+        ::chmod(r.desktopPath.c_str(), 0644);
+    }
+    // Remove a fugue.desktop whose content is a Fugue pager entry, so Fugue is not listed twice; any other file of that
+    // name is kept.
+    {
+        QFile legacy(dir + "/" + kLegacyDesktopFile);
+        if (legacy.open(QIODevice::ReadOnly)) {
+            QByteArray b = legacy.readAll();
+            legacy.close();
+            if (b.startsWith("[Desktop Entry]\nType=Application\nName=Fugue\n") && b.contains(" pager %u\n")) legacy.remove();
+        }
+    }
+    for (const auto& [px, png] : icons) {
+        QString idir = QString::fromStdString(base) + QString("/icons/hicolor/%1x%1/apps").arg(px);
+        if (!QDir().mkpath(idir)) { r.err = "cannot create " + idir.toStdString(); return r; }
+        std::string ip = idir.toStdString() + "/" + kAppId + ".png";
+        QSaveFile f(QString::fromStdString(ip));
+        if (!f.open(QIODevice::WriteOnly) || f.write(png) != png.size() || !f.commit()) { r.err = "cannot write " + ip; return r; }
+        ::chmod(ip.c_str(), 0644);
+        r.iconPaths.push_back(ip);
+    }
+    // Handler registration: the legacy-but-honoured per-user mimeapps.list under XDG_DATA_HOME/applications, merged in place.
+    r.mimeappsPath = dir.toStdString() + "/mimeapps.list";
+    QFile in(QString::fromStdString(r.mimeappsPath));
+    QStringList lines;
+    if (in.open(QIODevice::ReadOnly)) { lines = QString::fromUtf8(in.readAll()).split('\n'); in.close(); }
+    while (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
+    const QString key = "x-scheme-handler/byond=";
+    int sec = -1;
+    for (int i = 0; i < lines.size(); i++) if (lines[i].trimmed() == "[Default Applications]") { sec = i; break; }
+    if (sec < 0) { lines << "[Default Applications]" << key + kDesktopFile; }
+    else {
+        int j = sec + 1;
+        bool done = false;
+        for (; j < lines.size() && !lines[j].startsWith('['); j++)
+            if (lines[j].startsWith(key)) { lines[j] = key + kDesktopFile; done = true; break; }
+        if (!done) lines.insert(j, key + kDesktopFile);
+    }
+    QSaveFile mf(QString::fromStdString(r.mimeappsPath));
+    if (!mf.open(QIODevice::WriteOnly)) { r.err = "cannot write " + r.mimeappsPath; return r; }
+    mf.write((lines.join('\n') + "\n").toUtf8());
+    if (!mf.commit()) { r.err = "cannot write " + r.mimeappsPath; return r; }
+    r.ok = true;
+    return r;
+}
+
+}  // namespace fugue::pager

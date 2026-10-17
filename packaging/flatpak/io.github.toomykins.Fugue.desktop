@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Fugue
+GenericName=Space Station 13 client
+Comment=Play BYOND / Space Station 13 servers
+Exec=fugue-qt pager %u
+Icon=io.github.toomykins.Fugue
+Terminal=false
+Categories=Game;
+Keywords=BYOND;SS13;Space Station 13;DreamSeeker;
+MimeType=x-scheme-handler/byond;
+StartupWMClass=fugue-qt

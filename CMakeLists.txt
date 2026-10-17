@@ -1,0 +1,84 @@
+cmake_minimum_required(VERSION 3.20)
+project(fugue_qt VERSION 0.5.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo)
+endif()
+add_compile_options(-Wall -Wextra -Wno-unused-parameter)
+add_compile_definitions(FUGUE_VERSION="${PROJECT_VERSION}")   # fugue_version.h
+
+# The metainfo must list the version being built.
+file(GLOB _metainfo ${CMAKE_CURRENT_SOURCE_DIR}/packaging/flatpak/*.metainfo.xml)
+if(_metainfo)
+  file(READ ${_metainfo} _metainfo_text)
+  if(NOT _metainfo_text MATCHES "<release version=\"${PROJECT_VERSION}\"")
+    message(FATAL_ERROR "packaging/flatpak metainfo has no <release> for ${PROJECT_VERSION}")
+  endif()
+endif()
+
+# Release build: the player-facing binary. The pager is the no-argument default. Test hooks (FUGUE_AUTO_*, pager
+# --auto-join/--quit-after) are compiled out, and the client sets PR_SET_DUMPABLE=0.
+option(FUGUE_RELEASE "build the shippable fugue-qt (pager default, no dev hooks)" OFF)
+
+# Headless-only build: just the Qt-free/Core modules, tools and tests (no window, no pager UI). This is an explicit opt-out;
+# without it a missing Qt Widgets/WebEngine/WebChannel is a configure ERROR, so nobody ends up with a build that silently
+# contains no application.
+option(FUGUE_HEADLESS_ONLY "build only the headless modules, tools and tests (no window binary, no pager UI)" OFF)
+if(FUGUE_HEADLESS_ONLY)
+  set(FUGUE_BUILD_SHELL OFF CACHE BOOL "build shell/ and the fugue-qt window binary" FORCE)
+endif()
+
+# Cap build parallelism: compile jobs for QtTest-heavy translation units are large.
+# Override per build with -DFUGUE_COMPILE_JOBS=N.
+set(FUGUE_COMPILE_JOBS 6 CACHE STRING "max concurrent compile jobs (Ninja job pool)")
+set_property(GLOBAL PROPERTY JOB_POOLS fugue_compile=${FUGUE_COMPILE_JOBS} fugue_link=2)
+set(CMAKE_JOB_POOL_COMPILE fugue_compile)
+set(CMAKE_JOB_POOL_LINK fugue_link)
+
+# Headless modules (net, proto, tools) need at most Qt6::Core; tests need Qt6::Test.
+# Widgets and WebEngine are for shell/ only.
+find_package(Qt6 REQUIRED COMPONENTS Core)
+find_package(Qt6 QUIET OPTIONAL_COMPONENTS Test)   # only the test targets need it
+find_package(ZLIB)   # gzip bundles; optional
+
+enable_testing()
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})   # includes are "net/cipher.h", "proto/registry.h", ...
+include(cmake/FugueModule.cmake)
+
+# Module rule: a module directory's CMakeLists.txt calls `fugue_module(<target>)`, which globs <dir>/*.cpp into an
+# OBJECT library (some modules add options or tools after it). New .cpp files need no edit to any shared list. A new
+# module directory adds one name to the list below; model, skin, render, audio, account and pager are included when they have a CMakeLists.txt.
+add_subdirectory(net)
+add_subdirectory(proto)
+add_subdirectory(tools)
+foreach(m model skin render audio account pager)
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${m}/CMakeLists.txt)
+    add_subdirectory(${m})
+  endif()
+endforeach()
+
+# shell/ + app/ (Qt Widgets + WebEngine) are REQUIRED unless you opt out: -DFUGUE_HEADLESS_ONLY=ON (or -DFUGUE_BUILD_SHELL=OFF)
+# builds just the headless modules, tools and tests, which need no WebEngine.
+option(FUGUE_BUILD_SHELL "build shell/ and the fugue-qt window binary (needs Qt Widgets + WebEngineWidgets + WebChannel)" ON)
+if(FUGUE_BUILD_SHELL)
+  find_package(Qt6 QUIET OPTIONAL_COMPONENTS Gui Widgets Network WebEngineWidgets WebChannel)
+  if(Qt6Widgets_FOUND AND Qt6WebEngineWidgets_FOUND AND Qt6WebChannel_FOUND)
+    add_subdirectory(shell)
+    add_subdirectory(app)
+  else()
+    message(FATAL_ERROR "fugue-qt: Qt6 Widgets, WebEngineWidgets and WebChannel are required to build the application "
+                        "(install the Qt6 WebEngine development packages), but were not all found. "
+                        "To build only the headless modules, tools and tests, configure with -DFUGUE_HEADLESS_ONLY=ON.")
+  endif()
+endif()
+# tests/ is optional: built only when present.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
+  add_subdirectory(tests)
+endif()
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/cmake/devtree.cmake)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/devtree.cmake)
+endif()

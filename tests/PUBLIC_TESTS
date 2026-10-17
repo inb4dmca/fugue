@@ -1,0 +1,58 @@
+# The tests and test data that ship in the public repository.
+# One path per line, relative to this project's root; a trailing slash means a whole directory. Blank lines and # comments
+# are ignored. The *-world data was recorded from stock DreamDaemon/DreamSeeker running the small worlds stored with it.
+
+tests/CMakeLists.txt
+tests/PUBLIC_TESTS
+tests/testenv.h
+
+# --- headless client logic, inline bytes only
+tests/browsing_test.cpp
+tests/cauth_test.cpp
+tests/headlessacks_test.cpp
+tests/mousechain_test.cpp
+tests/prompt_stat_test.cpp
+tests/rscstore_test.cpp
+tests/usermacros_test.cpp
+tests/winicon_test.cpp
+
+# --- hand-written worlds (stock DreamDaemon)
+tests/atomname_test.cpp
+tests/data/atomname-world/
+# (atomname reads the shared sheet from menuicons-world, listed below)
+tests/gif_anim_test.cpp
+tests/data/gifanim/
+tests/jpeg_test.cpp
+tests/data/jpeg/
+tests/menuicon_test.cpp
+tests/data/menuicons-world/
+tests/progbar_test.cpp
+tests/data/progbar-world/
+tests/runechat_test.cpp
+tests/data/runechat-world/
+tests/staticon_test.cpp
+tests/data/staticons-world/
+
+# --- shell (Qt Widgets / WebEngine)
+shell/tests/browse_pages.h
+shell/tests/browse_test.cpp
+shell/tests/input_test.cpp
+shell/tests/paste_scan_test.cpp
+shell/tests/prompt_skin.h
+shell/tests/prompt_test.cpp
+shell/tests/shell_test.cpp
+
+# --- account and pager (temp HOME, synthetic identities)
+account/tests/account_codec_test.cpp
+account/tests/account_formats_test.cpp
+pager/tests/pager_cache_test.cpp
+pager/tests/pager_clientaccount_test.cpp
+pager/tests/pager_dsargv_test.cpp
+pager/tests/pager_launch_test.cpp
+pager/tests/pager_listing_test.cpp
+pager/tests/pager_model_test.cpp
+pager/tests/pager_signin_test.cpp
+pager/tests/pager_target_test.cpp
+pager/tests/pager_ui_test.cpp
+# --- hub politeness
+pager/tests/pager_hubthrottle_test.cpp

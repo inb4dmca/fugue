@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
+            qt6-base-dev qt6-webengine-dev qt6-webchannel-dev \
+            libjpeg-dev zlib1g-dev libopenmpt-dev libgl-dev
+      - name: Configure
+        run: cmake -G Ninja -S . -B build -DFUGUE_RELEASE=ON -DFUGUE_COMPILE_JOBS=2
+      - name: Build
+        run: ninja -C build -j2
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          FUGUE_AUDIO: none
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
+        run: ctest --test-dir build --output-on-failure
+
+  flatpak:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: fugue.flatpak
+          manifest-path: packaging/flatpak/io.github.toomykins.Fugue.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+      - name: Attach the bundle to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: fugue.flatpak

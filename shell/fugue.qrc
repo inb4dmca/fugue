@@ -1,0 +1,14 @@
+<!DOCTYPE RCC>
+<!-- Fugue's own icon: the PNGs the Flatpak installs into hicolor (packaging/flatpak/icons; 16-48 hand-fitted, 64-256 the SVG
+     rendered), embedded so every build (dev, release, Flatpak) has them without an install step. shell/fugueicon.h. -->
+<RCC version="1.0">
+  <qresource prefix="/fugue">
+    <file alias="16.png">../packaging/flatpak/icons/io.github.toomykins.Fugue-16.png</file>
+    <file alias="24.png">../packaging/flatpak/icons/io.github.toomykins.Fugue-24.png</file>
+    <file alias="32.png">../packaging/flatpak/icons/io.github.toomykins.Fugue-32.png</file>
+    <file alias="48.png">../packaging/flatpak/icons/io.github.toomykins.Fugue-48.png</file>
+    <file alias="64.png">../packaging/flatpak/icons/io.github.toomykins.Fugue-64.png</file>
+    <file alias="128.png">../packaging/flatpak/icons/io.github.toomykins.Fugue-128.png</file>
+    <file alias="256.png">../packaging/flatpak/icons/io.github.toomykins.Fugue-256.png</file>
+  </qresource>
+</RCC>

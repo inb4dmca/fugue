@@ -1,0 +1,101 @@
+# Flatpak build of fugue-qt, the release (pager-first) binary.
+#
+#   flatpak-builder --user --install --force-clean --jobs=2 \
+#       build-flatpak packaging/flatpak/io.github.toomykins.Fugue.yml     (run from the repository root)
+#   flatpak run io.github.toomykins.Fugue
+#
+# Runtime: KDE 6.10 (Qt 6.10) plus the QtWebEngine base app, since the KDE runtime has no WebEngine.
+# All client state (~/.fugue: sign-ins, sid, cauth.txt, macros, resource cache) persists in
+# ~/.var/app/io.github.toomykins.Fugue/, separate from a native install's, so a Flatpak install starts fresh.
+# ~/.byond/cfg is visible read-only so the sign-in screen can import an existing BYOND key.txt.
+id: io.github.toomykins.Fugue
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
+command: fugue-qt
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # audio/sink.cpp spawns pw-play, then paplay (both in the runtime): the PipeWire socket for the first, the PulseAudio
+  # one for the fallback.
+  - --socket=pulseaudio
+  - --filesystem=xdg-run/pipewire-0
+  # all client state, including sid (the machine id servers see; it must survive restarts)
+  - --persist=.fugue
+  - --filesystem=~/.byond/cfg:ro
+  # Chromium's own sandbox cannot nest inside bubblewrap; the Flatpak sandbox stands in for it (the BaseApp's documented setting).
+  - --env=QTWEBENGINE_DISABLE_SANDBOX=1
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+modules:
+  # Tracker-module playback (audio/module.cpp): module decoding only, with no player, no codecs for compressed samples
+  # (an Ogg-sampled .oxm plays without those samples), and no docs or tests.
+  # sha256 is of the tarball as served by lib.openmpt.org over HTTPS (the site publishes no digest file).
+  - name: libopenmpt
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --disable-openmpt123
+      - --disable-examples
+      - --disable-tests
+      - --disable-doxygen-doc
+      - --without-zlib
+      - --without-mpg123
+      - --without-ogg
+      - --without-vorbis
+      - --without-vorbisfile
+      - --without-portaudio
+      - --without-portaudiocpp
+      - --without-pulseaudio
+      - --without-sndfile
+      - --without-flac
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/*.la
+      - /share/doc
+    sources:
+      - type: archive
+        url: https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.8.9+release.autotools.tar.gz
+        sha256: d7ce84fd05d686c4bcf66af40eae857afa371442db60eeda3f874bd6cf6fc318
+  - name: fugue-qt
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DFUGUE_RELEASE=ON
+      - -DFUGUE_COMPILE_JOBS=2
+      # a release must play tracker modules: fail the build rather than ship one that refuses them
+      - -DFUGUE_OPENMPT=ON
+    sources:
+      - type: dir
+        path: ../..
+        # Build trees (build/, build-*/, flatpak-builder's own state) and the tests are not part of the package.
+        skip:
+          - build
+          - build-*
+          - build-flatpak
+          - .flatpak-builder
+          - .git
+          - tests
+      - type: file
+        path: io.github.toomykins.Fugue.desktop
+      - type: file
+        path: io.github.toomykins.Fugue.svg
+      # Hand-fitted PNGs for small sizes (1-bit FreeSerif, the u pixel-drawn at 16/24/32): desktops pick the closest size,
+      # so these, not the scaled SVG, are what a taskbar shows. 64-256 are the SVG rendered.
+      - type: dir
+        path: icons
+        dest: icons
+      - type: file
+        path: io.github.toomykins.Fugue.metainfo.xml
+    post-install:
+      - install -Dm644 ../io.github.toomykins.Fugue.desktop /app/share/applications/io.github.toomykins.Fugue.desktop
+      - install -Dm644 ../io.github.toomykins.Fugue.svg /app/share/icons/hicolor/scalable/apps/io.github.toomykins.Fugue.svg
+      - for s in 16 24 32 48 64 128 256; do install -Dm644 ../icons/io.github.toomykins.Fugue-$s.png /app/share/icons/hicolor/${s}x${s}/apps/io.github.toomykins.Fugue.png; done
+      - install -Dm644 ../io.github.toomykins.Fugue.metainfo.xml /app/share/metainfo/io.github.toomykins.Fugue.metainfo.xml

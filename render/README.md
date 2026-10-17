@@ -1,0 +1,21 @@
+# render
+
+Icon decoding, the draw-list IR and scene assembly.
+
+| file | role |
+|---|---|
+| `dmi.*`, `png.*`, `gif.*`, `jpeg.*`, `inflate.*`, `pngwrite.*` | icon decoding and PNG output (animated GIF plays; JPEG goes through libjpeg) |
+| `ir.h`, `executor.cpp` | the draw-list IR (documented in `ir.h`) and its CPU straight-alpha executor |
+| `scene.*` | world model and resources to a draw list: grid, line-of-sight cull, plane/layer sort, HUD placement, transforms, glide, `animate()` tweens |
+| `xform.*`, `easing.*` | atom transforms and easing curves |
+| `pixops.*`, `filters.*`, `goexp.h` | per-layer colour (tint, alpha, colour matrix), blend modes, plane-master filters |
+| `ddmi.*` | runtime-icon recipes |
+| `maptext.*`, `dsmaptext.*`, `font.*`, `maptextpaint.*` | maptext parsing, layout, measurement and drawing |
+| `hittest.*`, `mousechain.*`, `screenloc.*` | mouse hit-testing and `screen_loc` placement |
+
+Notes:
+- The executor composites each plane on its own transparent surface, then applies per master group, filters, colour and blend, and blends the surfaces down in ascending plane order.
+- A colour matrix is 20 floats (rows R, G, B, A, then a constant row in unit scale).
+- Filters not implemented (alpha, displacement, ripple, wave, and others) are counted in the stats and not drawn.
+- A runtime-icon recipe that cannot be evaluated is left invisible rather than guessed.
+- Maptext glyph shapes come from a host rasterizer; positions follow DreamSeeker's layout.

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.toomykins.Fugue</id>
+  <name>Fugue</name>
+  <summary>A native Linux client for BYOND games such as Space Station 13</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Unlicense</project_license>
+  <developer id="io.github.toomykins">
+    <name>The Fugue contributors</name>
+  </developer>
+  <url type="homepage">https://github.com/toomykins/fugue</url>
+  <url type="bugtracker">https://github.com/toomykins/fugue/issues</url>
+  <description>
+    <p>
+      Fugue is a native Linux client and launcher for BYOND games. It replaces DreamSeeker on servers that run stock
+      BYOND, so games such as Space Station 13 can be played without a BYOND install and without Wine.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>A server list and sign-in with a BYOND account, or play as a guest</li>
+      <li>The game map, HUD, stat panel, verbs, sound and the HTML windows games use for their interfaces</li>
+      <li>A resource cache, so a second join to the same server downloads nothing</li>
+      <li>Opens byond:// links</li>
+    </ul>
+    <p>Fugue is an independent project and is not affiliated with or endorsed by BYOND.</p>
+  </description>
+  <launchable type="desktop-id">io.github.toomykins.Fugue.desktop</launchable>
+  <provides>
+    <binary>fugue-qt</binary>
+  </provides>
+  <categories>
+    <category>Game</category>
+  </categories>
+  <keywords>
+    <keyword>BYOND</keyword>
+    <keyword>SS13</keyword>
+    <keyword>Space Station 13</keyword>
+  </keywords>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <requires>
+    <internet>always</internet>
+  </requires>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-cartoon">mild</content_attribute>
+    <content_attribute id="social-chat">intense</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="0.5.0" date="2026-10-17">
+      <description>
+        <p>First public release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

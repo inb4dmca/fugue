@@ -1,0 +1,407 @@
+// Prompt and stat-panel wire rules: model/prompt (alert()/input() requests and their exact reply bytes) and model/statpanel
+// (tab strip, row text, token gate, click and tab-select encodings). Cancel, row-click and tab-body bytes match stock
+// DreamSeeker on the wire; the request frames are the ones stock DreamDaemon emits for alert() and input().
+#include <QtTest>
+#include <cmath>
+#include "model/prompt.h"
+#include "model/statpanel.h"
+
+using namespace fugue;
+using namespace fugue::model;
+
+namespace {
+Bytes hx(const char* s) { auto b = hexDecode(s); if (!b) qFatal("bad hex %s", s); return *b; }
+std::string hs(const Bytes& b) { return hexEncode(b); }
+void cs(Bytes& b, const std::string& s) { b.insert(b.end(), s.begin(), s.end()); b.push_back(0); }
+Bytes inputReq(const std::string& title, const std::string& def, const std::string& msg, uint32_t mask, uint8_t filter, uint8_t fk, uint32_t id) {
+    Bytes b; cs(b, title); cs(b, def); cs(b, msg); putLe32(b, mask); b.push_back(filter); b.push_back(fk); putLe32(b, id); return b;
+}
+Bytes alertReq(uint32_t id, const std::string& msg, const std::string& title, std::vector<std::string> btns) {
+    Bytes b; putLe32(b, id); cs(b, msg); cs(b, title); putLe16(b, uint16_t(btns.size())); for (auto& s : btns) cs(b, s); return b;
+}
+std::string verbJson(int id, const char* name, const char* cat, int flags = 4, unsigned ext = 0) {
+    return "{\"id\":" + std::to_string(id) + ",\"name\":\"" + name + "\",\"category\":\"" + cat + "\",\"head\":255,\"src\":0,\"flags\":" +
+           std::to_string(flags) + ",\"flagsExt\":" + std::to_string(ext) + ",\"desc\":\"\",\"args\":[]}";
+}
+// a 0x006a frame: tabs (optional), selected (optional), rows of (name, text, ordinal), clears
+Bytes statFrame(uint8_t token, const std::vector<std::string>* tabs, int selected, const std::vector<std::tuple<std::string, std::string, int>>& rows,
+                const std::vector<int>& clears = {}) {
+    Bytes b;
+    uint8_t flags = (tabs ? 0x02 : 0) | (selected >= 0 ? 0x04 : 0);
+    b.push_back(flags); b.push_back(token);
+    if (tabs) { putLe16(b, uint16_t(tabs->size())); for (auto& t : *tabs) cs(b, t); }
+    if (selected >= 0) putLe16(b, uint16_t(selected));
+    putLe16(b, uint16_t(rows.size()));
+    for (auto& [n, v, o] : rows) { cs(b, n); b.push_back(0x06); cs(b, v); putLe16(b, uint16_t(o)); }
+    putLe16(b, uint16_t(clears.size()));
+    for (int c : clears) putLe16(b, uint16_t(c));
+    return b;
+}
+}
+
+class PromptStatTest : public QObject {
+    Q_OBJECT
+private slots:
+    // ---- replies: byte-exact (alert / input reply encodings) ----
+    void alertReplyBytes() {
+        QCOMPARE(QString::fromStdString(hs(encodeAlertReply(5, "No"))), QString("050000004e6f00"));
+        QCOMPARE(QString::fromStdString(hs(encodeAlertReply(0, ""))), QString("0000000000"));  // an empty answer: alert has no null
+    }
+    void inputReplyBytes() {
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(7, "hi"))), QString("0268690007000000"));  // kind 2 [cstring][id]
+        // Text answers are DM-escaped, sent byte for byte as stock DreamSeeker sends them.
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "a\\b"))), QString("02615c5c62" "00" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "a\\\\b"))), QString("02615c5c5c5c62" "00" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "a\\\"b"))), QString("02615c5c5c2262" "00" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "\"a\\b"))), QString("025c22615c5c62" "00" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "a\\"))), QString("02615c5c" "00" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "a'b"))), QString("02615c2762" "00" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "a[b]\\n"))), QString("02615b625d5c5c6e" "00" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputNum(9, 42.f))), QString("0100002842" "09000000"));  // kind 1 [f32 bits][id]
+        QCOMPARE(QString::fromStdString(hs(encodeInputNull(3))), QString("00" "00" "ffff0000" "03000000"));  // tag 0, the null ref, [id]
+        // A kind byte above 4 would desync the stream; no encoder may emit one.
+        for (auto& b : {encodeInputText(1, ""), encodeInputNum(1, 0), encodeInputNull(1)}) QVERIFY(b[0] <= 4);
+    }
+    void asNumSendsANumberOnlyWhenItParses() {
+        Prompt p; p.kind = Prompt::Input; p.id = 4; p.typeMask = kInputNum;
+        QCOMPARE(QString::fromStdString(hs(encodeInputAnswer(p, "42"))), QString("0100002842" "04000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputAnswer(p, "  42 "))), QString("0100002842" "04000000"));  // surrounding spaces trimmed
+        QCOMPARE(QString::fromStdString(hs(encodeInputAnswer(p, "7"))), QString("01" "0000e040" "04000000"));
+        // not a number: sent as text, never 0 (0 would be a real answer)
+        QCOMPARE(QString::fromStdString(hs(encodeInputAnswer(p, "abc"))), QString("02" "61626300" "04000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputAnswer(p, ""))), QString("02" "00" "04000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputAnswer(p, "1e40"))), QString("02" "31653430" "00" "04000000"));  // beyond float32: out of range
+        Prompt t; t.id = 4; t.typeMask = kInputText;  // `as text` with digits stays a string
+        QCOMPARE(QString::fromStdString(hs(encodeInputAnswer(t, "42"))), QString("02" "343200" "04000000"));
+    }
+    // ---- requests: the frames stock DD emitted ----
+    void alertRequestDropsEmptySlots() {
+        Prompt p;
+        QVERIFY(parseAlertRequest(alertReq(0, "Pick one", "Fugue", {"Yes", "No", "Maybe"}), p));
+        QCOMPARE(p.buttons, (std::vector<std::string>{"Yes", "No", "Maybe"}));
+        QCOMPARE(p.message, std::string("Pick one"));
+        QVERIFY(parseAlertRequest(alertReq(0, "Pick one", "Fugue", {"Yes", "", ""}), p));
+        QCOMPARE(p.buttons, (std::vector<std::string>{"Yes"}));  // an empty slot names no button
+        QVERIFY(parseAlertRequest(alertReq(1, "m", "t", {"", "", ""}), p));
+        QCOMPARE(p.buttons, (std::vector<std::string>{"OK"}));  // a one-argument alert() draws OK
+        Bytes bad = alertReq(1, "m", "t", {"a"}); bad.push_back(0);
+        QVERIFY(!parseAlertRequest(bad, p));  // trailing bytes: malformed, so unanswered
+    }
+    void inputRequestForms() {
+        struct F { uint32_t mask; uint8_t fk; const char* type; bool multi, num, color, null, list; };
+        const F forms[] = {
+            {0x0004, 0x00, "text", false, false, false, false, false},
+            {0x0008, 0x00, "num", false, true, false, false, false},
+            {0x0000, 0x40, "anything", false, false, false, false, true},
+            {0x1000, 0x40, "anything", false, false, false, false, true},
+            {0x0800, 0x00, "message", true, false, false, false, false},
+            {0x0084, 0x00, "text", false, false, false, true, false},
+            {0x020000, 0x00, "color", false, false, true, false, false},
+        };
+        for (const F& f : forms) {
+            Prompt p;
+            QVERIFY(parseInputRequest(inputReq("Fugue", "seed", "Pick one", f.mask, 0, f.fk, 0), p));
+            QCOMPARE(p.typeName(), std::string(f.type));
+            QCOMPARE(p.multiline(), f.multi); QCOMPARE(p.numeric(), f.num); QCOMPARE(p.isColor(), f.color);
+            QCOMPARE(p.nullable(), f.null); QCOMPARE(p.inList, f.list);
+            QCOMPARE(p.title, std::string("Fugue")); QCOMPARE(p.def, std::string("seed")); QCOMPARE(p.message, std::string("Pick one"));
+        }
+        Prompt p;
+        QVERIFY(!parseInputRequest(hx("00"), p));
+        Bytes shortTail = inputReq("a", "b", "c", 4, 0, 0, 1); shortTail.pop_back();
+        QVERIFY(!parseInputRequest(shortTail, p));  // the tail is exactly 10 bytes
+    }
+    // ---- the book: pend, answer once, cancel semantics, the 0x0064/0x003f choices ----
+    void bookAnswersExactlyOnce() {
+        PromptBook b;
+        const Prompt* a = b.onFrame(kAlertMsg, alertReq(11, "m", "t", {"Yes", "No"}));
+        QVERIFY(a); QCOMPARE(b.pending().size(), size_t(1));
+        const Prompt* in = b.onFrame(kInputMsg, inputReq("t", "7", "m", kInputNum, 0, 0, 12));
+        QVERIFY(in); QCOMPARE(b.pending().size(), size_t(2));
+        PromptReply r = b.answerAlert(11, "No");
+        QCOMPARE(r.type, kAlertMsg); QCOMPARE(QString::fromStdString(hs(r.body)), QString("0b0000004e6f00"));
+        QCOMPARE(b.pending().size(), size_t(1));
+        r = b.answerInput(12, "42");
+        QCOMPARE(r.type, kInputMsg); QCOMPARE(QString::fromStdString(hs(r.body)), QString("0100002842" "0c000000"));
+        QVERIFY(b.pending().empty());
+        // an unknown id still answers: a late reply must reach a parked proc
+        r = b.answerInput(99, "x");
+        QCOMPARE(QString::fromStdString(hs(r.body)), QString("02" "7800" "63000000"));
+    }
+    // The c2s bodies stock DreamSeeker sends to DreamDaemon: our encoders must produce them byte for byte.
+    void repliesAreStockDreamSeekersBytes() {
+        // Cancel, Escape and the close box send the same frame for any `as` type (null|text, num, message, color, icon, file, list),
+        // and DM receives null. Id 1 is the second queued prompt.
+        QCOMPARE(QString::fromStdString(hs(encodeInputNull(0))), QString("0000ffff000000000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputNull(1))), QString("0000ffff000001000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "hi'x"))), QString("0268695c27780000000000"));  // typed hi'x
+        QCOMPARE(QString::fromStdString(hs(encodeInputNum(1, 7.f))), QString("010000e04001000000"));  // `as num`, default 7
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(2, "#ff0000"))), QString("02236666303030300002000000"));  // `as color`, default
+        QCOMPARE(QString::fromStdString(hs(encodeAlertReply(0, "Yes"))), QString("0000000059657300"));
+        QCOMPARE(QString::fromStdString(hs(encodeAlertReply(0, "No"))), QString("000000004e6f00"));
+    }
+    void onlyANullableInputCanBeCancelled() {
+        PromptBook b;
+        b.onFrame(kAlertMsg, alertReq(1, "m", "t", {"Yes"}));
+        b.onFrame(kInputMsg, inputReq("t", "", "m", kInputText, 0, 0, 2));
+        b.onFrame(kInputMsg, inputReq("t", "", "m", kInputNull | kInputText, 0, 0, 3));
+        b.onFrame(kInputMsg, inputReq("t", "", "m", kInputNull | kInputAnything, 0, kInputFilterList, 4));
+        QVERIFY(!b.find(1)->cancellable()); QVERIFY(!b.find(2)->cancellable());
+        QVERIFY(b.find(3)->cancellable()); QVERIFY(b.find(4)->cancellable());
+        // An alert or a non-null input has no cancel: nothing is sent and the prompt stays pending.
+        PromptReply r = b.cancel(1);
+        QCOMPARE(r.type, uint16_t(0)); QVERIFY(r.body.empty()); QVERIFY(b.find(1));
+        r = b.cancel(2);
+        QCOMPARE(r.type, uint16_t(0)); QVERIFY(r.body.empty()); QVERIFY(b.find(2));
+        r = b.cancel(3);
+        QCOMPARE(r.type, kInputMsg); QCOMPARE(QString::fromStdString(hs(r.body)), QString("0000ffff0000" "03000000"));
+        r = b.cancel(4);
+        QCOMPARE(r.type, kInputMsg); QCOMPARE(QString::fromStdString(hs(r.body)), QString("0000ffff0000" "04000000"));
+        QVERIFY(!b.find(3) && !b.find(4));
+        // the uncancellable ones still take their answer
+        r = b.answerAlert(1, "Yes");
+        QCOMPARE(QString::fromStdString(hs(r.body)), QString("0100000059657300"));
+        b.answerInput(2, "x");
+        QVERIFY(b.pending().empty());
+        // an unknown id still answers null, so a late cancel reaches a parked proc.
+        r = b.cancel(77);
+        QCOMPARE(r.type, kInputMsg); QCOMPARE(QString::fromStdString(hs(r.body)), QString("0000ffff0000" "4d000000"));
+    }
+    void inListInputWaitsForItsChoices() {
+        PromptBook b;
+        const Prompt* p = b.onFrame(kInputMsg, inputReq("t", "", "m", 0, 0, kInputFilterList, 0));
+        QVERIFY(p && p->inList && !p->choicesKnown);
+        QVERIFY(b.needsChoices());
+        QCOMPARE(QString::fromStdString(hs(encodePendingInputExpansionRequest())), QString("000000000000000000"));  // nine zero bytes
+        Bytes reply; putLe16(reply, 3); cs(reply, "alpha"); cs(reply, "beta"); cs(reply, "gamma");
+        const Prompt* q = b.onFrame(kExpansionReplyMsg, reply);
+        QVERIFY(q && q->choicesKnown);
+        QCOMPARE(q->choices, (std::vector<std::string>{"alpha", "beta", "gamma"}));
+        QVERIFY(!b.needsChoices());
+        // a stray 0x003f with nothing waiting is ignored
+        QVERIFY(!b.onFrame(kExpansionReplyMsg, reply));
+        // a malformed list still releases the prompt (typed text only)
+        b.answerInput(0, "alpha");  // (a non-null in-list prompt has no cancel)
+        b.onFrame(kInputMsg, inputReq("t", "", "m", 0, 0, kInputFilterList, 0));
+        Bytes badReply = hx("0300"); cs(badReply, "x");
+        const Prompt* r = b.onFrame(kExpansionReplyMsg, badReply);
+        QVERIFY(r && r->choicesKnown && r->choices.empty());
+    }
+    // An input() over a list of objects answers with the server's member, never the text. A kind-2 text answer reaches DM as text,
+    // not as the object, so the object lookup that follows finds nothing.
+    void inListPickResolvesThroughTheServer() {
+        PromptBook b;
+        // request frames: `as null|anything in L` (mask 0x1080), `in L` (0x0), `as text in L` (0x4)
+        QVERIFY(b.onFrame(kInputMsg, hx("4172656100" "00" "43686f6f736520746865206a756d702061726561" "00" "80100000" "00" "40" "00000000")));
+        QVERIFY(b.find(0)->resolvesThroughServer());
+        PromptReply r = b.answerInput(0, "Plain Room");
+        QCOMPARE(r.type, kInputResolveMsg);
+        QCOMPARE(QString::fromStdString(hs(r.body)), QString("506c61696e2d526f6f6d20" "00" "00000000" "00000000"));
+        QVERIFY(b.pending().empty());
+        // s2c 0x0039 `04 01000000 00000000` (area #1) -> the input() answer
+        r = PromptBook::resolvedInput(0, 0x04, 1);
+        QCOMPARE(r.type, kInputMsg);
+        QCOMPARE(QString::fromStdString(hs(r.body)), QString("00" "04" "01000000" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(PromptBook::resolvedInput(0, 0x06, 0x1b7).body)), QString("0006b701000000000000"));
+        // the other picks' 0x0063s, byte for byte (the 0x003f listed them unescaped)
+        QCOMPARE(QString::fromStdString(hs(encodeInputResolveRequest(0, "Twin"))), QString("5477696e20" "00" "00000000" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputResolveRequest(0, "Captain's Office"))),
+                 QString("4361707461696e5c27732d4f666669636520" "00" "00000000" "00000000"));
+        QCOMPARE(QString::fromStdString(hs(encodeInputResolveRequest(0, "Odd [x] a\\b"))), QString("4f64642d5b785d2d615c5c6220" "00" "00000000" "00000000"));
+        // a bare `in L` resolves the same way (pick "Arrival Area": 0x0063 `Arrival-Area `, 0x0039 `04 02000000`)
+        b.onFrame(kInputMsg, inputReq("Area", "", "Choose the jump area", 0, 0, kInputFilterList, 0));
+        r = b.answerInput(0, "Arrival Area");
+        QCOMPARE(r.type, kInputResolveMsg);
+        QCOMPARE(QString::fromStdString(hs(r.body)), QString("4172726976616c2d4172656120" "00" "00000000" "00000000"));
+        // `as text in L` is a plain text field: the typed text goes out as kind-2 text, with no 0x0063.
+        b.onFrame(kInputMsg, inputReq("Txt", "", "Choose txt", kInputText, 0, kInputFilterList, 0));
+        QVERIFY(!b.find(0)->resolvesThroughServer());
+        r = b.answerInput(0, "Twin");
+        QCOMPARE(r.type, kInputMsg);
+        QCOMPARE(QString::fromStdString(hs(r.body)), QString("025477696e0000000000"));
+        // a server that names no member (`00 ffff0000`) gets the null answer; the listbox cannot pick one.
+        QCOMPARE(QString::fromStdString(hs(PromptBook::resolvedInput(0, 0, 0xffff).body)), QString::fromStdString(hs(encodeInputNull(0))));
+    }
+
+    // ---- stat panel ----
+    void tabBodyMatchesStockDreamSeeker() {  // tabs: Alpha, Beta, Commands (verbs), Status
+        QCOMPARE(QString::fromStdString(hs(encodeStatTabBody(1, 1, "Alpha"))), QString("010001416c70686100"));
+        QCOMPARE(QString::fromStdString(hs(encodeStatTabBody(3, 3, "verbs"))), QString("030003" "766572627300"));
+        QCOMPARE(QString::fromStdString(hs(encodeStatTabBody(0, 4, "Status"))), QString("000004" "53746174757300"));
+    }
+    void stripIsStatTabsThenAsciiSortedCategories() {
+        World w;
+        w.stat.tabs = {"Zulu", "Alpha"};
+        w.verbById[1] = verbJson(1, "a", "Notes"); w.verbById[2] = verbJson(2, "b", "Bravo"); w.verbById[3] = verbJson(3, "c", "Alpha");
+        w.verbById[4] = verbJson(4, "d", "");  // no category: Commands
+        w.verbById[5] = verbJson(5, "e", "", 0x04 | 0x20);  // set category = null -> NO panel
+        w.verbById[6] = verbJson(6, "f", "Notes", 0x05);  // hidden: no panel
+        w.verbById[7] = verbJson(7, "g", "Notes", 0x44);  // nopopup: still in the panel
+        w.verbById[8] = verbJson(8, "h", "Object"); w.verbById[9] = verbJson(9, "i", "OOC");
+        // concatenated, NOT merged (Alpha twice), Stat() order kept (Zulu before Alpha), byte order ("OOC" < "Object")
+        QCOMPARE(statTabs(w), (std::vector<std::string>{"Zulu", "Alpha", "Alpha", "Bravo", "Commands", "Notes", "OOC", "Object"}));
+        QCOMPARE(statTabWireName(w, 0), std::string("Zulu"));
+        QCOMPARE(statTabWireName(w, 3), std::string("verbs"));  // every category tab sends "verbs"
+        QCOMPARE(statTabWireName(w, 99), std::string());
+        std::string cat;
+        QVERIFY(!verbTabCategory(w, 1, cat));
+        QVERIFY(verbTabCategory(w, 6, cat)); QCOMPARE(cat, std::string("OOC"));
+        // rows of a category: by NAME, byte order; the nopopup verb is drawn, the hidden one is not
+        w.verbById[10] = verbJson(10, "zzz last", "Notes"); w.verbById[11] = verbJson(11, "aaa first", "Notes");
+        std::vector<std::string> names;
+        for (auto& e : verbsInCategory(w, "Notes")) names.push_back(e.name);
+        QCOMPARE(names, (std::vector<std::string>{"a", "aaa first", "g", "zzz last"}));
+    }
+    void hiddenViaFlagsExtensionIsHidden() {  // flags head byte 0x80, the real word (0x285, hidden bit 1) in the extension
+        World w;
+        w.verbById[1] = verbJson(1, "MoveKey", "", 0x80, 0x285);
+        w.verbById[2] = verbJson(2, "Say", "IC", 0x04);
+        QCOMPARE(verbCategories(w), (std::vector<std::string>{"IC"}));
+    }
+    void verbScopeFiltersWhenKnowableAndFallsBackWhenNot() {
+        World w;
+        w.verbById[1] = verbJson(1, "mine", "Mine"); w.verbById[2] = verbJson(2, "theirs", "Theirs");
+        QCOMPARE(verbCategories(w), (std::vector<std::string>{"Mine", "Theirs"}));  // unknown scope: the whole dictionary
+        w.haveClientAppid = true; w.clientAppid = 10;
+        w.appearances[10].fieldsJson = "{\"verbs\":[1]}";
+        w.haveSelf = true; w.selfRef = 5;
+        w.atoms[5 | kRegistryA].appid = 20;
+        w.appearances[20].fieldsJson = "{\"verbs\":[]}";
+        QCOMPARE(verbCategories(w), (std::vector<std::string>{"Mine"}));  // client section = verb 1 only
+    }
+    void tokenGateAndOwnership() {
+        Session s;
+        std::vector<std::string> tabs = {"Status", "Values"};
+        s.ingest(0x006a, statFrame(0, &tabs, 0, {{"S-Health:", "100", 0}}));
+        QCOMPARE(int(s.world().stat.lines.size()), 1);
+        StatTabSelect sel;
+        QVERIFY(selectStatTab(s.worldMut(), 1, sel));
+        QCOMPARE(int(sel.token), 1); QCOMPARE(sel.name, std::string("Values")); QCOMPARE(int(sel.index), 1);
+        QVERIFY(s.world().stat.lines.empty());  // the rows of the old tab are gone the moment we ask
+        // a late frame for the tab we left must not land in the new one; token 0 is unsolicited.
+        s.ingest(0x006a, statFrame(7, nullptr, -1, {{"STALE:", "x", 0}}));
+        QCOMPARE(s.world().stat.stale, 1); QVERIFY(s.world().stat.lines.empty());
+        s.ingest(0x006a, statFrame(1, nullptr, 1, {{"V-Int:", "42", 0}}));  // our token
+        QCOMPARE(int(s.world().stat.lines.size()), 1); QCOMPARE(s.world().stat.lines[0].name, std::string("V-Int:"));
+        QVERIFY(selectStatTab(s.worldMut(), 0, sel)); QCOMPARE(int(sel.token), 2);
+        s.ingest(0x006a, statFrame(0, nullptr, -1, {{"UNSOLICITED:", "y", 0}}));  // token 0 releases ownership and is accepted
+        QVERIFY(!s.world().stat.owns); QCOMPARE(s.world().stat.lines.back().name, std::string("UNSOLICITED:"));
+        // token wraps past 0: 0 must never be ours
+        s.worldMut().stat.token = 255;
+        QVERIFY(selectStatTab(s.worldMut(), 0, sel)); QCOMPARE(int(sel.token), 1);
+        QVERIFY(!selectStatTab(s.worldMut(), 9, sel));  // out of range: refused, nothing sent
+    }
+    void serverEchoDoesNotStealACategoryTab() {
+        Session s;
+        std::vector<std::string> tabs = {"Status"};
+        s.worldMut().verbById[1] = verbJson(1, "v", "Notes");
+        s.ingest(0x006a, statFrame(0, &tabs, 0, {{"S:", "1", 0}}));
+        StatTabSelect sel;
+        QVERIFY(selectStatTab(s.worldMut(), 1, sel));  // strip = [Status, Notes]; Notes is index 1
+        QCOMPARE(sel.name, std::string("verbs"));
+        s.ingest(0x006a, statFrame(1, nullptr, 0, {}));  // the server's routine echo of its tab index
+        QCOMPARE(s.world().stat.selected, 1);  // must not drag us back
+        // a frame that carries the tab list too (a new Stat() tab appeared and was selected) is a real switch
+        std::vector<std::string> grown = {"Status", "floor"};
+        s.ingest(0x006a, statFrame(1, &grown, 1, {{"Turf:", "floor", 0}}));
+        QCOMPARE(s.world().stat.selected, 1); QCOMPARE(int(s.world().stat.lines.size()), 1);
+    }
+    void replayNeverGates() {  // no selectStatTab => owns stays false: the snapshot-visible token/stale are untouched
+        Session s;
+        std::vector<std::string> tabs = {"A", "B"};
+        s.ingest(0x006a, statFrame(2, &tabs, 0, {{"x", "1", 0}}));
+        s.ingest(0x006a, statFrame(9, nullptr, -1, {{"y", "2", 1}}));
+        QCOMPARE(s.world().stat.stale, 0); QCOMPARE(int(s.world().stat.lines.size()), 2); QCOMPARE(int(s.world().stat.token), 0);
+    }
+    void rowTextAndClickability() {
+        World w;
+        World::StatLine l{0, "S-Health:", "{\"appid\":0,\"hasAppid\":false,\"head\":0,\"kind\":42,\"num\":{\"f64\":\"0x4059000000000000\"},\"text\":\"\"}"};
+        QCOMPARE(statText(w, l), std::string("100"));
+        l.valueJson = "{\"appid\":0,\"hasAppid\":false,\"head\":0,\"kind\":42,\"num\":{\"f64\":\"0xc031800000000000\"},\"text\":\"\"}";
+        QCOMPARE(statText(w, l), std::string("-17.5"));
+        l.valueJson = "{\"appid\":0,\"hasAppid\":false,\"head\":0,\"kind\":6,\"num\":{\"f64\":\"0x0\"},\"text\":\"a & b <c>\"}";
+        QCOMPARE(statText(w, l), std::string("a & b <c>"));
+        // atom rows print the atom name (needs the appearance table); list/file/datum/null print nothing
+        l.valueJson = "{\"appid\":42,\"hasAppid\":true,\"head\":3,\"kind\":2,\"num\":{\"f64\":\"0x0\"},\"text\":\"\"}";
+        QCOMPARE(plainAtomName(std::string("a\xff" "Bc")), std::string("ac"));  // 0xFF and its selector byte are dropped
+        w.appearances[42].fieldsJson = "{\"name\":\"token\"}";
+        QCOMPARE(statText(w, l), std::string("token"));
+        l.valueJson = "{\"appid\":0,\"hasAppid\":false,\"head\":0,\"kind\":15,\"num\":{\"f64\":\"0x0\"},\"text\":\"\"}";
+        QCOMPARE(statText(w, l), std::string());
+        // clickable: turf / obj / mob only (AREA stays refused), and only with an appid
+        proto::enc::AtomRef ref; StatValue v;
+        w.bounds.maxX = 500; w.bounds.maxY = 500;
+        v.kind = 0x01; v.hasAppid = true; v.head = uint32_t((239 - 1) * 500 + (238 - 1));
+        QVERIFY(statRowRef(w, v, ref)); QCOMPARE(int(ref.kind), int(proto::enc::RefTurfId)); QCOMPARE(ref.ref, v.head);  // [07][the row's head]
+        v.kind = 0x02; v.head = 5; QVERIFY(statRowRef(w, v, ref)); QCOMPARE(int(ref.kind), int(proto::enc::RefObj)); QCOMPARE(ref.ref, 5u);
+        v.kind = 0x03; QVERIFY(statRowRef(w, v, ref)); QCOMPARE(int(ref.kind), int(proto::enc::RefMob));
+        v.kind = 0x04; QVERIFY(!statRowRef(w, v, ref));
+        v.kind = 0x02; v.hasAppid = false; QVERIFY(!statRowRef(w, v, ref));
+        v.hasAppid = true; w.bounds.maxX = 0; v.kind = 0x01; QVERIFY(!statRowRef(w, v, ref));  // no bounds: refuse, never divide by zero
+    }
+    // A click on a stat-panel row, as stock DreamSeeker sends it: the location is "Probe" and the control is "infowindow.info".
+    // Params are as client/Click receives them.
+    void rowClickIsStockDreamSeekersFrame() {
+        World w;
+        w.bounds.maxX = 15; w.bounds.maxY = 15;
+        w.stat.tabs = {"Probe", "Second"};
+        w.stat.selected = 0;
+        StatRowClick c;
+        c.control = "infowindow.info";
+        const char* tail = "030250726f62650002696e666f77696e646f772e696e666f0002";  // [03][02 "Probe"][02 "infowindow.info"][02 ...
+        auto body = [&](const proto::enc::AtomRef& r) { return QString::fromStdString(hs(statRowClickBody(w, r, c))); };
+        // stat("pocket", obj in contents), stat(obj) and an obj on a turf: over [01][head]; the loc slot is the PANEL, not a turf
+        QCOMPARE(body(proto::enc::objRef(0)), QString("0300ffff0100000000") + tail + "6c6566743d313b627574746f6e3d6c65667400");
+        QCOMPARE(body(proto::enc::objRef(2)), QString("0300ffff0102000000") + tail + "6c6566743d313b627574746f6e3d6c65667400");
+        QCOMPARE(body(proto::enc::mobRef(0)), QString("0300ffff0200000000") + tail + "6c6566743d313b627574746f6e3d6c65667400");  // stat("me", src)
+        // modifiers and buttons
+        c.mods.shift = true;
+        QCOMPARE(body(proto::enc::objRef(0)), QString("0300ffff0100000000") + tail + "6c6566743d313b73686966743d313b627574746f6e3d6c65667400");
+        c.mods.ctrl = true;
+        QCOMPARE(body(proto::enc::objRef(0)), QString("0300ffff0100000000") + tail + "6c6566743d313b6374726c3d313b73686966743d313b627574746f6e3d6c65667400");
+        c.mods.shift = false;
+        QCOMPARE(body(proto::enc::objRef(0)), QString("0300ffff0100000000") + tail + "6c6566743d313b6374726c3d313b627574746f6e3d6c65667400");
+        c.mods = {}; c.mods.alt = true;
+        QCOMPARE(body(proto::enc::objRef(0)), QString("0300ffff0100000000") + tail + "6c6566743d313b616c743d313b627574746f6e3d6c65667400");
+        c.mods = {}; c.button = "middle";
+        QCOMPARE(body(proto::enc::objRef(0)), QString("0300ffff0100000000") + tail + "6d6964646c653d313b627574746f6e3d6d6964646c6500");
+        // the second press of a double click is sub 04 (stock sends 03, 04, 03)
+        c.button = "left"; c.sub = proto::enc::kMouseDblClick;
+        QCOMPARE(body(proto::enc::objRef(0)), QString("0400ffff0100000000") + tail + "6c6566743d313b627574746f6e3d6c65667400");
+        // the location is the SELECTED tab: the same row clicked on "Second"
+        c.sub = proto::enc::kMouseClick; w.stat.selected = 1;
+        QCOMPARE(body(proto::enc::objRef(0)), QString("0300ffff010000000003025365636f6e640002696e666f77696e646f772e696e666f00026c6566743d313b627574746f6e3d6c65667400"));
+        // A turf row names the turf by id: `over` for the turf whose row head was 0x40; params carry icon-x/icon-y because the turf's icon is drawn.
+        w.stat.selected = 0;
+        StatValue v; v.kind = 0x01; v.hasAppid = true; v.head = 0x40;
+        proto::enc::AtomRef ref;
+        QVERIFY(statRowRef(w, v, ref));
+        QVERIFY(body(ref).startsWith("0300ffff0740000000" + QString(tail)));
+    }
+    // A click on a row that draws its icon (stock DreamSeeker and DreamDaemon, staticons world): icon-x/icon-y lead,
+    // in the row's icon cell, with the modifiers where they always were.
+    void iconRowClickLeadsWithIconXY() {
+        using proto::enc::infoClickParams;
+        proto::enc::Mods m;
+        QCOMPARE(infoClickParams("left", m, true, 10, 10), std::string("icon-x=10;icon-y=10;left=1;button=left"));
+        QCOMPARE(infoClickParams("left", m, true, 1, 1), std::string("icon-x=1;icon-y=1;left=1;button=left"));  // the cell's bottom-left pixel
+        QCOMPARE(infoClickParams("left", m, true, 70, 20), std::string("icon-x=70;icon-y=20;left=1;button=left"));  // on the name: unclamped
+        QCOMPARE(infoClickParams("middle", m, true, 10, 10), std::string("icon-x=10;icon-y=10;middle=1;button=middle"));
+        m.ctrl = m.shift = true;
+        QCOMPARE(infoClickParams("left", m, true, 10, 10), std::string("icon-x=10;icon-y=10;left=1;ctrl=1;shift=1;button=left"));
+        m = {}; m.alt = true;
+        QCOMPARE(infoClickParams("left", m, true, 10, 10), std::string("icon-x=10;icon-y=10;left=1;alt=1;button=left"));
+        QCOMPARE(infoClickParams("left", {}, false, 10, 10), std::string("left=1;button=left"));  // o_noicon: nothing drawn, no icon-x
+        // ...and through the body: the selected tab, the INFO control, then these params
+        World w;
+        w.stat.tabs = {"Tile"};
+        StatRowClick c;
+        c.control = "infowindow.info"; c.icon = true; c.iconX = 10; c.iconY = 10;
+        QCOMPARE(QString::fromStdString(hs(statRowClickBody(w, proto::enc::objRef(2), c))),
+                 QString("0300ffff0102000000") + "030254696c650002696e666f77696e646f772e696e666f0002" +
+                     QString::fromLatin1(QByteArray("icon-x=10;icon-y=10;left=1;button=left").toHex()) + "00");
+    }
+};
+
+QTEST_APPLESS_MAIN(PromptStatTest)
+#include "prompt_stat_test.moc"

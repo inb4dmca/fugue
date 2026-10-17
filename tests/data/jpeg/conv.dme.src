@@ -1,0 +1,8 @@
+/world/New()
+	..()
+	for(var/n in list("base.jpg", "prog.jpg", "gray.jpg"))
+		var/icon/I = icon(file(n))
+		I.Blend(rgb(0,0,0), ICON_ADD)
+		world.log << "[n]: [I.Width()]x[I.Height()]"
+		fcopy(I, "[n].dd.dmi")
+	del(src)

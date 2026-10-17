@@ -1,0 +1,9 @@
+// conv: stock DreamDaemon's own conversion of each GIF to an icon, written back out as a .dmi
+var/global/list/names = list("a","c","e","l2","d","d2","d3","d4")
+/world/New()
+	..()
+	for(var/n in names)
+		var/icon/I = icon(file("[n].gif"))
+		I.Blend(rgb(0,0,0), ICON_ADD)
+		fcopy(I, "[n].dd.dmi")
+	text2file("done", "conv-out.txt")
