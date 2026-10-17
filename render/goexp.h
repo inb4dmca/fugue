@@ -9,13 +9,21 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+#include <intrin.h>
+#endif
 
 namespace fugue::gomath {
 
 namespace detail {
 inline bool useFma() {
     static const bool v = [] {
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+        int regs[4];
+        __cpuid(regs, 1);
+        constexpr int required = (1 << 12) | (1 << 27) | (1 << 28); // FMA, OSXSAVE, AVX
+        return (regs[2] & required) == required && (_xgetbv(0) & 6) == 6;
+#elif defined(__x86_64__) || defined(__i386__)
         return __builtin_cpu_supports("avx") && __builtin_cpu_supports("fma");
 #else
         return false;

@@ -4,7 +4,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
-#include <sys/stat.h>
+#include "platform/file.h"
 #include "account/store.h"
 #include "pager/model.h"
 

@@ -10,5 +10,5 @@ foreach(src ${test_srcs})
   target_compile_definitions(${stem} PRIVATE
     FUGUE_QT_ROOT="${PROJECT_SOURCE_DIR}"
     FUGUE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
-  add_test(NAME ${name} COMMAND ${stem})
+  add_test(NAME ${name} COMMAND ${stem} -o -,txt)
 endforeach()

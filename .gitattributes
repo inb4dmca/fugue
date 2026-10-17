@@ -1,0 +1,8 @@
+* text=auto eol=lf
+# Captures/resources are byte-exact, including resources that happen to contain text.
+tests/data/** -text
+*.png -text
+*.gif -text
+*.jpg -text
+*.dmi -text
+*.ico -text

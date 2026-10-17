@@ -5,6 +5,7 @@
 #include "account/store.h"
 #include "pager/cache.h"
 #include "pager/launch.h"
+#include "tests/privatefile.h"
 
 using namespace fugue;
 
@@ -22,7 +23,7 @@ private slots:
         QVERIFY2(pager::rememberGuest(false, &e), e.c_str());   // forgetting nothing is not an error
         QVERIFY2(pager::rememberGuest(true, &e), e.c_str());
         QVERIFY(pager::guestRemembered());
-        QCOMPARE(QFileInfo(QString::fromStdString(pager::guestChoicePath())).permissions() & (QFile::ReadGroup | QFile::ReadOther | QFile::WriteGroup | QFile::WriteOther), QFileDevice::Permissions());
+        QVERIFY(isPrivateFile(pager::guestChoicePath()));
         QVERIFY(!QFile::exists(home.path() + "/.fugue/pager.json"));   // pager.json is not written
         QVERIFY2(pager::rememberGuest(false, &e), e.c_str());
         QVERIFY(!pager::guestRemembered());
@@ -70,7 +71,7 @@ private slots:
         QVERIFY(joined.find(pw) == std::string::npos);
         QVERIFY(joined.find("010203") == std::string::npos);   // no identity hex either
         // the identity file is what the path points at, 0600
-        QCOMPARE(QFileInfo(QString::fromStdString(idp)).permissions() & (QFile::ReadGroup | QFile::ReadOther | QFile::WriteGroup | QFile::WriteOther), QFileDevice::Permissions());
+        QVERIFY(isPrivateFile(idp));
         // a full command: prefix + args + passthrough, still no secret
         std::vector<std::string> cmd;
         QVERIFY(pager::buildCommand(cfg, srv, "/opt/fugue/fugue-qt", {"--no-pacing"}, &cmd, &e));
@@ -106,6 +107,9 @@ private slots:
                              "Icon=io.github.toomykins.Fugue\nTerminal=false\nCategories=Game;\nMimeType=x-scheme-handler/byond;\nStartupWMClass=fugue-qt\n"));
     }
     void installWritesOnlyUnderXdgData() {
+#ifdef _WIN32
+        QSKIP("XDG desktop install is Unix-only; never change the real Windows registry in a test");
+#endif
         QTemporaryDir home;
         qputenv("HOME", home.path().toUtf8());
         QString xdg = home.path() + "/data";

@@ -17,6 +17,9 @@ extern char** environ;
 #endif
 
 namespace fugue::audio {
+#ifdef _WIN32
+std::unique_ptr<Sink> openWindowsSink(int rate, std::string* err);
+#endif
 
 namespace {
 class WavSink : public Sink {
@@ -190,6 +193,10 @@ std::unique_ptr<Sink> openSink(const std::string& specIn, int rate, std::string*
         argv.push_back(cur);
         if (auto s = openExecSink(argv, &why)) return s;
     } else if (spec == "auto") {
+#ifdef _WIN32
+        if (auto s = openWindowsSink(rate, &why)) return s;
+        why += " - running SILENT";
+#else
         std::string all;
         for (const auto& argv : execPlayers(rate)) {
             std::string e;
@@ -197,6 +204,7 @@ std::unique_ptr<Sink> openSink(const std::string& specIn, int rate, std::string*
             all += (all.empty() ? "" : "; ") + e;
         }
         why = "no working PCM player (" + all + ") - running SILENT";
+#endif
     } else {
         why = "unknown sink spec \"" + spec + "\"";
     }

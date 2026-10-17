@@ -103,15 +103,15 @@ bool goAtoi(string_view s, int64_t& out) {
     bool neg = false;
     if (s[0] == '+' || s[0] == '-') { neg = s[0] == '-'; i = 1; }
     if (i == s.size()) return false;
-    unsigned __int128 v = 0;
+    uint64_t v = 0;
+    const uint64_t limit = uint64_t(INT64_MAX) + unsigned(neg);
     for (; i < s.size(); i++) {
         if (s[i] < '0' || s[i] > '9') return false;
-        v = v * 10 + unsigned(s[i] - '0');
-        if (v > (unsigned __int128)1 << 64) return false;
+        unsigned digit = unsigned(s[i] - '0');
+        if (v > (limit - digit) / 10) return false;
+        v = v * 10 + digit;
     }
-    if (!neg && v > (unsigned __int128)INT64_MAX) return false;
-    if (neg && v > (unsigned __int128)INT64_MAX + 1) return false;
-    out = neg ? int64_t(-(__int128)v) : int64_t(v);
+    out = neg ? (v == uint64_t(INT64_MAX) + 1 ? INT64_MIN : -int64_t(v)) : int64_t(v);
     return true;
 }
 

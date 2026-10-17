@@ -76,7 +76,7 @@ private slots:
         auto st = host->store();
         st->put(1, "app.js", kAppJs);
         st->put(2, "app.css", kAppCss);
-        st->put(3, "px.png", std::string("\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\1\0\0\0\1\x08\x06\0\0\0\x1f\x15\xc4\x89\0\0\0\rIDATx\x9cc\xf8\xff\xff?\0\5\xfe\2\xfe\xa7\x35\x81\x84\0\0\0\0IEND\xaeB`\x82", 74));
+        st->put(3, "px.png", std::string("\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\1\0\0\0\1\x08\x06\0\0\0\x1f\x15\xc4\x89\0\0\0\rIDATx\x9c" "c\xf8\xff\xff?\0\5\xfe\2\xfe\xa7\x35\x81\x84\0\0\0\0IEND\xae" "B`\x82", 74));
     }
     void cleanupTestCase() { delete topics; delete cmds; delete host; delete anchor; }
 

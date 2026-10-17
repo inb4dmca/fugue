@@ -1,7 +1,5 @@
 #include "net/rscstore.h"
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include "platform/file.h"
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
@@ -33,7 +31,7 @@ bool mkdirs(const std::string& p) {
     if (fs::is_directory(p, ec)) return true;
     size_t slash = p.rfind('/');
     if (slash != std::string::npos && slash > 0 && !mkdirs(p.substr(0, slash))) return false;
-    return ::mkdir(p.c_str(), 0700) == 0 || errno == EEXIST;
+    return platform::mkdir(p.c_str(), 0700) == 0 || errno == EEXIST;
 }
 }  // namespace
 
@@ -44,8 +42,8 @@ std::string RscStore::pathFor(const std::string& dir, uint32_t id) {
 }
 
 std::string RscStore::defaultDir() {
-    const char* h = std::getenv("HOME");
-    return h && *h ? std::string(h) + "/.fugue/rsc" : std::string();
+    auto h = platform::homeDir();
+    return h.empty() ? std::string() : h + "/.fugue/rsc";
 }
 
 RscStore::RscStore(std::string dir, int64_t capBytes) : dir_(std::move(dir)), cap_(capBytes > 0 ? capBytes : kDefaultCapBytes) {
@@ -53,7 +51,7 @@ RscStore::RscStore(std::string dir, int64_t capBytes) : dir_(std::move(dir)), ca
     scan();
     loadNames();
     nameLog_ = std::fopen((dir_ + "/names").c_str(), "ab");
-    if (nameLog_) ::fchmod(fileno(nameLog_), 0600);
+    if (nameLog_) platform::fchmod(fileno(nameLog_), 0600);
     ok_ = nameLog_ != nullptr;
     evict();
 }
@@ -69,7 +67,7 @@ void RscStore::scan() {
             uint32_t id;
             if (!parseId(f->path().filename().string(), id)) continue;
             struct stat sb;
-            if (::stat(f->path().c_str(), &sb) != 0) continue;
+            if (::stat(f->path().string().c_str(), &sb) != 0) continue;
             index_[id] = Entry{int64_t(sb.st_size), "", sb.st_mtime};
             bytes_ += sb.st_size;
         }
@@ -113,6 +111,8 @@ bool RscStore::get(uint32_t id, Bytes& data, std::string* name) {
     if (!f) { forget(id); st_.misses++; return false; }
     Bytes b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     if (resId(ByteSpan(b.data(), b.size())) != id) {
+        // Close before deleting: Windows does not allow deleting an open stream.
+        f.close();
         // The bytes do not hash to the id: drop and delete the file; the caller fetches the real bytes.
         forget(id);
         st_.deletedBad++;
@@ -123,8 +123,8 @@ bool RscStore::get(uint32_t id, Bytes& data, std::string* name) {
     time_t now = std::time(nullptr);
     if (now - used > kTouchInterval) {
         it->second.used = now;
-        struct timespec ts[2] = {{now, 0}, {now, 0}};
-        ::utimensat(AT_FDCWD, p.c_str(), ts, 0);
+        std::error_code ec;
+        fs::last_write_time(p, fs::file_time_type::clock::now(), ec);
     }
     data = std::move(b);
     if (name) *name = std::move(nm);
@@ -151,18 +151,18 @@ bool RscStore::put(uint32_t id, const std::string& name, ByteSpan data) {
         char r[32];
         std::snprintf(r, sizeof r, ".tmp-%016llx", (unsigned long long)rng());
         tmp = shard + "/" + r;
-        fd = ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+        fd = platform::open(tmp.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
         if (fd < 0 && errno != EEXIST) return false;
     }
     if (fd < 0) return false;
     size_t off = 0;
     while (off < data.size()) {
-        ssize_t n = ::write(fd, data.data() + off, data.size() - off);
+        auto n = ::write(fd, data.data() + off, unsigned(std::min(data.size() - off, size_t(1 << 30))));
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) { ::close(fd); ::unlink(tmp.c_str()); return false; }
         off += size_t(n);
     }
-    if (::close(fd) != 0 || ::rename(tmp.c_str(), p.c_str()) != 0) { ::unlink(tmp.c_str()); return false; }
+    if (::close(fd) != 0 || platform::rename(tmp.c_str(), p.c_str()) != 0) { ::unlink(tmp.c_str()); return false; }
     index_[id] = Entry{int64_t(data.size()), name, std::time(nullptr)};
     bytes_ += int64_t(data.size());
     st_.puts++;
@@ -223,7 +223,7 @@ void RscStore::clear(const std::string& dir, uint64_t* files, uint64_t* bytes) {
             if (!parseId(f->path().filename().string(), id)) continue;
             std::error_code e3;
             auto sz = f->file_size(e3);
-            if (::unlink(f->path().c_str()) == 0) { nf++; nb += sz; removed++; }
+            if (::unlink(f->path().string().c_str()) == 0) { nf++; nb += sz; removed++; }
         }
         if (removed == total) fs::remove(sh->path(), e2);
     }

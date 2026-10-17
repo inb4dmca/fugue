@@ -2,6 +2,7 @@
 // Warm-up pass: connect, log in, pull the world's whole resource list into the shared ~/.fugue/rsc cache, print one
 // summary line, and exit. No window and no QApplication. It runs as a separate process before a join (the pager's
 // -warm step), so the first real join declares nothing. Handled before QApplication is built, so it needs no display.
+#include <QByteArray>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -34,7 +35,7 @@ bool prefetchMain(int argc, char** argv, int* rc) {
     cfg.host = conn.substr(0, colon);
     cfg.port = uint16_t(std::atoi(conn.c_str() + colon + 1));
     if (!account.empty()) {
-        if (!ident.empty()) setenv("FUGUE_IDENTITY", ident.c_str(), 1);   // a path, not a secret
+        if (!ident.empty()) qputenv("FUGUE_IDENTITY", QByteArray::fromStdString(ident));   // a path, not a secret
         std::string aerr;
         auto al = fugue::account::mintLocalAccountLogin(account, "", "", &aerr);
         if (!al) { std::fprintf(stderr, "account login: %s\n", aerr.c_str()); *rc = 2; return true; }

@@ -1,5 +1,5 @@
 #include "net/guest.h"
-#include <sys/stat.h>
+#include "platform/file.h"
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -40,8 +40,8 @@ Bytes mintGuestCredential(const Digest16& digest, const uint8_t window[4]) {
 }
 
 std::string defaultStateDir() {
-    const char* h = std::getenv("HOME");
-    return std::string(h && *h ? h : ".") + "/.fugue";
+    auto h = platform::homeDir();
+    return (h.empty() ? "." : h) + "/.fugue";
 }
 
 std::string loadOrCreateSid(const std::string& dir, std::string* err) {

@@ -1,9 +1,9 @@
 // A blocking TCP game session: handshake -> K_login -> guest 0x1a -> post-login frames -> frame pump.
 //
-// Threading: plain POSIX sockets and ONE thread. The thread that calls run() is the only reader and writer of the
+// Threading: plain native sockets (POSIX / Winsock) and ONE thread. The thread that calls run() is the only reader and writer of the
 // socket. Every reply (resource pulls, prompt answers, the 0x0016 keepalive) is produced inline from the frame handler
 // on that thread, so there is no write lock. The observer runs on the session thread and must only enqueue; a GUI
-// runs run() on its own thread and hands decoded frames over. net/ stays Qt-free, so this file uses <sys/socket.h>.
+// runs run() on its own thread and hands decoded frames over. net/ stays Qt-free (platform/socket.h).
 //
 // Login sequence: handshake, K_login, the 0x1a, then post-login frames. One K_login cipher is used in both
 // directions, and s2c frames carry no seq.
@@ -11,6 +11,7 @@
 // 19 is sent exactly once. The handshake body ends in a u16 that is 0xc0e0 in DreamSeeker; this client sends 0x4000,
 // which DD also accepts.
 #pragma once
+#include "platform/sockettypes.h"
 #include <chrono>
 #include <functional>
 #include <map>
@@ -160,7 +161,7 @@ private:
     std::set<uint32_t> resReported_;
     uint64_t resSeen_ = 0;
     void reportNewResources();
-    int fd_ = -1;
+    socket::Handle fd_ = -1;
     FrameReader reader_;
     uint32_t key_ = 0;
     uint16_t seq_ = 1;

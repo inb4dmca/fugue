@@ -11,7 +11,7 @@
 #include <QPixmap>
 #include <QTemporaryDir>
 #include <cstdio>
-#include <sys/stat.h>
+#include "platform/file.h"
 #include "account/store.h"
 #include "pager/ui/pagerwindow.h"
 

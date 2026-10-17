@@ -1,9 +1,8 @@
 #include "account/store.h"
 #include "fugue_env.h"
-#include <fcntl.h>
-#include <glob.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include "platform/file.h"
+#include <QDir>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonValue>
@@ -29,7 +28,7 @@ std::string join(const std::string& a, const std::string& b) {
     return a.back() == '/' ? a + b : a + "/" + b;
 }
 std::string dirOf(const std::string& p) {
-    auto i = p.rfind('/');
+    auto i = p.find_last_of("/\\");
     if (i == std::string::npos) return ".";
     return i == 0 ? "/" : p.substr(0, i);
 }
@@ -47,7 +46,7 @@ bool mkdirP(const std::string& d, std::string* err) {
     struct stat st;
     if (::stat(d.c_str(), &st) == 0) return S_ISDIR(st.st_mode) ? true : (setErr(err, d + ": not a directory"), false);
     if (!mkdirP(dirOf(d), err)) return false;
-    if (::mkdir(d.c_str(), 0700) != 0 && errno != EEXIST) { setErr(err, "mkdir " + d + ": " + std::strerror(errno)); return false; }
+    if (platform::mkdir(d.c_str(), 0700) != 0 && errno != EEXIST) { setErr(err, "mkdir " + d + ": " + std::strerror(errno)); return false; }
     return true;
 }
 std::string trimWs(std::string s) {
@@ -66,10 +65,19 @@ std::vector<std::string> fields(const std::string& s) {
 }
 std::vector<std::string> globPaths(const std::string& pat) {
     std::vector<std::string> o;
-    glob_t g{};
-    if (::glob(pat.c_str(), 0, nullptr, &g) == 0)
-        for (size_t i = 0; i < g.gl_pathc; i++) o.push_back(g.gl_pathv[i]);
-    ::globfree(&g);
+    size_t star = pat.find('*');
+    if (star == std::string::npos) {
+        if (QFileInfo(QString::fromStdString(pat)).isDir()) o.push_back(pat);
+        return o;
+    }
+    size_t start = pat.rfind('/', star), end = pat.find('/', star);
+    QDir dir(QString::fromStdString(start == std::string::npos ? "." : pat.substr(0, start + 1)));
+    std::string pattern = pat.substr(start == std::string::npos ? 0 : start + 1,
+                                     end == std::string::npos ? end : end - start - 1);
+    for (const QString& name : dir.entryList({QString::fromStdString(pattern)}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+        auto matches = globPaths(dir.filePath(name).toStdString() + (end == std::string::npos ? "" : pat.substr(end)));
+        o.insert(o.end(), matches.begin(), matches.end());
+    }
     return o;
 }
 bool eqFold(const std::string& a, const std::string& b) {
@@ -80,7 +88,7 @@ bool eqFold(const std::string& a, const std::string& b) {
 }  // namespace
 
 std::optional<std::string> homeDir() {
-    std::string h = env("HOME");
+    std::string h = platform::homeDir();
     if (h.empty()) return std::nullopt;
     return h;
 }
@@ -93,6 +101,9 @@ std::string qtStateDir() { auto h = homeDir(); return h ? join(join(*h, ".fugue"
 
 bool atomicWrite(const std::string& path, const std::string& data, std::string* err) {
     if (!mkdirP(dirOf(path), err)) return false;
+#ifdef _WIN32
+    return platform::privateWrite(path, data, err);
+#else
     std::string tmp = join(dirOf(path), ".tmp-XXXXXX");
     std::vector<char> t(tmp.begin(), tmp.end());
     t.push_back(0);
@@ -109,6 +120,7 @@ bool atomicWrite(const std::string& path, const std::string& data, std::string* 
     ::close(fd);
     if (::rename(t.data(), path.c_str()) != 0) { setErr(err, std::string("rename: ") + std::strerror(errno)); ::unlink(t.data()); return false; }
     return true;
+#endif
 }
 
 // ---------------- identity ----------------

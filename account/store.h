@@ -17,7 +17,7 @@
 
 namespace fugue::account {
 
-std::optional<std::string> homeDir();       // $HOME (non-empty), the unix home-directory rule
+std::optional<std::string> homeDir();       // $HOME, or %USERPROFILE% on Windows when HOME is absent
 std::string fugueDir(std::string* err = nullptr);   // ~/.fugue
 std::string qtStateDir();                   // ~/.fugue/qt  (C++-only state)
 

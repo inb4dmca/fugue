@@ -1,11 +1,5 @@
 #include "net/session.h"
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "platform/socket.h"
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -54,7 +48,7 @@ Session::~Session() {
 }
 
 void Session::close() {
-    if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
+    if (fd_ >= 0) { socket::close(fd_); fd_ = -1; }
 }
 
 void Session::pace(int lo, int hi) {
@@ -76,12 +70,13 @@ void Session::wire(const char* dir, uint16_t type, ByteSpan body) {
 bool Session::writeAll(const Bytes& b) {
     size_t off = 0;
     while (off < b.size()) {
-        ssize_t n = ::send(fd_, b.data() + off, b.size() - off, MSG_NOSIGNAL);
+        auto n = socket::send(fd_, b.data() + off, b.size() - off);
         if (n < 0) {
             if (errno == EINTR) continue;
-            if (errno == EAGAIN) { pollfd p{fd_, POLLOUT, 0}; ::poll(&p, 1, 1000); continue; }
+            if (errno == EAGAIN) { socket::PollFd p{fd_, POLLOUT, 0}; socket::poll(&p, 1, 1000); continue; }
             return false;
         }
+        if (n == 0) return false;
         off += size_t(n);
     }
     return true;
@@ -111,11 +106,11 @@ bool Session::readFrameBlocking(Frame& out, int timeoutMs) {
         if (s == ParseStatus::Error) return false;
         auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
         if (left <= 0) return false;
-        pollfd p{fd_, POLLIN, 0};
-        int r = ::poll(&p, 1, int(left));
+        socket::PollFd p{fd_, POLLIN, 0};
+        int r = socket::poll(&p, 1, int(left));
         if (r <= 0) { if (r < 0 && errno == EINTR) continue; return false; }
         uint8_t buf[16384];
-        ssize_t n = ::recv(fd_, buf, sizeof buf, 0);
+        auto n = socket::recv(fd_, buf, sizeof buf, 0);
         if (n <= 0) { st_.serverClosed = true; st_.closeReason = n == 0 ? "server closed the connection" : std::strerror(errno); return false; }
         reader_.feed(ByteSpan(buf, size_t(n)));
     }
@@ -125,34 +120,34 @@ std::string Session::connectAndLogin() {
     if (!cfg_.wireLogPath.empty()) wireFile_ = std::fopen(cfg_.wireLogPath.c_str(), "w");
 
     // --- TCP connect (non-blocking connect + poll so the timeout is ours) ---
+    if (!socket::initialize()) return "Winsock initialization failed";
     addrinfo hints{}, *res = nullptr;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     if (int gai = getaddrinfo(cfg_.host.c_str(), std::to_string(cfg_.port).c_str(), &hints, &res); gai != 0)
-        return std::string("resolve ") + cfg_.host + ": " + gai_strerror(gai);
+        return std::string("resolve ") + cfg_.host + ": " + socket::addressError(gai);
     std::string lastErr = "no address";
     for (addrinfo* a = res; a && fd_ < 0; a = a->ai_next) {
-        int fd = ::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        auto fd = socket::create(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
-        int fl = ::fcntl(fd, F_GETFL, 0);
-        ::fcntl(fd, F_SETFL, fl | O_NONBLOCK);
-        int rc = ::connect(fd, a->ai_addr, a->ai_addrlen);
+        if (socket::nonblocking(fd, true) != 0) { socket::close(fd); continue; }
+        int rc = socket::connect(fd, a->ai_addr, int(a->ai_addrlen));
         if (rc < 0 && errno == EINPROGRESS) {
-            pollfd p{fd, POLLOUT, 0};
-            if (::poll(&p, 1, cfg_.connectTimeoutMs) == 1) {
-                int e = 0; socklen_t el = sizeof e;
-                ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &e, &el);
+            socket::PollFd p{fd, POLLOUT, 0};
+            if (socket::poll(&p, 1, cfg_.connectTimeoutMs) == 1) {
+                int e = 0; socket::Length el = sizeof e;
+                if (socket::getsockopt(fd, SOL_SOCKET, SO_ERROR, &e, &el) != 0) e = errno;
                 rc = e ? -1 : 0;
                 if (e) errno = e;
             } else { rc = -1; errno = ETIMEDOUT; }
         }
-        if (rc == 0) { fd_ = fd; ::fcntl(fd, F_SETFL, fl); }   // back to blocking; we poll() before every recv
-        else { lastErr = std::strerror(errno); ::close(fd); }
+        if (rc == 0 && socket::nonblocking(fd, false) == 0) { fd_ = fd; }   // back to blocking; we poll() before every recv
+        else { lastErr = std::strerror(errno); socket::close(fd); }
     }
     freeaddrinfo(res);
     if (fd_ < 0) return "connect " + cfg_.host + ":" + std::to_string(cfg_.port) + ": " + lastErr;
     int one = 1;
-    ::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    socket::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
     logf("connected tcp " + cfg_.host + ":" + std::to_string(cfg_.port));
 
     // --- 0x01 handshake: 22-byte body with a random field3 and seq0. The server validates neither.
@@ -275,12 +270,12 @@ void Session::run(std::chrono::milliseconds duration) {
         if (pumpHook_) pumpHook_();
         if (fd_ < 0) return;
         // Rounded up to whole ms: truncating would turn the last sub-millisecond of each call into a poll(0) spin.
-        pollfd p{fd_, POLLIN, 0};
-        int r = ::poll(&p, 1, pollTimeoutMs(std::chrono::duration_cast<std::chrono::microseconds>(end - now)));
+        socket::PollFd p{fd_, POLLIN, 0};
+        int r = socket::poll(&p, 1, pollTimeoutMs(std::chrono::duration_cast<std::chrono::microseconds>(end - now)));
         if (r < 0 && errno == EINTR) continue;
         if (r > 0) {
             uint8_t buf[65536];
-            ssize_t n = ::recv(fd_, buf, sizeof buf, 0);
+            auto n = socket::recv(fd_, buf, sizeof buf, 0);
             if (n <= 0) {
                 st_.serverClosed = true;
                 st_.closeReason = n == 0 ? "server closed the connection" : std::strerror(errno);
