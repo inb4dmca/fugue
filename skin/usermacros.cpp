@@ -95,7 +95,7 @@ const MacroEntry* lookupLayered(const MacroSet* skin, const MacroSet& game, cons
 std::string userMacrosPath(const std::string& stateDir, const std::string& worldKey) {
     std::filesystem::path p(stateDir);
     if (!worldKey.empty()) p = p / "macros" / worldKey;
-    return (p / "macros.dmf").string();
+    return (p / "macros.dmf").generic_string();
 }
 
 std::string worldKeyFor(const std::string& host, int port) {

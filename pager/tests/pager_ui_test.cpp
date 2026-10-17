@@ -20,7 +20,7 @@
 #include <QtTest>
 #include <algorithm>
 #include <functional>
-#include <sys/stat.h>
+#include "platform/file.h"
 #include "pager/ui/pagerwindow.h"
 
 using namespace fugue;

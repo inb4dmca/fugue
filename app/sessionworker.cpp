@@ -1,4 +1,5 @@
 #include "app/sessionworker.h"
+#include "net/guest.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -197,7 +198,7 @@ void SessionWorker::run() {
     {
         // Audio status also goes to a file, since a desktop-menu launch has no terminal (audio/note.h).
         std::string dir = cfg_.stateDir;
-        if (dir.empty()) if (const char* h = std::getenv("HOME"); h && *h) dir = std::string(h) + "/.fugue";
+        if (dir.empty()) dir = fugue::net::defaultStateDir();
         std::string nerr;
         if (!dir.empty()) {
             std::error_code ec;

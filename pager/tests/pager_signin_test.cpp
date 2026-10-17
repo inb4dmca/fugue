@@ -2,12 +2,8 @@
 // The fake hub answers the download-key request with a block encoded under the password, or with a refusal.
 #include <QtTest>
 #include <QTemporaryDir>
-#include <arpa/inet.h>
-#include "platform/posix.h"
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include "platform/socket.h"
+#include "tests/privatefile.h"
 #include <atomic>
 #include <thread>
 #include "account/desc.h"
@@ -23,7 +19,7 @@ namespace {
 enum class Mode { Ok, Refuse, HubReply, CloseAfterRequest };
 
 struct FakeHub {
-    int lfd = -1;
+    socket::Handle lfd = -1;
     int port = 0;
     std::thread th;
     Mode mode = Mode::Ok;
@@ -34,37 +30,37 @@ struct FakeHub {
     std::atomic<bool> done{false};
 
     void start() {
-        lfd = ::socket(AF_INET, SOCK_STREAM, 0);
+        lfd = socket::create(AF_INET, SOCK_STREAM, 0);
         sockaddr_in a{};
         a.sin_family = AF_INET;
         a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         ::bind(lfd, (sockaddr*)&a, sizeof a);
         ::listen(lfd, 1);
-        socklen_t l = sizeof a;
+        socket::Length l = sizeof a;
         ::getsockname(lfd, (sockaddr*)&a, &l);
         port = ntohs(a.sin_port);
         th = std::thread([this] { serve(); });
     }
     std::string addr() const { return "127.0.0.1:" + std::to_string(port); }
-    static bool readN(int fd, uint8_t* b, size_t n) {
+    static bool readN(socket::Handle fd, uint8_t* b, size_t n) {
         size_t o = 0;
-        while (o < n) { ssize_t r = ::recv(fd, b + o, n - o, 0); if (r <= 0) return false; o += size_t(r); }
+        while (o < n) { auto r = socket::recv(fd, b + o, n - o, 0); if (r <= 0) return false; o += size_t(r); }
         return true;
     }
-    static bool readFrame(int fd, uint16_t* t, Bytes* p) {
+    static bool readFrame(socket::Handle fd, uint16_t* t, Bytes* p) {
         uint8_t h[4];
         if (!readN(fd, h, 4)) return false;
         *t = uint16_t(h[0] << 8 | h[1]);
         p->assign(size_t(h[2] << 8 | h[3]), 0);
         return p->empty() || readN(fd, p->data(), p->size());
     }
-    static void writeFrame(int fd, uint16_t t, const Bytes& p) {
+    static void writeFrame(socket::Handle fd, uint16_t t, const Bytes& p) {
         Bytes w{uint8_t(t >> 8), uint8_t(t), uint8_t(p.size() >> 8), uint8_t(p.size())};
         w.insert(w.end(), p.begin(), p.end());
-        fugue::platform::sendNoSignal(fd, w.data(), w.size());
+        socket::send(fd, w.data(), w.size());
     }
     void serve() {
-        int c = ::accept(lfd, nullptr, nullptr);
+        auto c = socket::Handle(::accept(lfd, nullptr, nullptr));
         if (c < 0) return;
         Bytes ch(20, 0);
         for (int i = 0; i < 12; i++) ch[size_t(i)] = uint8_t(0x30 + i);
@@ -74,7 +70,7 @@ struct FakeHub {
         Bytes p;
         if (readFrame(c, &t, &p) && t == 0x00db) gotHello = p;
         if (readFrame(c, &t, &p) && t == 0x0088) gotRequest = p;
-        if (mode == Mode::CloseAfterRequest) { ::close(c); done = true; return; }
+        if (mode == Mode::CloseAfterRequest) { socket::close(c); done = true; return; }
         if (mode == Mode::HubReply) {
             Bytes body{7};
             for (char ch2 : std::string("try later")) body.push_back(uint8_t(ch2));
@@ -99,12 +95,12 @@ struct FakeHub {
         }
         Bytes rest;
         readFrame(c, &t, &rest);   // wait for the client to hang up
-        ::close(c);
+        socket::close(c);
         done = true;
     }
     ~FakeHub() {
         if (th.joinable()) th.join();
-        if (lfd >= 0) ::close(lfd);
+        if (lfd >= 0) socket::close(lfd);
     }
 };
 
@@ -150,16 +146,13 @@ private slots:
         QCOMPARE(a->installId, 0x00262781u);
         QCOMPARE(a->innerKey, 0x1badb002u);
         QCOMPARE(a->identity.size(), std::string("Synthetic Tester").size() + 13);
-        struct stat st;
-        QCOMPARE(::stat(account::identityPath("Synthetic Tester").c_str(), &st), 0);
-        QCOMPARE(int(st.st_mode & 0777), 0600);
-        QCOMPARE(::stat(r.keyTxtPath.c_str(), &st), 0);
-        QCOMPARE(int(st.st_mode & 0777), 0600);
+        QVERIFY(isPrivateFile(account::identityPath("Synthetic Tester")));
+        QVERIFY(isPrivateFile(r.keyTxtPath));
         // the pager now considers the account ready: a hub server is joinable
         account::Config cfg;
         cfg.account = r.account;
         cfg.servers = account::defaultServers();
-        qputenv("FUGUE_CLIENT", "/bin/sh");
+        qputenv("FUGUE_CLIENT", QCoreApplication::applicationFilePath().toUtf8());
         auto status = pager::check(cfg);
         QVERIFY(status.hasIdentity);
         QVERIFY(status.hasKey());
@@ -226,15 +219,15 @@ private slots:
 
     void unreachableIsPlain() {
         // a port nobody listens on
-        int s = ::socket(AF_INET, SOCK_STREAM, 0);
+        auto s = socket::create(AF_INET, SOCK_STREAM, 0);
         sockaddr_in a{};
         a.sin_family = AF_INET;
         a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         ::bind(s, (sockaddr*)&a, sizeof a);
-        socklen_t l = sizeof a;
+        socket::Length l = sizeof a;
         ::getsockname(s, (sockaddr*)&a, &l);
         int port = ntohs(a.sin_port);
-        ::close(s);
+        socket::close(s);
         auto r = pager::signIn("someone", "pw", "", "127.0.0.1:" + std::to_string(port), 3000);
         QCOMPARE(int(r.failure), int(pager::SignInFailure::Unreachable));
         QCOMPARE(pager::plainSignInMessage(r.failure), std::string("Could not reach BYOND. Check your internet connection and try again."));

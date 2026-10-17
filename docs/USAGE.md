@@ -19,9 +19,10 @@ On macOS, use `Fugue.app/Contents/MacOS/Fugue` in place of `fugue-qt`, or open t
   window has the same action, **Download resources**.
 * `pager -login` signs in with a BYOND account. The password comes from `$FUGUE_BYOND_PASSWORD` or a prompt and is
   stored nowhere. The launcher window has the same sign-in.
-* `pager -install-desktop` adds Fugue to the application menu and makes it the handler for `byond://` links. It
-  writes only under `$XDG_DATA_HOME` (default `~/.local/share`). This command is Linux-only; on macOS, copy `Fugue.app`
-  to Applications and open it to register `byond://` links.
+* `pager -install-desktop` adds Fugue to the Linux application menu and makes it the handler for `byond://` links. It
+  writes only under `$XDG_DATA_HOME` (default `~/.local/share`). On Windows it registers the URL handler under
+  `HKEY_CURRENT_USER\Software\Classes\byond` instead (no administrator rights or Start menu shortcut).
+  On macOS, copy `Fugue.app` to Applications and open it to register `byond://` links instead.
 * Installed or symlinked under the name `dreamseeker`, the binary accepts DreamSeeker's own command line, for example
   `dreamseeker "byond://host:port" -pager`, so existing launch scripts and `byond://` handlers work.
 * Guests and signed-in players both work; signing in lets servers that require a BYOND key accept you.
@@ -49,7 +50,11 @@ Both are disclosure, not enforcement (see [SECURITY.md](../SECURITY.md)).
 
 ## State directories
 
-All under `$HOME` (on both Linux and macOS):
+All under `$HOME` on Linux/macOS, or `%USERPROFILE%` on Windows when `HOME` is unset. Thus a normal Windows install uses
+`C:\Users\<user>\.fugue`. An explicit `HOME` still wins, including in tests. Windows also searches
+`Documents/BYOND/cfg/key.txt` and `Documents/BYOND/key.txt` for existing keys.
+
+The table uses `~` for this home directory:
 
 | Path | Contents |
 |---|---|
@@ -74,10 +79,10 @@ A command-line flag, where one exists, wins.
 
 `--audio` or `FUGUE_AUDIO` selects the sink:
 
-* `auto` (default): Core Audio on macOS; on Linux, tries `pw-play`, then `paplay`, then `aplay`
+* `auto` (default): Core Audio on macOS; the default playback device via waveOut on Windows; on Linux, tries `pw-play`, then `paplay`, then `aplay`
 * `none`
 * `wav:<path>`: write a WAV file instead of playing
-* `cmd:prog,arg,...`: pipe raw signed 16-bit little-endian stereo PCM to a command
+* `cmd:prog,arg,...`: Linux/macOS only; pipe raw signed 16-bit little-endian stereo PCM to a command
 
 Every `[audio]` line (which sink opened, why earlier candidates failed, refused files) is also written to `audio.log`
 in the state directory, which helps when Fugue is started from a menu with no terminal.

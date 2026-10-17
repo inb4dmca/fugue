@@ -1,7 +1,6 @@
 #include "fugue_env.h"
 #include "pager/signin.h"
-#include <sys/stat.h>
-#include <unistd.h>
+#include "platform/file.h"
 #include <cctype>
 #include <chrono>
 #include <cstdio>

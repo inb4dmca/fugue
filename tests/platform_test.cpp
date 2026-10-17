@@ -1,12 +1,13 @@
 #include <QtTest>
-#include "platform/posix.h"
+#include "platform/socket.h"
 
 class PlatformTest : public QObject {
     Q_OBJECT
 private slots:
     void socketFlags() {
-        int fd = fugue::platform::socket(AF_INET, SOCK_STREAM, 0, true);
+        auto fd = fugue::socket::create(AF_INET, SOCK_STREAM, 0);
         QVERIFY(fd >= 0);
+        QCOMPARE(fugue::socket::nonblocking(fd, true), 0);
         int descriptorFlags = ::fcntl(fd, F_GETFD);
         int statusFlags = ::fcntl(fd, F_GETFL);
         ::close(fd);
@@ -32,11 +33,11 @@ private slots:
     void closedSocketDoesNotKillProcess() {
         int fds[2];
         QCOMPARE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
-        QCOMPARE(fugue::platform::sendNoSignal(fds[0], "x", 1), ssize_t(1));
+        QCOMPARE(fugue::socket::send(fds[0], "x", 1), ssize_t(1));
         char b;
         QCOMPARE(::read(fds[1], &b, 1), ssize_t(1));
         ::close(fds[1]);
-        ssize_t sent = fugue::platform::sendNoSignal(fds[0], "x", 1);
+        ssize_t sent = fugue::socket::send(fds[0], "x", 1);
         int error = errno;
         ::close(fds[0]);
         QCOMPARE(sent, ssize_t(-1));

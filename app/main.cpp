@@ -156,7 +156,7 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     QCommandLineOption oIdent("identity-file", "path of the account's 0600 identity file (default ~/.fugue/identity-<ckey>)", "path");
     QCommandLineOption oHub("hub", "the target is hub-registered (accepted; every account login answers a hub-registered server's 0x001c certificate challenge regardless)");
     QCommandLineOption oAudio("audio", "sound output: auto (system output, the default), none, wav:<path> (record the mix), "
-                                       "cmd:a,b,c (pipe s16le stereo 44.1 kHz to your own player). Empty = $FUGUE_AUDIO, then auto", "spec");
+                                       "cmd:a,b,c (Linux/macOS: pipe s16le stereo 44.1 kHz to your own player). Empty = $FUGUE_AUDIO, then auto", "spec");
     cp.addOptions({oConnect, oState, oRsc, oShot, oAfter, oSize, oPace, oAccount, oIdent, oHub, oAudio});
     // DreamSeeker's own command line is accepted too (pager/dsargv.h), so `dreamseeker "byond://host:port" -pager` works
     // as a launch command. QApplication has already removed Qt's own arguments. When invoked as DreamSeeker, an unknown
@@ -233,7 +233,7 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     if (cp.isSet(oPace)) cfg.humanPacing = false;
     // Account rule: pager/clientaccount.h. Only a DreamSeeker-style launch uses the pager's signed-in account;
     // --connect, --state-dir and --screenshot are guests unless --account names one.
-    if (cp.isSet(oIdent)) setenv("FUGUE_IDENTITY", cp.value(oIdent).toUtf8().constData(), 1);   // a path, not a secret
+    if (cp.isSet(oIdent)) qputenv("FUGUE_IDENTITY", cp.value(oIdent).toUtf8());   // a path, not a secret
 #ifdef FUGUE_RELEASE
     const bool testHook = false;   // test hooks are compiled out of a release build
 #else
@@ -591,11 +591,8 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     }
     // Quit through the event loop on SIGINT/SIGTERM so the socket closes cleanly.
     static volatile sig_atomic_t gInt = 0;
-    struct sigaction sa {};
-    sa.sa_handler = [](int) { gInt = 1; };
-    sigemptyset(&sa.sa_mask);
-    sigaction(SIGINT, &sa, nullptr);
-    sigaction(SIGTERM, &sa, nullptr);
+    ::signal(SIGINT, [](int) { gInt = 1; });
+    ::signal(SIGTERM, [](int) { gInt = 1; });
     QTimer intPoll;
     QObject::connect(&intPoll, &QTimer::timeout, &app, [&] { if (gInt) app.quit(); });
     intPoll.start(100);

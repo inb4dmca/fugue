@@ -5,7 +5,10 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QtTest>
-#include <sys/stat.h>
+#include "tests/privatefile.h"
+#include <QScopeGuard>
+#include "net/guest.h"
+#include "net/rscstore.h"
 #include "account/keyblock.h"
 #include "account/store.h"
 
@@ -23,7 +26,7 @@ struct Home {
     }
     std::string p(const std::string& rel) const { return path + "/" + rel; }
 };
-void put(const std::string& path, const std::string& body, mode_t mode = 0600) {
+void put(const std::string& path, const std::string& body, int mode = 0600) {
     QDir().mkpath(QFileInfo(QString::fromStdString(path)).absolutePath());
     QFile f(QString::fromStdString(path));
     QVERIFY(f.open(QIODevice::WriteOnly));
@@ -42,14 +45,49 @@ int modeOf(const std::string& p) { struct stat st; return ::stat(p.c_str(), &st)
 class AccountFormats : public QObject {
     Q_OBJECT
 private slots:
+    void windowsProfileFallback() {
+#ifndef _WIN32
+        QSKIP("Windows profile fallback");
+#else
+        const auto oldHome = qgetenv("HOME"), oldProfile = qgetenv("USERPROFILE");
+        const bool hadHome = qEnvironmentVariableIsSet("HOME"), hadProfile = qEnvironmentVariableIsSet("USERPROFILE");
+        auto restore = qScopeGuard([&] {
+            if (hadHome) qputenv("HOME", oldHome); else qunsetenv("HOME");
+            if (hadProfile) qputenv("USERPROFILE", oldProfile); else qunsetenv("USERPROFILE");
+        });
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        qunsetenv("HOME");
+        qputenv("USERPROFILE", QDir::toNativeSeparators(dir.path()).toUtf8());
+        QCOMPARE(homeDir().value(), dir.path().toStdString());
+        QCOMPARE(fugueDir(), dir.path().toStdString() + "/.fugue");
+        QCOMPARE(fugue::net::defaultStateDir(), fugueDir());
+        QCOMPARE(fugue::net::RscStore::defaultDir(), fugueDir() + "/rsc");
+        qputenv("HOME", (dir.path() + "/override").toUtf8());
+        QCOMPARE(homeDir().value(), dir.path().toStdString() + "/override");
+#endif
+    }
+    void atomicWriteUnicodeAndReplacement() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.path() + QString::fromUtf8("/日本語 space/clé.txt");
+        std::string err;
+        QVERIFY2(atomicWrite(path.toStdString(), "first\n", &err), err.c_str());
+        QVERIFY(isPrivateFile(path.toStdString()));
+        QVERIFY2(atomicWrite(path.toStdString(), std::string("second\r\n\0tail", 13), &err), err.c_str());
+        QCOMPARE(slurp(path.toStdString()), std::string("second\r\n\0tail", 13));
+        QVERIFY(isPrivateFile(path.toStdString()));
+    }
     void identityFileFormatAndModes() {
         Home h;
         Account a{{0x00, 0xab, 0x00, 0xcd, 0xef}, 0x262781, 0x00000001};
         QVERIFY(saveAccount("Fake Tester-One", a));
         std::string p = h.p(".fugue/identity-faketesterone");
         QCOMPARE(slurp(p), std::string("identity=00ab00cdef\ninstall_id=0x00262781\ninner_key=0x00000001\n"));
-        QCOMPARE(modeOf(p), 0600);
+        QVERIFY(isPrivateFile(p));
+#ifndef _WIN32
         QCOMPARE(modeOf(h.p(".fugue")), 0700);
+#endif
         auto back = loadAccount("faketesterone");
         QVERIFY(back && back->identity == a.identity && back->installId == a.installId && back->innerKey == a.innerKey);
         // wide values print without padding
@@ -85,7 +123,7 @@ private slots:
         auto s = pagerSid();
         QVERIFY(s && s->size() == 24 && *s != machine);
         QCOMPARE(slurp(h.p(".fugue/sid")), machine);     // machine identity untouched
-        QCOMPARE(modeOf(h.p(".fugue/byond-sid")), 0600);
+        QVERIFY(isPrivateFile(h.p(".fugue/byond-sid")));
         QCOMPARE(*pagerSid(), *s);                        // stable
         // a BYOND install's sid wins (exactly 24 chars, two fields) and is copied into byond-sid
         put(h.p(".byond/cfg/byond.txt"), "foo bar\nsid 0123456789abcdef01234567\nsid short\n");
@@ -162,7 +200,7 @@ private slots:
         std::string raw = slurp(h.p(".fugue/pager.json"));
         QVERIFY(QJsonDocument::fromJson(QByteArray::fromStdString(raw)).isObject());
         QVERIFY(raw.rfind("{\n  \"account\": \"Fake2\",\n", 0) == 0);
-        QCOMPARE(modeOf(h.p(".fugue/pager.json")), 0600);
+        QVERIFY(isPrivateFile(h.p(".fugue/pager.json")));
         for (const auto& e : QDir(QString::fromStdString(h.p(".fugue"))).entryList(QDir::Files | QDir::Hidden)) QVERIFY2(!e.startsWith(".tmp-"), qPrintable(e));
         // a pure round trip is idempotent byte-for-byte
         QVERIFY(saveConfig(*d));

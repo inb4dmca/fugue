@@ -1,10 +1,10 @@
 #include "pager/launch.h"
 #include <signal.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
+#include "platform/file.h"
+#include <QSettings>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QSaveFile>
 #include <atomic>
@@ -109,15 +109,13 @@ int runHeadless(const std::vector<std::string>& argv, FILE* out) {
     std::string lp = clientLogPath();
     if (!lp.empty()) {
         std::string dir = lp.substr(0, lp.rfind('/'));
-        ::mkdir(dir.c_str(), 0700);
-        int fd = ::open(lp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        platform::mkdir(dir.c_str(), 0700);
+        int fd = platform::open(lp.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd >= 0) logf = ::fdopen(fd, "w");
     }
-    struct sigaction sa {};
-    sa.sa_handler = onSignal;
-    sigemptyset(&sa.sa_mask);
-    sigaction(SIGINT, &sa, nullptr);
-    sigaction(SIGTERM, &sa, nullptr);
+    gSignal = 0;
+    auto oldInt = ::signal(SIGINT, onSignal);
+    auto oldTerm = ::signal(SIGTERM, onSignal);
     std::fprintf(out, "[pager] client pid %lld\n", (long long)p.processId());
     std::fflush(out);
     bool forwarded = false;
@@ -131,11 +129,21 @@ int runHeadless(const std::vector<std::string>& argv, FILE* out) {
     while (p.state() != QProcess::NotRunning) {
         p.waitForReadyRead(100);
         drain();
-        if (gSignal && !forwarded) { forwarded = true; ::kill(pid_t(p.processId()), SIGINT); }
+        if (gSignal && !forwarded) {
+            forwarded = true;
+#ifdef _WIN32
+            p.terminate();
+            if (!p.waitForFinished(4000)) p.kill();
+#else
+            ::kill(pid_t(p.processId()), SIGINT);
+#endif
+        }
     }
     p.waitForFinished(5000);
     drain();
     if (logf) std::fclose(logf);
+    ::signal(SIGINT, oldInt);
+    ::signal(SIGTERM, oldTerm);
     return p.exitStatus() == QProcess::NormalExit ? p.exitCode() : 128 + 2;
 }
 
@@ -163,6 +171,21 @@ std::string desktopEntry(const std::string& exe) {
 
 DesktopResult installDesktop(const std::string& exe, const std::vector<std::pair<int, QByteArray>>& icons) {
     DesktopResult r;
+#ifdef _WIN32
+    // Per-user registration only; never requires elevation. Quote both executable and URL.
+    const QString path = QDir::toNativeSeparators(QFileInfo(QString::fromStdString(exe)).absoluteFilePath());
+    if (path.contains('"')) { r.err = "invalid executable path"; return r; }
+    QSettings reg("HKEY_CURRENT_USER\\Software\\Classes\\byond", QSettings::NativeFormat);
+    reg.setValue(".", "URL:BYOND Protocol");
+    reg.setValue("URL Protocol", "");
+    reg.setValue("DefaultIcon/.", "\"" + path + "\",0");
+    reg.setValue("shell/open/command/.", "\"" + path + "\" pager \"%1\"");
+    reg.sync();
+    r.ok = reg.status() == QSettings::NoError;
+    r.desktopPath = "HKEY_CURRENT_USER\\Software\\Classes\\byond";
+    if (!r.ok) r.err = "could not register the per-user byond:// handler";
+    return r;
+#else
     std::string base;
     if (const char* x = std::getenv("XDG_DATA_HOME"); x && *x) base = x;
     else if (auto h = account::homeDir()) base = *h + "/.local/share";
@@ -219,6 +242,7 @@ DesktopResult installDesktop(const std::string& exe, const std::vector<std::pair
     if (!mf.commit()) { r.err = "cannot write " + r.mimeappsPath; return r; }
     r.ok = true;
     return r;
+#endif
 }
 
 }  // namespace fugue::pager

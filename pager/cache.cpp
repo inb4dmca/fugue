@@ -1,7 +1,6 @@
 #include "pager/cache.h"
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include "platform/file.h"
+#include <filesystem>
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
@@ -16,9 +15,10 @@
 namespace fugue::pager {
 namespace {
 bool regularSize(const std::string& p, uint64_t* sz) {
-    struct stat st;
-    if (::lstat(p.c_str(), &st) != 0 || !S_ISREG(st.st_mode)) return false;
-    *sz = uint64_t(st.st_size);
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(std::filesystem::symlink_status(p, ec))) return false;
+    *sz = std::filesystem::file_size(p, ec);
+    if (ec) return false;
     return true;
 }
 }  // namespace
@@ -39,13 +39,11 @@ std::vector<std::string> savedSignInNames() {
     std::vector<std::string> out;
     std::string e, fd = account::fugueDir(&e);
     if (fd.empty()) return out;
-    if (DIR* d = ::opendir(fd.c_str())) {
-        while (dirent* en = ::readdir(d)) {
-            std::string n = en->d_name;
-            uint64_t sz;
-            if (n.rfind("identity-", 0) == 0 && n.size() > 9 && regularSize(fd + "/" + n, &sz)) out.push_back(n.substr(9));
-        }
-        ::closedir(d);
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(fd, ec), end; !ec && it != end; it.increment(ec)) {
+        std::string n = it->path().filename().string();
+        uint64_t sz;
+        if (n.rfind("identity-", 0) == 0 && n.size() > 9 && regularSize(fd + "/" + n, &sz)) out.push_back(n.substr(9));
     }
     std::sort(out.begin(), out.end());
     return out;
@@ -56,12 +54,10 @@ CachePlan planClearCache() {
     std::string e, fd = account::fugueDir(&e);
     if (fd.empty()) return p;
     std::vector<std::string> ids;
-    if (DIR* d = ::opendir(fd.c_str())) {
-        while (dirent* en = ::readdir(d)) {
-            std::string n = en->d_name;
-            if (n.rfind("identity-", 0) == 0 && n.size() > 9) ids.push_back(n);
-        }
-        ::closedir(d);
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(fd, ec), end; !ec && it != end; it.increment(ec)) {
+        std::string n = it->path().filename().string();
+        if (n.rfind("identity-", 0) == 0 && n.size() > 9) ids.push_back(n);
     }
     std::sort(ids.begin(), ids.end());
     for (auto& n : ids) {

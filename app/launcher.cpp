@@ -15,8 +15,12 @@
 #include <QThread>
 #include <QTimer>
 #include <signal.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <termios.h>
 #include <unistd.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -56,8 +60,14 @@ const char* kPagerUsage =
     "  -list               print the saved server list and this box's readiness checklist, then exit\n"
     "  -login              sign in: fetch the account's key block from the hub (password: $FUGUE_BYOND_PASSWORD or prompt; stored nowhere)\n"
     "  -keytxt <path>      key.txt to use for this run\n"
-    "  -install-desktop    Linux only: add Fugue (io.github.toomykins.Fugue.desktop + its icon) to this user's menu and make it the byond:// handler\n"
+#ifdef _WIN32
+    "  -install-desktop    register Fugue as this user's byond:// handler (HKCU only; no Start menu shortcut)\n"
+#elif defined(__APPLE__)
+    "                      on macOS, copy Fugue.app to Applications and open it to register byond:// links\n"
+#else
+    "  -install-desktop    add Fugue (io.github.toomykins.Fugue.desktop + its icon) to this user's menu and make it the byond:// handler\n"
     "                      (writes under $XDG_DATA_HOME only)\n"
+#endif
     "  --                  everything after is passed to the client verbatim\n";
 
 struct PagerOpts {
@@ -108,12 +118,23 @@ PagerOpts parsePagerArgs(const std::vector<std::string>& a) {
 
 // The password prompt for headless -login: echo off on the controlling terminal (via stty).
 std::string readPassword() {
+#ifdef _WIN32
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD old = 0;
+    bool tty = GetConsoleMode(input, &old) != 0;
+    if (tty && !SetConsoleMode(input, old & ~ENABLE_ECHO_INPUT)) return {};
+#else
     termios old{};
     bool tty = ::tcgetattr(STDIN_FILENO, &old) == 0;
     if (tty) { termios t = old; t.c_lflag &= ~tcflag_t(ECHO); ::tcsetattr(STDIN_FILENO, TCSANOW, &t); }
+#endif
     std::string line;
     for (int c; (c = std::fgetc(stdin)) != EOF && c != '\n';) line.push_back(char(c));
+#ifdef _WIN32
+    if (tty) { SetConsoleMode(input, old); std::fputc('\n', stderr); }
+#else
     if (tty) { ::tcsetattr(STDIN_FILENO, TCSANOW, &old); std::fputc('\n', stderr); }
+#endif
     while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
     return line;
 }
@@ -245,7 +266,11 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     QProcess* child = nullptr;
     auto stopChild = [&] {
         if (child && child->state() != QProcess::NotRunning) {
+#ifdef _WIN32
+            child->terminate();
+#else
             ::kill(pid_t(child->processId()), SIGINT);   // a clean disconnect lets the same account straight back in
+#endif
             if (!child->waitForFinished(4000)) child->kill();
         }
     };
@@ -256,7 +281,11 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     auto stopWarmer = [&] {
         if (warmer && warmer->state() != QProcess::NotRunning) {
             warmCancelled = true;
+#ifdef _WIN32
+            warmer->terminate();
+#else
             ::kill(pid_t(warmer->processId()), SIGINT);
+#endif
             if (!warmer->waitForFinished(3000)) warmer->kill();
         }
     };

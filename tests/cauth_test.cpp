@@ -1,11 +1,7 @@
 // The login-certificate cache (net/cauth.h) follows stock DreamSeeker's rule: one cached key per endpoint and state dir.
 // The session half runs against an in-process fake server that answers the handshake and decrypts each login record.
 // Temp dirs only.
-#include <arpa/inet.h>
-#include "platform/posix.h"
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "platform/socket.h"
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -20,9 +16,9 @@ using namespace fugue;
 using namespace fugue::net;
 
 namespace {
-bool readN(int fd, uint8_t* p, size_t n) {
+bool readN(socket::Handle fd, uint8_t* p, size_t n) {
     while (n) {
-        ssize_t r = ::recv(fd, p, n, 0);
+        auto r = socket::recv(fd, p, n, 0);
         if (r <= 0) return false;
         p += r;
         n -= size_t(r);
@@ -32,25 +28,25 @@ bool readN(int fd, uint8_t* p, size_t n) {
 
 // Accepts conns connections in turn on one port; answers each handshake with a zero nonce and keeps each decrypted login record.
 struct FakeServer {
-    int lfd = -1;
+    socket::Handle lfd = -1;
     uint16_t port = 0;
     std::vector<Bytes> logins;
     std::thread th;
     uint8_t flagB = 1;  // the handshake's second flag byte; stock DD always sends 1
     explicit FakeServer(int conns = 1, uint8_t fb = 1) : flagB(fb) {
-        lfd = ::socket(AF_INET, SOCK_STREAM, 0);
+        lfd = socket::create(AF_INET, SOCK_STREAM, 0);
         sockaddr_in a{};
         a.sin_family = AF_INET;
         a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         ::bind(lfd, reinterpret_cast<sockaddr*>(&a), sizeof a);
-        socklen_t l = sizeof a;
+        socket::Length l = sizeof a;
         ::getsockname(lfd, reinterpret_cast<sockaddr*>(&a), &l);
         port = ntohs(a.sin_port);
         ::listen(lfd, 4);
         th = std::thread([this, conns] { for (int i = 0; i < conns; i++) serve(); });
     }
     void serve() {
-        int fd = ::accept(lfd, nullptr, nullptr);
+        auto fd = socket::Handle(::accept(lfd, nullptr, nullptr));
         if (fd < 0) return;
         Bytes login;
         uint8_t h[6];
@@ -71,17 +67,17 @@ struct FakeServer {
                 Bytes enc = encryptBody(plain, base);
                 Bytes f = {0x00, 0x01, uint8_t(enc.size() >> 8), uint8_t(enc.size())};
                 f.insert(f.end(), enc.begin(), enc.end());
-                fugue::platform::sendNoSignal(fd, f.data(), f.size());
+                socket::send(fd, f.data(), f.size());
                 if (readN(fd, h, 6)) {  // c2s header: [seq BE][type BE][len BE]
                     Bytes c((size_t(h[4]) << 8) | h[5]);
                     if (readN(fd, c.data(), c.size()) && ((h[2] << 8) | h[3]) == 0x001a) decryptBody(c, loginKey(base, nonce), login);
                 }
             }
         }
-        ::close(fd);
+        socket::close(fd);
         logins.push_back(login);
     }
-    ~FakeServer() { if (th.joinable()) th.join(); ::close(lfd); }
+    ~FakeServer() { if (th.joinable()) th.join(); socket::close(lfd); }
 };
 
 void loginTo(uint16_t port, const std::string& stateDir, Bytes accountRecord = {}, const std::string& label = "") {

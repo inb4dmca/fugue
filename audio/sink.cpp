@@ -18,6 +18,9 @@ extern char** environ;
 #endif
 
 namespace fugue::audio {
+#ifdef _WIN32
+std::unique_ptr<Sink> openWindowsSink(int rate, std::string* err);
+#endif
 
 namespace {
 class WavSink : public Sink {
@@ -196,6 +199,9 @@ std::unique_ptr<Sink> openSink(const std::string& specIn, int rate, std::string*
 #ifdef __APPLE__
         if (auto s = openCoreAudioSink(rate, &why)) return s;
         why = "Core Audio: " + why + " - running SILENT";
+#elif defined(_WIN32)
+        if (auto s = openWindowsSink(rate, &why)) return s;
+        why += " - running SILENT";
 #else
         std::string all;
         for (const auto& argv : execPlayers(rate)) {

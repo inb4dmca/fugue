@@ -1,6 +1,7 @@
 // HubLink: one blocking TCP connection to the BYOND hub's dtclink endpoint, with a whole-call deadline. Short frames
 // only: [type u16 BE][len u16 BE][payload]. The sign-in and the login-cert token mint both dial the hub through it.
 #pragma once
+#include "platform/sockettypes.h"
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -24,7 +25,7 @@ public:
 private:
     int remainingMs() const;
     bool readFull(uint8_t* b, size_t n, std::string* err);
-    int fd_ = -1;
+    socket::Handle fd_ = -1;
     Clock::time_point deadline_;
 };
 
