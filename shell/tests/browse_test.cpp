@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
+#include <QNetworkProxy>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSignalSpy>
@@ -67,6 +68,8 @@ class BrowseTest : public QObject {
     QSignalSpy* cmds = nullptr;
 private slots:
     void initTestCase() {
+        // The test's own client talks to 127.0.0.1: no system proxy lookup (on macOS it adds seconds to timed requests).
+        QNetworkProxy::setApplicationProxy(QNetworkProxy::NoProxy);
         anchor = new QWidget;
         anchor->resize(300, 300);
         host = new BrowseHost(anchor);
