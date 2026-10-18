@@ -102,7 +102,7 @@ jobs:
           $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
           Get-ChildItem build -Recurse -Filter jpeg_test.exe | ForEach-Object {
             $exe = $_.FullName
-            foreach ($f in (& $exe -functions)) {
+            foreach ($f in (& $exe -functions | ForEach-Object { $_ -replace '\(\)$', '' })) {
               $out = & $exe $f -v2 2>&1 | Out-String
               "== $f exit=$LASTEXITCODE"
               if ($LASTEXITCODE -ne 0) { $out }
