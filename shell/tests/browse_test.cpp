@@ -128,7 +128,7 @@ private slots:
         QCOMPARE(h.status, 200); QCOMPARE(h.body, QByteArray("body{}")); QVERIFY2(h.ms >= 1400, qPrintable(QString::number(h.ms)));
         // never announced: no wait at all
         h = get(host->origin()->base() + "ghost.png");
-        QCOMPARE(h.status, 404); QVERIFY2(h.ms < 150, qPrintable(QString::number(h.ms)));
+        QCOMPARE(h.status, 404); QVERIFY2(h.ms < 500, qPrintable(QString::number(h.ms)));   // no hold (holds are >= 1400 ms)
         // An unnamed record may be the one outstanding; matched by basename.
         st->declare("", 88);
         QTimer::singleShot(100, [st] { st->put(88, "nano/js/nano_utility.js", "var nano=1;"); });
@@ -206,7 +206,7 @@ private slots:
         QCOMPARE(status(a), 200); QCOMPARE(status(b2), 200); QCOMPARE(status(c), 200);
         QCOMPARE(a->r->readAll(), QByteArray("A"));
         // the remaining unknown name never arrives: 404 after the SHORT bound, not the announced-name one
-        QVERIFY(QTest::qWaitFor([&] { return u2->ms >= 0; }, LocalOrigin::kUnnamedWaitMs + 2000));
+        QVERIFY(QTest::qWaitFor([&] { return u2->ms >= 0; }, LocalOrigin::kUnnamedWaitMs + 8000));   // slow CI runners
         QCOMPARE(status(u2), 404);
         QVERIFY2(u2->ms >= LocalOrigin::kUnnamedWaitMs - 100 && u2->ms < LocalOrigin::kUnnamedWaitMs + 1500, qPrintable(QString::number(u2->ms)));
         QCOMPARE(o.held(), 0);

@@ -48,6 +48,12 @@
     <content_attribute id="social-chat">intense</content_attribute>
   </content_rating>
   <releases>
+    <release version="0.5.2" date="2026-10-18">
+      <description>
+        <p>Native macOS and Windows builds now compile and pass their tests. Fixes a prompt-dialog crash on Windows and
+        the JPEG decoder's error handling.</p>
+      </description>
+    </release>
     <release version="0.5.1" date="2026-10-18">
       <description>
         <p>Stays connected when idle, reconnects as DreamSeeker does, matches DreamSeeker's key handling and
