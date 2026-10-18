@@ -4,7 +4,7 @@
 // (tests/paste_scan_test.cpp) greps shell/ and app/ for editable widget construction and fails on any that is not
 // registered, so a new key-taking widget cannot skip the paste handling.
 //
-// Chords: Ctrl+V, Ctrl+Shift+V, Shift+Insert (the clipboard) and a middle click (the X11 primary selection, where the
+// Chords: Ctrl+V, Ctrl+Shift+V, Shift+Insert, the platform's QKeySequence::Paste (the clipboard) and a middle click (the X11 primary selection, where the
 // platform has one). The filter consumes the event so Qt never pastes twice, and so the behaviour is identical
 // everywhere. A browser pane is not wired: Chromium owns its keys and pastes natively (shell/browserpane.cpp).
 #pragma once
@@ -17,7 +17,7 @@ class QWidget;
 
 namespace fugue::shell {
 
-// Ctrl+V / Ctrl+Shift+V / Shift+Insert (a press).
+// Ctrl+V / Ctrl+Shift+V / Shift+Insert, or the platform's Paste shortcut (Cmd+V on macOS) (a press).
 bool isPasteChord(const QKeyEvent* e);
 // Normalises clipboard text for a SINGLE-line editor: line breaks become single spaces and the trailing one is dropped.
 QString singleLine(QString text);

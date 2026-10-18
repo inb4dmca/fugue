@@ -61,8 +61,8 @@ private:
     QCheckBox* scope_;
 };
 
-// The stock Client menu, reduced to the items this client implements: Screenshot..., Macros..., Quit. Each runs its
-// client command (`.screenshot`, `.macros`, `.quit`) through `run`.
+// The stock Client menu, reduced to the items this client implements: Screenshot..., Reconnect, Macros..., Quit. Each
+// runs its client command (`.screenshot`, `.reconnect`, `.macros`, `.quit`) through `run`.
 void addClientMenuItems(QMenu* client, const std::function<void(const QString&)>& run);
 // The entries the game window's system menu gets: "Options & Messages" (`.options`) and the Client menu.
 void addSystemMenuItems(QMenu* m, const std::function<void(const QString&)>& run);

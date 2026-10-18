@@ -39,7 +39,7 @@ QJsonArray strs(const std::vector<std::string>& v) { QJsonArray a; for (auto& s 
 
 int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
-    if (argc < 2) return out({{"error", "usage: fugue-pager parse-listing|parse-target|list|rows"}}, 1);
+    if (argc < 2) return out({{"error", "usage: fugue-pager parse-listing|parse-target|list|rows|sign-in"}}, 1);
     std::string cmd = argv[1], err;
     if (cmd == "parse-listing" || cmd == "rows") {
         auto raw = readAllStdin();

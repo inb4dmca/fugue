@@ -48,6 +48,7 @@ DsArgv parseDsArgv(const std::vector<std::string>& args, const FugueOptions& fo,
             if (a == "+connect" && i + 2 < argc && !taken(j + 1)) {
                 const std::string& v = args[j + 1];
                 d.target = v.compare(0, 8, "byond://") == 0 ? v : "byond://" + v;
+                d.targetArg = int(j);
             } else {
                 d.dropped.push_back(a);
                 if (j + 1 < args.size() && !taken(j + 1)) d.dropped.push_back(args[j + 1]);
@@ -55,7 +56,7 @@ DsArgv parseDsArgv(const std::vector<std::string>& args, const FugueOptions& fo,
             j++;
             continue;
         }
-        if (d.target.empty()) d.target = a;
+        if (d.target.empty()) { d.target = a; d.targetArg = int(j); }
         else d.dropped.push_back(a);
     }
     return d;

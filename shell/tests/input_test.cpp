@@ -1,5 +1,5 @@
 // Shell input wiring (offscreen QPA): the map widget turns Qt mouse events into MapPointer values hit-tested against the scene the frame was drawn from;
-// unbound arrow keys become builtinMove; routeCommand classifies a macro or typed command. Mouse frame sequences are in
+// a key no macro binds, an arrow included, sends nothing; routeCommand classifies a macro or typed command. Mouse frame sequences are in
 // tests/mousechain_test.cpp.
 #include <QApplication>
 #include <QLineEdit>
@@ -17,6 +17,7 @@
 #include <QToolButton>
 #include <QTreeWidget>
 #include "shell/mapwidget.h"
+#include "shell/skinfont.h"
 #include "shell/skinwindow.h"
 #include <QLabel>
 
@@ -27,6 +28,21 @@ static const char* kSkin = R"(macro "m"
 	elem "q"
 		name = "Q"
 		command = "qmacro"
+	elem
+		name = "WEST"
+		command = "MoveKey 8 1"
+	elem
+		name = "WEST+UP"
+		command = "MoveKey 8 0"
+	elem
+		name = "NORTH"
+		command = "MoveKey 1 1"
+	elem
+		name = "NORTH+UP"
+		command = "MoveKey 1 0"
+	elem
+		name = "SOUTH"
+		command = "lg south"
 window "main"
 	elem "main"
 		type = MAIN
@@ -59,6 +75,14 @@ static HitPtr oneAtomScene() {
     s->world.push_back({sp, 2 * 32, (14 - 2) * 32, 0});  // cell (3,3)
     return s;
 }
+
+struct KeySeen : QObject {
+    QList<int> keys;
+    bool eventFilter(QObject*, QEvent* e) override {
+        if (e->type() == QEvent::KeyPress || e->type() == QEvent::KeyRelease) keys << static_cast<QKeyEvent*>(e)->key();
+        return false;
+    }
+};
 
 class InputTest : public QObject {
     Q_OBJECT
@@ -173,73 +197,360 @@ private slots:
         f.fill(Qt::black);
         win->setMapFrame(f, oneAtomScene());
     }
-    void unboundArrowsAreBuiltinMoves() {
-        QSignalSpy mv(filt, &FocusFilter::builtinMove);
+    // Stock DreamSeeker walks only through a binding: an arrow nothing binds sends nothing, and the release of one whose
+    // press ran a binding sends nothing unless it has a +UP binding of its own.
+    void arrowsRunOnlyTheirBindings() {
         QSignalSpy mac(filt, &FocusFilter::macroFired);
         win->map()->setFocus();
         QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == win->map(); }));
-        QTest::keyPress(win->map(), Qt::Key_Up);
-        QTest::keyRelease(win->map(), Qt::Key_Up);
-        QCOMPARE(mv.count(), 2);
-        QCOMPARE(mv.at(0).at(0).toInt(), 1); QVERIFY(mv.at(0).at(1).toBool());
-        QCOMPARE(mv.at(1).at(0).toInt(), 1); QVERIFY(!mv.at(1).at(1).toBool());
-        QTest::keyClick(win->map(), Qt::Key_Left);
-        QCOMPARE(mv.at(2).at(0).toInt(), 8);
+        KeySeen seen;
+        win->map()->installEventFilter(&seen);
+        QTest::keyPress(win->map(), Qt::Key_Right);
+        QTest::keyRelease(win->map(), Qt::Key_Right);
+        QTest::keyPress(win->map(), Qt::Key_Clear);
+        QTest::keyRelease(win->map(), Qt::Key_Clear);
         QCOMPARE(mac.count(), 0);
-        // in the command bar the arrows are the text cursor's
+        QCOMPARE(seen.keys, QList<int>({Qt::Key_Right, Qt::Key_Right, Qt::Key_Clear, Qt::Key_Clear}));   // passed on, not taken
+        win->map()->removeEventFilter(&seen);
+        QTest::keyPress(win->map(), Qt::Key_Down);
+        QTest::keyRelease(win->map(), Qt::Key_Down);
+        QCOMPARE(mac.count(), 1);
+        QCOMPARE(mac.at(0).at(1).toString(), QString("lg south"));
+        QVERIFY(!mac.at(0).at(2).toBool());
+    }
+    // A skin with no macro set: no key runs anything (stock), the default skin's arrows included.
+    void noMacroSetMeansNoKeys() {
+        FocusFilter f;
+        f.setMacros(fugue::skin::MacroSet{});
+        qApp->removeEventFilter(filt);
+        qApp->installEventFilter(&f);
+        QSignalSpy mac(&f, &FocusFilter::macroFired);
+        win->map()->setFocus();
+        QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == win->map(); }));
+        for (int k : {Qt::Key_Up, Qt::Key_Down, Qt::Key_Left, Qt::Key_Right, Qt::Key_Clear}) {
+            QTest::keyPress(win->map(), Qt::Key(k));
+            QTest::keyRelease(win->map(), Qt::Key(k));
+        }
+        QCOMPARE(mac.count(), 0);
+        qApp->removeEventFilter(&f);
+        qApp->installEventFilter(filt);
+    }
+    // tg's SSinput set: Any and Any+UP fire for every key, the modifier keys too, before the key's own binding.
+    void anyFiresForEveryKeyBeforeItsOwn() {
+        fugue::skin::MacroSet set;
+        for (auto [spec, cmd] : {std::pair{"Any", "KeyDown [[*]]"}, {"Any+UP", "KeyUp [[*]]"}, {"SHIFT+Any", "ShiftDown [[*]]"},
+                                 {"Z", "zz"}, {"X+REP", "xrep"}, {"CTRL+Q", "ctrlq"}})
+            fugue::skin::editUserMacro(set, "", spec, cmd);
+        FocusFilter f;
+        f.setMacros(set);
+        qApp->removeEventFilter(filt);
+        qApp->installEventFilter(&f);
+        QSignalSpy mac(&f, &FocusFilter::macroFired);
+        auto got = [&] {
+            QStringList l;
+            for (const auto& a : mac) l << a.at(0).toString() + "|" + a.at(1).toString() + (a.at(2).toBool() ? "|up" : "");
+            mac.clear();
+            return l;
+        };
+        win->map()->setFocus();
+        QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == win->map(); }));
+        QTest::keyClick(win->map(), Qt::Key_Z);
+        QCOMPARE(got(), QStringList({"Z|KeyDown [[*]]", "|zz", "Z|KeyUp [[*]]|up"}));
+        auto send = [&](QEvent::Type t, int k, Qt::KeyboardModifiers m, bool autoRep = false) {
+            QKeyEvent e(t, k, m, QString(), autoRep);   // one event per key: QTest would add its own modifier presses
+            QCoreApplication::sendEvent(win->map(), &e);
+        };
+        send(QEvent::KeyPress, Qt::Key_Shift, Qt::NoModifier);
+        send(QEvent::KeyPress, Qt::Key_A, Qt::ShiftModifier);
+        send(QEvent::KeyRelease, Qt::Key_A, Qt::ShiftModifier);
+        send(QEvent::KeyRelease, Qt::Key_Shift, Qt::ShiftModifier);
+        QCOMPARE(got(), QStringList({"Shift|ShiftDown [[*]]", "A|ShiftDown [[*]]", "A|KeyUp [[*]]|up", "Shift|KeyUp [[*]]|up"}));
+        send(QEvent::KeyPress, Qt::Key_X, Qt::NoModifier);
+        send(QEvent::KeyPress, Qt::Key_X, Qt::NoModifier, true);
+        send(QEvent::KeyRelease, Qt::Key_X, Qt::NoModifier);
+        QCOMPARE(got(), QStringList({"X|KeyDown [[*]]", "|xrep", "X|KeyUp [[*]]|up"}));   // the keyboard's repeat runs nothing
+        QTest::keyClick(win->map(), Qt::Key_Up);   // Any claims an unbound arrow
+        QCOMPARE(got(), QStringList({"North|KeyDown [[*]]", "North|KeyUp [[*]]|up"}));
+        // the command bar: typing fires no Any, a key that neither types nor edits does, and keeps its edit
+        auto* in = win->findChild<QLineEdit*>();
+        in->clear();
+        in->setFocus();
+        QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == in; }));
+        QTest::keyClicks(in, "ab");
+        QTest::keyClick(in, Qt::Key_Left);
+        QTest::keyClick(in, Qt::Key_C);
+        QTest::keyClick(in, Qt::Key_Q, Qt::ControlModifier);
+        QCOMPARE(in->text(), QString("acb"));
+        QCOMPARE(got(), QStringList({"West|KeyDown [[*]]", "West|KeyUp [[*]]|up", "|ctrlq"}));
+        in->clear();
+        qApp->removeEventFilter(&f);
+        qApp->installEventFilter(filt);
+    }
+    void ownBindingFallsBackToFewerModifiers() {
+        fugue::skin::MacroSet set;
+        for (auto [spec, cmd] : {std::pair{"Z", "zz"}, {"CTRL+Z+UP", "zup"}, {"F5", "f5"}, {"North", "north"}, {"SHIFT", "shiftkey"}})
+            fugue::skin::editUserMacro(set, "", spec, cmd);
+        FocusFilter f;
+        f.setMacros(set);
+        qApp->removeEventFilter(filt);
+        qApp->installEventFilter(&f);
+        QSignalSpy mac(&f, &FocusFilter::macroFired);
+        auto got = [&] {
+            QStringList l;
+            for (const auto& a : mac) l << a.at(1).toString();
+            mac.clear();
+            return l;
+        };
+        auto send = [&](QWidget* w, QEvent::Type t, int k, Qt::KeyboardModifiers m) {
+            QKeyEvent e(t, k, m);
+            QCoreApplication::sendEvent(w, &e);
+        };
+        win->map()->setFocus();
+        QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == win->map(); }));
+        for (Qt::KeyboardModifiers m : {Qt::KeyboardModifiers(Qt::ShiftModifier), Qt::KeyboardModifiers(Qt::AltModifier), Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier}) {
+            send(win->map(), QEvent::KeyPress, Qt::Key_Z, m);
+            send(win->map(), QEvent::KeyRelease, Qt::Key_Z, m);
+            QCOMPARE(got(), (m & Qt::ControlModifier) ? QStringList({"zz", "zup"}) : QStringList({"zz"}));
+        }
+        // a release is named by the modifiers held at its press
+        send(win->map(), QEvent::KeyPress, Qt::Key_Z, Qt::ControlModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Z, Qt::NoModifier);
+        QCOMPARE(got(), QStringList({"zz", "zup"}));
+        send(win->map(), QEvent::KeyPress, Qt::Key_Shift, Qt::ControlModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Shift, Qt::ControlModifier);
+        QCOMPARE(got(), QStringList({"shiftkey"}));
+        send(win->map(), QEvent::KeyPress, Qt::Key_Up, Qt::ShiftModifier);
+        QCOMPARE(got(), QStringList({"north"}));
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Up, Qt::ShiftModifier);
+        // REP bindings repeat on the client's clock (repeatTick), never on the keyboard's auto-repeat; a hold repeats
+        // only if the combination that claimed its press has a REP binding, and each repeat follows the modifiers held now
+        for (auto [spec, cmd] : {std::pair{"X+REP", "xrep"}, {"CTRL+X", "ctrlx"}, {"Y+REP", "yrep"}, {"CTRL+Y+REP", "ctrlyrep"},
+                                 {"K", "k"}, {"K+REP", "krep"}, {"F2", "f2"}, {"F2+REP", "f2rep"}, {"W+REP", "wrep"},
+                                 {"CTRL+W", "ctrlw"}, {"J", "j"}, {"CTRL+J+REP", "ctrljrep"}})
+            fugue::skin::editUserMacro(set, "", spec, cmd);
+        f.setMacros(set);
+        auto autoRep = [&](int k, Qt::KeyboardModifiers m) {
+            QKeyEvent e(QEvent::KeyPress, k, m, QString(), true);
+            QCoreApplication::sendEvent(win->map(), &e);
+        };
+        auto tick = [&](int n = 1) {
+            for (int i = 0; i < n; i++) f.repeatTick(f.nowMs() + 1000);
+        };
+        auto mod = [&](QEvent::Type t, int k, Qt::KeyboardModifiers m) { send(win->map(), t, k, m); };
+        mod(QEvent::KeyPress, Qt::Key_Control, Qt::NoModifier);
+        send(win->map(), QEvent::KeyPress, Qt::Key_X, Qt::ControlModifier);
+        autoRep(Qt::Key_X, Qt::ControlModifier);
+        tick();
+        mod(QEvent::KeyRelease, Qt::Key_Control, Qt::ControlModifier);
+        tick();
+        send(win->map(), QEvent::KeyRelease, Qt::Key_X, Qt::NoModifier);
+        QCOMPARE(got(), QStringList({"ctrlx"}));
+        mod(QEvent::KeyPress, Qt::Key_Control, Qt::NoModifier);
+        send(win->map(), QEvent::KeyPress, Qt::Key_Y, Qt::ControlModifier);
+        autoRep(Qt::Key_Y, Qt::ControlModifier);
+        tick();
+        mod(QEvent::KeyRelease, Qt::Key_Control, Qt::ControlModifier);
+        tick(2);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Y, Qt::NoModifier);
+        tick();
+        QCOMPARE(got(), QStringList({"ctrlyrep", "ctrlyrep", "yrep", "yrep"}));
+        // a key bound both ways (bay binds F2 and F2+REP): the press runs K, and K+REP starts at the keyboard's first
+        // auto-repeat, then follows the client's clock
+        for (int k : {int(Qt::Key_K), int(Qt::Key_F2)}) {
+            send(win->map(), QEvent::KeyPress, k, Qt::NoModifier);
+            tick();
+            autoRep(k, Qt::NoModifier);
+            tick(2);
+            autoRep(k, Qt::NoModifier);
+            send(win->map(), QEvent::KeyRelease, k, Qt::NoModifier);
+            tick();
+        }
+        QCOMPARE(got(), QStringList({"k", "krep", "krep", "krep", "f2", "f2rep", "f2rep", "f2rep"}));
+        // W+REP claims the press; with Ctrl down the repeat passes over CTRL+W, which has no REP binding
+        send(win->map(), QEvent::KeyPress, Qt::Key_W, Qt::NoModifier);
+        mod(QEvent::KeyPress, Qt::Key_Control, Qt::NoModifier);
+        tick();
+        mod(QEvent::KeyRelease, Qt::Key_Control, Qt::ControlModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_W, Qt::NoModifier);
+        // J claims the press and has no REP binding: no repeat even with Ctrl down
+        send(win->map(), QEvent::KeyPress, Qt::Key_J, Qt::NoModifier);
+        mod(QEvent::KeyPress, Qt::Key_Control, Qt::NoModifier);
+        tick();
+        mod(QEvent::KeyRelease, Qt::Key_Control, Qt::ControlModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_J, Qt::NoModifier);
+        QCOMPARE(got(), QStringList({"wrep", "wrep", "j"}));
+        // the first repeat waits 1.75 ticks after the press
+        f.setFrameTiming(40'000'000, 40'000'000);
+        send(win->map(), QEvent::KeyPress, Qt::Key_X, Qt::NoModifier);
+        f.repeatTick(f.nowMs() + 60);
+        QCOMPARE(got(), QStringList({"xrep"}));
+        f.repeatTick(f.nowMs() + 75);
+        QCOMPARE(got(), QStringList({"xrep"}));
+        send(win->map(), QEvent::KeyRelease, Qt::Key_X, Qt::NoModifier);
+        f.setFrameTiming(0, 0);
+        // only the newest held repeating key repeats; releasing it hands the repeat back
+        send(win->map(), QEvent::KeyPress, Qt::Key_X, Qt::NoModifier);
+        tick();
+        send(win->map(), QEvent::KeyPress, Qt::Key_Y, Qt::NoModifier);
+        tick();
+        send(win->map(), QEvent::KeyPress, Qt::Key_Q, Qt::NoModifier);   // a key whose hold does not repeat
+        tick();
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Q, Qt::NoModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Y, Qt::NoModifier);
+        tick();
+        send(win->map(), QEvent::KeyRelease, Qt::Key_X, Qt::NoModifier);
+        tick();
+        QCOMPARE(got(), QStringList({"xrep", "xrep", "yrep", "yrep", "yrep", "xrep"}));
+        // a modifier key matches only its bare binding: CTRL+SHIFT never fires
+        fugue::skin::editUserMacro(set, "", "CTRL+SHIFT", "ctrlshift");
+        fugue::skin::editUserMacro(set, "", "CTRL", "ctrlkey");
+        f.setMacros(set);
+        send(win->map(), QEvent::KeyPress, Qt::Key_Control, Qt::NoModifier);
+        send(win->map(), QEvent::KeyPress, Qt::Key_Shift, Qt::ControlModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Shift, Qt::ControlModifier | Qt::ShiftModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Control, Qt::ControlModifier);
+        send(win->map(), QEvent::KeyPress, Qt::Key_Shift, Qt::NoModifier);
+        send(win->map(), QEvent::KeyPress, Qt::Key_Control, Qt::ShiftModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Control, Qt::ControlModifier | Qt::ShiftModifier);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Shift, Qt::ShiftModifier);
+        QCOMPARE(got(), QStringList({"ctrlkey", "shiftkey", "shiftkey", "ctrlkey"}));
+        fugue::skin::editUserMacro(set, "SHIFT", "", "");   // a modifier key never repeats
+        fugue::skin::editUserMacro(set, "", "SHIFT+REP", "shiftrep");
+        f.setMacros(set);
+        send(win->map(), QEvent::KeyPress, Qt::Key_Shift, Qt::NoModifier);
+        tick(2);
+        send(win->map(), QEvent::KeyRelease, Qt::Key_Shift, Qt::ShiftModifier);
+        QCOMPARE(got(), QStringList({"shiftrep"}));
+        fugue::skin::editUserMacro(set, "SHIFT+REP", "SHIFT", "shiftkey");
+        f.setMacros(set);
+        // the command bar: Shift+letter still types; Alt and Ctrl combinations and the function keys fall back
+        auto* in = win->findChild<QLineEdit*>();
+        in->clear();
+        in->setFocus();
+        QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == in; }));
+        QTest::keyClick(in, 'Z', Qt::ShiftModifier);
+        QCOMPARE(in->text(), QString("Z"));
+        QCOMPARE(got(), QStringList({"shiftkey"}));   // QTest presses Shift first, into the empty bar
+        QTest::keyClick(in, Qt::Key_Z, Qt::AltModifier);
+        QTest::keyClick(in, Qt::Key_F5, Qt::ShiftModifier);
+        QCOMPARE(got(), QStringList({"zz", "f5"}));
+        QCOMPARE(in->text(), QString("Z"));
+        in->clear();
+        qApp->removeEventFilter(&f);
+        qApp->installEventFilter(filt);
+    }
+    // The input bar's own-binding rules, as stock DreamSeeker 516 applies them with every combination bound exactly
+    // and through the modifier fallback.
+    void inputBarKeys() {
+        fugue::skin::MacroSet set;
+        for (auto [spec, cmd] : {std::pair{"Z", "z"}, {"CTRL+Z", "ctrlz"}, {"CTRL+A", "ctrla"}, {"ALT+C", "altc"}, {"North", "north"},
+                                 {"CTRL+North", "ctrlnorth"}, {"West", "west"}, {"West+UP", "westup"}, {"CTRL+West+UP", "ctrlwestup"},
+                                 {"Back", "back"}, {"CTRL+Back", "ctrlback"}, {"Back+UP", "backup"}, {"Delete", "delete"},
+                                 {"CTRL+Delete", "ctrldelete"}, {"Return", "return"}, {"Space", "space"}, {"Tab", "tab"},
+                                 {"Escape", "escape"}, {"Q+UP", "qup"}, {"SHIFT", "shiftkey"}, {"F5", "f5"}})
+            fugue::skin::editUserMacro(set, "", spec, cmd);
+        FocusFilter f;
+        f.setMacros(set);
+        qApp->removeEventFilter(filt);
+        qApp->installEventFilter(&f);
+        QSignalSpy mac(&f, &FocusFilter::macroFired);
         auto* in = win->findChild<QLineEdit*>();
         in->setFocus();
         QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == in; }));
-        int before = mv.count();
-        QTest::keyClick(in, Qt::Key_Left);
-        QCOMPARE(mv.count(), before);
+        auto key = [&](const char* text, int k, Qt::KeyboardModifiers m = Qt::NoModifier) {
+            in->setText(text);
+            in->setCursorPosition(in->text().size());
+            QKeyEvent p(QEvent::KeyPress, k, m), r(QEvent::KeyRelease, k, m);
+            QCoreApplication::sendEvent(in, &p);
+            QCoreApplication::sendEvent(in, &r);
+            QStringList l;
+            for (const auto& a : mac) l << a.at(1).toString();
+            mac.clear();
+            return l.join(",");
+        };
+        const Qt::KeyboardModifiers none = Qt::NoModifier, shift = Qt::ShiftModifier, ctrl = Qt::ControlModifier, alt = Qt::AltModifier;
+        // characters type; Ctrl or Alt runs the binding, but Ctrl+Z/C/X/V are the field's
+        QCOMPARE(key("", Qt::Key_Z), QString());
+        QCOMPARE(key("", Qt::Key_Z, ctrl), QString());
+        QCOMPARE(key("", Qt::Key_Z, ctrl | shift), QString());
+        QCOMPARE(key("", Qt::Key_Z, alt), QString("z"));
+        QCOMPARE(key("", Qt::Key_A, ctrl), QString("ctrla"));
+        QCOMPARE(key("", Qt::Key_A, ctrl | shift), QString("ctrla"));
+        QCOMPARE(key("", Qt::Key_C, alt | shift), QString("altc"));
+        QCOMPARE(key("ab", Qt::Key_Q), QString());   // a typed key's release is the field's too
+        // navigation keys run their binding without Ctrl, text or not; with Ctrl the release still runs the bare +UP
+        QCOMPARE(key("ab", Qt::Key_Up), QString("north"));
+        QCOMPARE(key("", Qt::Key_Up, shift), QString("north"));
+        QCOMPARE(key("", Qt::Key_Up, ctrl), QString());
+        QCOMPARE(key("ab", Qt::Key_Left, shift | alt), QString("west,westup"));
+        QCOMPARE(key("ab", Qt::Key_Left, ctrl), QString("westup"));
+        QCOMPARE(key("", Qt::Key_Left, ctrl | shift), QString("westup"));
+        // Backspace, Return, Space and the modifier keys only while the field is empty; Delete also not with Ctrl
+        QCOMPARE(key("", Qt::Key_Backspace, ctrl), QString("ctrlback,backup"));
+        QCOMPARE(key("ab", Qt::Key_Backspace, ctrl), QString("backup"));
+        QCOMPARE(key("", Qt::Key_Return, shift), QString("return"));
+        QCOMPARE(key("ab", Qt::Key_Return), QString());
+        QCOMPARE(key("", Qt::Key_Space), QString("space"));
+        QCOMPARE(key("ab", Qt::Key_Space), QString());
+        QCOMPARE(key("", Qt::Key_Shift), QString("shiftkey"));
+        QCOMPARE(key("ab", Qt::Key_Shift), QString());
+        QCOMPARE(key("", Qt::Key_Delete), QString("delete"));
+        QCOMPARE(key("ab", Qt::Key_Delete), QString());
+        QCOMPARE(key("", Qt::Key_Delete, ctrl), QString());
+        // always: Tab (Shift+Tab is Backtab to Qt), Escape, the function keys
+        QCOMPARE(key("ab", Qt::Key_Tab), QString("tab"));
+        QCOMPARE(key("ab", Qt::Key_Backtab, shift), QString("tab"));
+        QCOMPARE(key("ab", Qt::Key_Escape, ctrl), QString("escape"));
+        QCOMPARE(key("ab", Qt::Key_F5, ctrl | shift), QString("f5"));
+        in->clear();
+        qApp->removeEventFilter(&f);
+        qApp->installEventFilter(filt);
     }
     // The right-click verb menu is a QMenu popup, so a key released while it is open is delivered to the menu. A held key's release must
     // reach the server wherever it lands: the popup, another zone, or nowhere at all (application deactivated).
     void heldKeyReleasedInsideAPopupStillReleases() {
-        QSignalSpy mv(filt, &FocusFilter::builtinMove);
+        QSignalSpy mac(filt, &FocusFilter::macroFired);
+        auto fired = [&](int i) { return mac.at(i).at(1).toString() + (mac.at(i).at(2).toBool() ? "|up" : ""); };
         win->map()->setFocus();
         QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == win->map(); }));
         QTest::keyPress(win->map(), Qt::Key_Left);
-        QCOMPARE(mv.count(), 1);
-        QVERIFY(mv.at(0).at(1).toBool());
+        QCOMPARE(mac.count(), 1);
+        QCOMPARE(fired(0), QString("MoveKey 8 1"));
         QMenu menu(win);
         menu.addAction("poke");
         menu.popup(win->mapToGlobal(QPoint(80, 80)));
         QVERIFY(QTest::qWaitFor([&] { return QApplication::activePopupWidget() == &menu; }));
         QVERIFY(qApp->focusWidget() != &menu);  // the popup holds the keyboard without becoming the focus widget
         QTest::keyRelease(&menu, Qt::Key_Left);
-        QCOMPARE(mv.count(), 2);
-        QCOMPARE(mv.at(1).at(0).toInt(), 8);
-        QVERIFY(!mv.at(1).at(1).toBool());
+        QCOMPARE(mac.count(), 2);
+        QCOMPARE(fired(1), QString("MoveKey 8 0|up"));
         menu.close();
         QVERIFY(QTest::qWaitFor([&] { return !QApplication::activePopupWidget(); }));
         // released once: a second copy (window and widget both receive it) finds nothing held
         QTest::keyRelease(win->map(), Qt::Key_Left);
-        QCOMPARE(mv.count(), 3);  // an unmatched release still routes on the focus widget
-        // a release that lands in the command bar is the walk key's too (plain keys there never route)
+        QCOMPARE(mac.count(), 3);  // an unmatched release still routes on the focus widget
+        // a release that lands in the command bar is the held key's too (plain keys there never route)
         QTest::keyPress(win->map(), Qt::Key_Up);
         auto* in = win->findChild<QLineEdit*>();
         in->setFocus();
         QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == in; }));
         QTest::keyRelease(in, Qt::Key_Up);
-        QCOMPARE(mv.count(), 5);
-        QCOMPARE(mv.at(4).at(0).toInt(), 1);
-        QVERIFY(!mv.at(4).at(1).toBool());
+        QCOMPARE(mac.count(), 5);
+        QCOMPARE(fired(4), QString("MoveKey 1 0|up"));
     }
     void heldKeyIsReleasedWhenTheApplicationDeactivates() {
-        QSignalSpy mv(filt, &FocusFilter::builtinMove);
+        QSignalSpy mac(filt, &FocusFilter::macroFired);
         win->map()->setFocus();
         QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == win->map(); }));
-        QTest::keyPress(win->map(), Qt::Key_Right);
-        QCOMPARE(mv.count(), 1);
+        QTest::keyPress(win->map(), Qt::Key_Up);
+        QCOMPARE(mac.count(), 1);
         QEvent deact(QEvent::ApplicationDeactivate);
         QCoreApplication::sendEvent(qApp, &deact);
-        QCOMPARE(mv.count(), 2);
-        QCOMPARE(mv.at(1).at(0).toInt(), 4);
-        QVERIFY(!mv.at(1).at(1).toBool());
+        QCOMPARE(mac.count(), 2);
+        QCOMPARE(mac.at(1).at(1).toString(), QString("MoveKey 1 0"));
+        QVERIFY(mac.at(1).at(2).toBool());
         QCoreApplication::sendEvent(qApp, &deact);  // nothing held any more
-        QCOMPARE(mv.count(), 2);
+        QCOMPARE(mac.count(), 2);
     }
 
     void routing_data() {
@@ -250,18 +561,40 @@ private slots:
         QTest::newRow("empty masks") << "  " << false << int(Route::Swallow) << 0 << true << "";
         QTest::newRow(".north") << ".north" << false << int(Route::Move) << 1 << true << "";
         QTest::newRow(".southwest up") << ".SouthWest" << true << int(Route::Move) << 10 << false << "";
+        QTest::newRow(".center") << ".center" << false << int(Route::Move) << 0 << true << "";
         QTest::newRow("macro swap") << ".winset \"mainwindow.macro=hotkeymode mapwindow.map.focus=true\"" << false
                                     << int(Route::SetMacroSet) << 0 << true << "hotkeymode";
         QTest::newRow("winset no macro") << ".winset \"rpanewindow.left=;\"" << false << int(Route::Winset) << 0 << true << "rpanewindow.left=;";
         QTest::newRow("winset unquoted") << ".winset rpane.lbl.text=hi" << false << int(Route::Winset) << 0 << true << "rpane.lbl.text=hi";
         QTest::newRow("quit") << ".quit" << false << int(Route::Quit) << 0 << true << "";
+        QTest::newRow("reconnect") << ".Reconnect" << false << int(Route::Reconnect) << 0 << true << "";
         QTest::newRow("unknown dot cmd is NOT a verb") << ".profile" << false << int(Route::Unsupported) << 0 << true << ".profile";
         QTest::newRow("screenshot dialog") << ".screenshot" << false << int(Route::Screenshot) << 0 << true << "";
         QTest::newRow("screenshot auto") << ".screenshot auto" << false << int(Route::Screenshot) << 0 << true << "auto";
         QTest::newRow("screenshot AUTO") << "  .Screenshot  AUTO " << false << int(Route::Screenshot) << 0 << true << "auto";
         QTest::newRow(".macros opens the macro editor") << ".macros" << false << int(Route::Macros) << 0 << true << "";
         QTest::newRow(".options opens Options and Messages") << ".options" << false << int(Route::Options) << 0 << true << "";
-        QTest::newRow("any-key") << "say [[*]]" << false << int(Route::Command) << 0 << true << "say K";
+        QTest::newRow("any-key") << "say [[*]]" << false << int(Route::Command) << 0 << true << "say \"K\"";
+        QTest::newRow("any-key quoted") << "say \"x[[*]]\" \"[[*]]\"" << false << int(Route::Command) << 0 << true << "say \"x\"K\"\" \"K\"";
+    }
+    // A macro command runs line by line, as stock does with tg's Escape (`.winset ...`, `.output ...`, Reset-Held-Keys).
+    void macroCommandRunsEachLine() {
+        auto lines = [](const char* c) {
+            QStringList l;
+            for (const std::string& s : macroCommandLines(c)) l << QString::fromStdString(s);
+            return l.join("|");
+        };
+        QCOMPARE(lines("lg one\r\nlg two\r\nlg three"), QString("lg one|lg two|lg three"));
+        QCOMPARE(lines("lg one\r\n\r\nlg two"), QString("lg one|lg two"));
+        QCOMPARE(lines("lg one  \r\n lg two\r\n\tlg three"), QString("lg one  "));
+        QCOMPARE(lines("  lg one"), QString());
+        QCOMPARE(lines(".winset \"input.text=hello\"\r\nlg two"), QString(".winset \"input.text=hello\"|lg two"));
+        QCOMPARE(lines(""), QString());
+    }
+    void anyKeyNameIsADmString() {
+        QCOMPARE(QString::fromStdString(routeCommand("KeyDown [[*]]", "[", false).text), QString("KeyDown \"\\[\""));
+        QCOMPARE(QString::fromStdString(routeCommand("KeyDown [[*]]", "\\", false).text), QString("KeyDown \"\\\\\""));
+        QCOMPARE(QString::fromStdString(routeCommand("lg Q \"[[*]]\" [[*]]", "", false).text), QString("lg Q \"\" "));  // not an Any macro
     }
     void winsetBodyIsAlwaysHandedOn() {
         // A hotkey toggle: the macro swap AND a checkbox AND the map focus travel together; the whole body must reach the live skin.
@@ -461,7 +794,7 @@ window "mainwindow"
         QCOMPARE(got, QStringList({"Rest", "zap userR", "Rest", "zap hotkeyR", "Rest", "zap userR"}));
     }
     // The top-left system menu (shell/macrodialog.h): the window icon in the menu bar's top-left corner, opening
-    // "Options & Messages" and Client > Screenshot... / Macros... / Quit, each routed as the client command it names.
+    // "Options & Messages" and Client > Screenshot... / Reconnect / Macros... / Quit, each routed as the client command it names.
     void systemMenuSitsTopLeftAndLeadsToMacros() {
         static const char* kMenuSkin = R"(menu "menu"
 	elem
@@ -487,6 +820,7 @@ window "mainwindow"
         // the button costs the layout nothing: the bar is as tall as a bar with the same menu and no corner widget
         {
             QMenuBar ref;
+            ref.setFont(skinMenuFont());
             ref.addMenu("&File")->addAction("Say hello");
             QCOMPARE(w.menuBar()->sizeHint().height(), ref.sizeHint().height());
         }
@@ -511,13 +845,15 @@ window "mainwindow"
         QVERIFY(client);
         QStringList items;
         for (QAction* a : client->actions()) items << (a->isSeparator() ? QString("-") : a->text());
-        QCOMPARE(items, QStringList({"&Screenshot...", "-", "&Macros...", "-", "&Quit"}));
+        QCOMPARE(items, QStringList({"&Screenshot...", "&Reconnect", "-", "&Macros...", "-", "&Quit"}));
         QSignalSpy cmd(&w, &SkinWindow::menuCommand);
         sys->actions().at(0)->trigger();
-        client->actions().at(2)->trigger();
-        QCOMPARE(cmd.count(), 2);
+        client->actions().at(3)->trigger();
+        client->actions().at(1)->trigger();
+        QCOMPARE(cmd.count(), 3);
         QCOMPARE(int(routeCommand(cmd.at(0).at(0).toString().toStdString(), "", false).kind), int(Route::Options));
         QCOMPARE(int(routeCommand(cmd.at(1).at(0).toString().toStdString(), "", false).kind), int(Route::Macros));
+        QCOMPARE(int(routeCommand(cmd.at(2).at(0).toString().toStdString(), "", false).kind), int(Route::Reconnect));
     }
     void optionsWindowLeadsToMacros() {
         OptionsWindow w;

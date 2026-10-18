@@ -12,8 +12,9 @@
 //                       A PLANE_MASTER turns the finished surface into an off-screen slate or a filtered, coloured,
 //                       blended plane (group -> filters -> colour -> blend), in two passes: pass 1 fills the
 //                       render-target slates, pass 2 builds the scene.
-//     hud[]             HudPass, after all planes. Each composites onto a transparent tile clipped to the tile (a HUD
-//                       object never overflows its screen_loc cell), then blits the tile at every dest.
+//     hud[]             HudPass, after all planes. Each composites onto a transparent canvas that holds the whole
+//                       object (its screen_loc cell joined with every layer's rectangle), then blits it at every dest.
+//                       The map assembler does not emit it: screen objects are placed on their planes.
 //     groundBlack       the final flatten onto the opaque black ground, so alpha is 255 everywhere.
 //
 //   Layer: a borrowed immutable straight-alpha sprite (or a RELAY naming a slate), a top-left (x,y) that may be
@@ -94,9 +95,9 @@ struct PlanePass {
 };
 
 struct HudPass {
-    int tileW = 0, tileH = 0;
-    std::vector<DrawLayer> layers;       // draw order, coordinates inside the tile
-    struct Dest { int x, y; };           // top-left of the tile in the frame
+    int tileW = 0, tileH = 0;            // the canvas size
+    std::vector<DrawLayer> layers;       // draw order, coordinates inside the canvas
+    struct Dest { int x, y; };           // top-left of the canvas in the frame
     std::vector<Dest> dests;
 };
 

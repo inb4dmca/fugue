@@ -24,11 +24,6 @@ std::string quote(const std::string& s) {   // the inverse of dmf.cpp scanValue'
     return o + "\"";
 }
 bool blank(const std::string& s) { return trimSpace(s).empty(); }
-
-void reindex(MacroSet& s) {
-    s.byKey.clear();
-    for (size_t i = 0; i < s.entries.size(); i++) s.byKey[{s.entries[i].key, s.entries[i].rep}] = i;
-}
 }  // namespace
 
 MacroSet parseUserMacros(std::string_view text, std::string* err) {
@@ -80,22 +75,37 @@ bool editUserMacro(MacroSet& s, const std::string& oldSpec, const std::string& s
         e.rep = rep;
         s.entries.push_back(e);
     }
-    reindex(s);
+    s.reindex();
     return true;
+}
+
+template <class Pick>
+static const MacroEntry* layered(const MacroSet* skin, const MacroSet& game, const MacroSet& global, Pick pick) {
+    if (skin)
+        if (const MacroEntry* e = pick(*skin)) return e->disabled ? nullptr : e;   // in use by the skin
+    for (const MacroSet* s : {&game, &global})
+        if (const MacroEntry* e = pick(*s); e && !e->disabled) return e;
+    return nullptr;
 }
 
 const MacroEntry* lookupLayered(const MacroSet* skin, const MacroSet& game, const MacroSet& global, const MacroKey& k,
                                 bool repeat) {
-    if (skin)
-        if (const MacroEntry* e = skin->find(k, repeat)) return e->disabled ? nullptr : e;   // in use by the skin
-    if (const MacroEntry* e = game.lookup(k, repeat)) return e;
-    return global.lookup(k, repeat);
+    return lookupHeld({skin, &game, &global}, k, repeat);
+}
+
+HeldMatch matchLayered(const MacroSet* skin, const MacroSet& game, const MacroSet& global, const MacroKey& k) {
+    return matchHeld({skin, &game, &global}, k);
+}
+
+const MacroEntry* lookupLayeredAny(const MacroSet* skin, const MacroSet& game, const MacroSet& global, const MacroKey& k,
+                                   bool repeat) {
+    return layered(skin, game, global, [&](const MacroSet& s) { return s.findAny(k, repeat); });
 }
 
 std::string userMacrosPath(const std::string& stateDir, const std::string& worldKey) {
     std::filesystem::path p(stateDir);
     if (!worldKey.empty()) p = p / "macros" / worldKey;
-    return (p / "macros.dmf").string();
+    return (p / "macros.dmf").generic_string();
 }
 
 std::string worldKeyFor(const std::string& host, int port) {

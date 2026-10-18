@@ -28,6 +28,80 @@ jobs:
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
         run: ctest --test-dir build --output-on-failure
 
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install prerequisites
+        run: brew install cmake ninja pkgconf qtbase qtwebengine qtwebchannel qtsvg jpeg-turbo libopenmpt
+      - name: Configure
+        run: >-
+          cmake -G Ninja -S . -B build -DFUGUE_RELEASE=ON -DFUGUE_OPENMPT=ON
+          -DFUGUE_COMPILE_JOBS=2 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+          -DPKG_CONFIG_EXECUTABLE="$(brew --prefix)/bin/pkg-config"
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          FUGUE_AUDIO: none
+        run: ctest --test-dir build --output-on-failure
+      - name: Deploy and verify the standalone bundle
+        run: |
+          cmake --install build --prefix "$PWD/build/macos"
+          build/macos/Fugue.app/Contents/MacOS/Fugue --version
+          codesign --verify --deep --strict build/macos/Fugue.app
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Fugue.app "Fugue-$(uname -m).zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fugue-${{ matrix.os }}
+          path: Fugue-*.zip
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125   # v4.4.1
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          modules: 'qtwebengine qtwebchannel qtpositioning'
+          cache: true
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows -DFUGUE_RELEASE=ON -DFUGUE_OPENMPT=ON
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+      - name: Test
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          FUGUE_AUDIO: none
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
+        run: |
+          $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
+          ctest --test-dir build -C Release --output-on-failure --timeout 120
+      - name: Package
+        shell: pwsh
+        run: ./packaging/windows/package.ps1 -QtDir "$env:QT_ROOT_DIR"
+      - name: Smoke test deployed binary
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:SystemRoot/system32;$env:SystemRoot"
+          & ./dist/bin/fugue-qt.exe --version
+          if ($LASTEXITCODE -ne 0) { throw "Deployed application failed" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fugue-windows-x64
+          path: dist/
+
   flatpak:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build

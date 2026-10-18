@@ -45,14 +45,14 @@ void ensureByondHandler(QWebEngineProfile* p) {
     p->setProperty("fugueByondHandler", true);
 }
 
-// Ctrl+F, app-wide. The key arrives at Chromium's focus-proxy child (or the find bar's field), not at the
+// Ctrl+F (and the platform's Find shortcut, Cmd+F on macOS), app-wide. The key arrives at Chromium's focus-proxy child (or the find bar's field), not at the
 // BrowserPane, so it is caught here before delivery. Only a pane whose world enabled `find` consumes it; otherwise
 // the event passes through and the page sees it.
 struct FindKeyFilter : QObject {
     bool eventFilter(QObject* o, QEvent* e) override {
         if (e->type() != QEvent::KeyPress || o != QApplication::focusWidget()) return false;
         auto* k = static_cast<QKeyEvent*>(e);
-        if (k->key() != Qt::Key_F || (k->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier)) != Qt::ControlModifier) return false;
+        if (!k->matches(QKeySequence::Find) && (k->key() != Qt::Key_F || (k->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier)) != Qt::ControlModifier)) return false;
         BrowserPane* pane = nullptr;
         for (QObject* p = o; p && !pane; p = p->parent()) pane = qobject_cast<BrowserPane*>(p);
         if (!pane || !pane->findAllowed || !pane->findAllowed()) return false;

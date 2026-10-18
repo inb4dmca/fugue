@@ -1,8 +1,7 @@
 #include "fugue_env.h"
 #include "pager/model.h"
-#include <dirent.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include "platform/file.h"
+#include <filesystem>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -21,7 +20,11 @@ bool eqFold(const std::string& a, const std::string& b) {
 bool isRegular(const std::string& p, bool needExec = false) {
     struct stat st;
     if (::stat(p.c_str(), &st) != 0 || S_ISDIR(st.st_mode)) return false;
+#ifdef _WIN32
+    return true; // Windows has no Unix executable permission bits.
+#else
     return !needExec || (S_ISREG(st.st_mode) && (st.st_mode & 0111));
+#endif
 }
 std::string getenvStr(const char* k) { const char* v = std::getenv(k); return v ? v : ""; }
 std::string slurp(const std::string& p) {
@@ -51,11 +54,18 @@ bool resolveClient(const std::string& explicitIn, const CheckOptions& opt, std::
         tried.push_back(cand);
         if (isRegular(cand)) { *argv = {cand}; return true; }
     }
+#ifdef _WIN32
+    constexpr char separator = ';';
+    constexpr const char* binary = "/fugue.exe";
+#else
+    constexpr char separator = ':';
+    constexpr const char* binary = "/fugue";
+#endif
     std::string path = getenvStr("PATH");
     for (size_t st = 0; st <= path.size();) {
-        size_t e = path.find(':', st);
+        size_t e = path.find(separator, st);
         std::string d = path.substr(st, e == std::string::npos ? std::string::npos : e - st);
-        if (!d.empty() && isRegular(d + "/fugue", true)) { *argv = {d + "/fugue"}; return true; }
+        if (!d.empty() && isRegular(d + binary, true)) { *argv = {d + binary}; return true; }
         if (e == std::string::npos) break;
         st = e + 1;
     }
@@ -164,27 +174,20 @@ std::string rscDir() {
 
 CacheStats scanRscCache(const std::string& dir) {
     CacheStats cs;
-    DIR* d = ::opendir(dir.c_str());
-    if (!d) return cs;
-    while (dirent* e = ::readdir(d)) {
-        std::string sh = e->d_name;
-        if (sh.size() != 2) continue;
-        std::string sp = dir + "/" + sh;
-        struct stat sst;
-        if (::stat(sp.c_str(), &sst) != 0 || !S_ISDIR(sst.st_mode)) continue;
-        if (DIR* d2 = ::opendir(sp.c_str())) {
-            while (dirent* f = ::readdir(d2)) {
-                std::string n = f->d_name;
-                if (!isHex8(n)) continue;
-                struct stat fst;
-                if (::stat((sp + "/" + n).c_str(), &fst) != 0) continue;
-                cs.files++;
-                cs.bytes += fst.st_size;
-            }
-            ::closedir(d2);
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (fs::directory_iterator sh(dir, ec), end; !ec && sh != end; sh.increment(ec)) {
+        std::error_code e2;
+        if (sh->path().filename().string().size() != 2 || !sh->is_directory(e2)) continue;
+        for (fs::directory_iterator f(sh->path(), e2), fend; !e2 && f != fend; f.increment(e2)) {
+            if (!isHex8(f->path().filename().string())) continue;
+            std::error_code e3;
+            auto size = f->file_size(e3);
+            if (e3) continue;
+            cs.files++;
+            cs.bytes += size;
         }
     }
-    ::closedir(d);
     return cs;
 }
 
@@ -219,8 +222,8 @@ std::string renderList(const account::Config& cfg, const Status& st) {
     if (!dir.empty()) {
         CacheStats cs = scanRscCache(dir);
         char buf[256];
-        std::snprintf(buf, sizeof buf, "rsc cache: %lld files, %.1f MiB of %.0f MiB cap \xc2\xb7 hits=0 misses=0 puts=0 rejected=0 evicted=0",
-                      cs.files, double(cs.bytes) / (1 << 20), double(cs.capBytes) / (1 << 20));
+        std::snprintf(buf, sizeof buf, "rsc cache: %lld %s, %.1f MiB of %.0f MiB cap",
+                      cs.files, cs.files == 1 ? "file" : "files", double(cs.bytes) / (1 << 20), double(cs.capBytes) / (1 << 20));
         o += "resources: " + dir + "\n           " + buf + "\n";
     }
     return o;

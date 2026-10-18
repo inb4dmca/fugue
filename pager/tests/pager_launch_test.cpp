@@ -5,6 +5,7 @@
 #include "account/store.h"
 #include "pager/cache.h"
 #include "pager/launch.h"
+#include "tests/privatefile.h"
 
 using namespace fugue;
 
@@ -22,7 +23,7 @@ private slots:
         QVERIFY2(pager::rememberGuest(false, &e), e.c_str());   // forgetting nothing is not an error
         QVERIFY2(pager::rememberGuest(true, &e), e.c_str());
         QVERIFY(pager::guestRemembered());
-        QCOMPARE(QFileInfo(QString::fromStdString(pager::guestChoicePath())).permissions() & (QFile::ReadGroup | QFile::ReadOther | QFile::WriteGroup | QFile::WriteOther), QFileDevice::Permissions());
+        QVERIFY(isPrivateFile(pager::guestChoicePath()));
         QVERIFY(!QFile::exists(home.path() + "/.fugue/pager.json"));   // pager.json is not written
         QVERIFY2(pager::rememberGuest(false, &e), e.c_str());
         QVERIFY(!pager::guestRemembered());
@@ -70,7 +71,7 @@ private slots:
         QVERIFY(joined.find(pw) == std::string::npos);
         QVERIFY(joined.find("010203") == std::string::npos);   // no identity hex either
         // the identity file is what the path points at, 0600
-        QCOMPARE(QFileInfo(QString::fromStdString(idp)).permissions() & (QFile::ReadGroup | QFile::ReadOther | QFile::WriteGroup | QFile::WriteOther), QFileDevice::Permissions());
+        QVERIFY(isPrivateFile(idp));
         // a full command: prefix + args + passthrough, still no secret
         std::vector<std::string> cmd;
         QVERIFY(pager::buildCommand(cfg, srv, "/opt/fugue/fugue-qt", {"--no-pacing"}, &cmd, &e));
@@ -105,7 +106,32 @@ private slots:
                  std::string("[Desktop Entry]\nType=Application\nName=Fugue\nComment=Join Space Station 13 servers\nExec=\"/home/a b/fugue-qt\" pager %u\n"
                              "Icon=io.github.toomykins.Fugue\nTerminal=false\nCategories=Game;\nMimeType=x-scheme-handler/byond;\nStartupWMClass=fugue-qt\n"));
     }
+    // The Windows handler passes the link as `pager --url "%1"`; a link that could have been split into more arguments
+    // is refused, never parsed as pager flags.
+    void urlHandlerTakesOneLinkOnly() {
+        QCOMPARE(pager::urlHandlerCommand("C:\\Fugue\\fugue-qt.exe"), std::string("\"C:\\Fugue\\fugue-qt.exe\" pager --url \"%1\""));
+        std::string e;
+        QCOMPARE(pager::handlerUrl({"--url", "byond://127.0.0.1:6000"}, &e).value_or(""), std::string("byond://127.0.0.1:6000"));
+        QCOMPARE(pager::handlerUrl({"--url", "byond://host:1/?a=%22b"}, &e).value_or(""), std::string("byond://host:1/?a=%22b"));
+        for (const std::vector<std::string>& bad : std::vector<std::vector<std::string>>{
+                 {"--url"},
+                 {"--url", ""},
+                 {"--url", "byond://h:1", "-keytxt", "\\\\host\\share\\key.txt"},
+                 {"--url", "byond://h:1\" -keytxt \\\\host\\share\\key.txt"},
+                 {"--url", "byond://h:1 -keytxt x"},
+                 {"--url", "byond://h:1\t"},
+                 {"--url", "byond://h:1\n-login"},
+                 {"-keytxt", "x", "--url", "byond://h:1"},
+                 {"--url=byond://h:1"}}) {
+            e.clear();
+            QVERIFY(!pager::handlerUrl(bad, &e));
+            QVERIFY(!e.empty());
+        }
+    }
     void installWritesOnlyUnderXdgData() {
+#ifdef _WIN32
+        QSKIP("XDG desktop install is Unix-only; never change the real Windows registry in a test");
+#endif
         QTemporaryDir home;
         qputenv("HOME", home.path().toUtf8());
         QString xdg = home.path() + "/data";

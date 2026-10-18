@@ -75,14 +75,14 @@ modules:
     sources:
       - type: dir
         path: ../..
-        # Build trees (build/, build-*/, flatpak-builder's own state) and the tests are not part of the package.
+        # Build trees (build/, build-*/, flatpak-builder's own state) are not part of the package. tests/ is kept: module
+        # tests include its shared helpers.
         skip:
           - build
           - build-*
           - build-flatpak
           - .flatpak-builder
           - .git
-          - tests
       - type: file
         path: io.github.toomykins.Fugue.desktop
       - type: file

@@ -60,13 +60,14 @@ signals:
     void verbClicked(const QString& name);
 protected:
     bool eventFilter(QObject* o, QEvent* e) override;
+    void changeEvent(QEvent* e) override;   // a new font (the INFO control's) rebuilds the rows
 private:
     void rebuildRows();
     bool iconAt(int row, const QPoint& viewportPos, int& ix, int& iy) const;
     QString controlId_;
     int pressRow_ = -1;
-    QTabBar* tabs_;
-    QTableWidget* table_;
+    QTabBar* tabs_ = nullptr;
+    QTableWidget* table_ = nullptr;
     StatView view_;
     bool setting_ = false;
 };

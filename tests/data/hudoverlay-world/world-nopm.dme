@@ -1,0 +1,3 @@
+#define NO_PM
+#include "world.dm"
+#include "world.dmf"

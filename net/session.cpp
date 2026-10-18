@@ -1,11 +1,5 @@
 #include "net/session.h"
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#include "platform/socket.h"
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -38,6 +32,11 @@ std::string cstrAt(ByteSpan b, size_t& p, bool& ok) {
 Session::Session(SessionConfig cfg, Log log) : cfg_(std::move(cfg)), log_(std::move(log)) {
     cfg_.stateDirExplicit = !cfg_.stateDir.empty();
     if (cfg_.stateDir.empty()) cfg_.stateDir = defaultStateDir();
+    resetResources();
+    t0_ = std::chrono::steady_clock::now();
+}
+
+void Session::resetResources() {
     // Resource cache: an explicit rscDir wins; else an explicit stateDir keeps it under that dir; else the
     // $HOME/.fugue/rsc.
     std::string rsc = !cfg_.rscDir.empty() ? cfg_.rscDir : cfg_.stateDirExplicit ? cfg_.stateDir + "/rsc" : RscStore::defaultDir();
@@ -45,7 +44,8 @@ Session::Session(SessionConfig cfg, Log log) : cfg_(std::move(cfg)), log_(std::m
     res_ = std::make_unique<ResourcePump>(
         rsc, [this](uint16_t t, ByteSpan b) { return sendFrame(t, b); },
         [this](const std::string& s) { logf(s); });
-    t0_ = std::chrono::steady_clock::now();
+    resReported_.clear();
+    resSeen_ = 0;
 }
 
 Session::~Session() {
@@ -54,7 +54,7 @@ Session::~Session() {
 }
 
 void Session::close() {
-    if (fd_ >= 0) { ::close(fd_); fd_ = -1; }
+    if (fd_ >= 0) { socket::close(fd_); fd_ = -1; }
 }
 
 void Session::pace(int lo, int hi) {
@@ -76,12 +76,13 @@ void Session::wire(const char* dir, uint16_t type, ByteSpan body) {
 bool Session::writeAll(const Bytes& b) {
     size_t off = 0;
     while (off < b.size()) {
-        ssize_t n = ::send(fd_, b.data() + off, b.size() - off, MSG_NOSIGNAL);
+        auto n = socket::send(fd_, b.data() + off, b.size() - off);
         if (n < 0) {
             if (errno == EINTR) continue;
-            if (errno == EAGAIN) { pollfd p{fd_, POLLOUT, 0}; ::poll(&p, 1, 1000); continue; }
+            if (errno == EAGAIN) { socket::PollFd p{fd_, POLLOUT, 0}; socket::poll(&p, 1, 1000); continue; }
             return false;
         }
+        if (n == 0) return false;
         off += size_t(n);
     }
     return true;
@@ -100,6 +101,7 @@ bool Session::sendFrame(uint16_t type, ByteSpan plain) {
     seq_ = nextSeq(seq_);
     wire("c2s", type, plain);
     st_.c2s[type]++;
+    noteFrame(true, type, plain.size());
     return writeAll(*f);
 }
 
@@ -111,11 +113,11 @@ bool Session::readFrameBlocking(Frame& out, int timeoutMs) {
         if (s == ParseStatus::Error) return false;
         auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
         if (left <= 0) return false;
-        pollfd p{fd_, POLLIN, 0};
-        int r = ::poll(&p, 1, int(left));
+        socket::PollFd p{fd_, POLLIN, 0};
+        int r = socket::poll(&p, 1, int(left));
         if (r <= 0) { if (r < 0 && errno == EINTR) continue; return false; }
         uint8_t buf[16384];
-        ssize_t n = ::recv(fd_, buf, sizeof buf, 0);
+        auto n = socket::recv(fd_, buf, sizeof buf, 0);
         if (n <= 0) { st_.serverClosed = true; st_.closeReason = n == 0 ? "server closed the connection" : std::strerror(errno); return false; }
         reader_.feed(ByteSpan(buf, size_t(n)));
     }
@@ -125,34 +127,35 @@ std::string Session::connectAndLogin() {
     if (!cfg_.wireLogPath.empty()) wireFile_ = std::fopen(cfg_.wireLogPath.c_str(), "w");
 
     // --- TCP connect (non-blocking connect + poll so the timeout is ours) ---
+    if (!socket::initialize()) return "Winsock initialization failed";
     addrinfo hints{}, *res = nullptr;
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     if (int gai = getaddrinfo(cfg_.host.c_str(), std::to_string(cfg_.port).c_str(), &hints, &res); gai != 0)
-        return std::string("resolve ") + cfg_.host + ": " + gai_strerror(gai);
+        return std::string("resolve ") + cfg_.host + ": " + socket::addressError(gai);
     std::string lastErr = "no address";
     for (addrinfo* a = res; a && fd_ < 0; a = a->ai_next) {
-        int fd = ::socket(a->ai_family, a->ai_socktype, a->ai_protocol);
+        auto fd = socket::create(a->ai_family, a->ai_socktype, a->ai_protocol);
         if (fd < 0) continue;
-        int fl = ::fcntl(fd, F_GETFL, 0);
-        ::fcntl(fd, F_SETFL, fl | O_NONBLOCK);
-        int rc = ::connect(fd, a->ai_addr, a->ai_addrlen);
+        if (socket::nonblocking(fd, true) != 0) { socket::close(fd); continue; }
+        int rc = socket::connect(fd, a->ai_addr, int(a->ai_addrlen));
         if (rc < 0 && errno == EINPROGRESS) {
-            pollfd p{fd, POLLOUT, 0};
-            if (::poll(&p, 1, cfg_.connectTimeoutMs) == 1) {
-                int e = 0; socklen_t el = sizeof e;
-                ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &e, &el);
+            socket::PollFd p{fd, POLLOUT, 0};
+            if (socket::poll(&p, 1, cfg_.connectTimeoutMs) == 1) {
+                int e = 0; socket::Length el = sizeof e;
+                if (socket::getsockopt(fd, SOL_SOCKET, SO_ERROR, &e, &el) != 0) e = errno;
                 rc = e ? -1 : 0;
                 if (e) errno = e;
             } else { rc = -1; errno = ETIMEDOUT; }
         }
-        if (rc == 0) { fd_ = fd; ::fcntl(fd, F_SETFL, fl); }   // back to blocking; we poll() before every recv
-        else { lastErr = std::strerror(errno); ::close(fd); }
+        if (rc == 0 && socket::nonblocking(fd, false) == 0) { fd_ = fd; }   // back to blocking; we poll() before every recv
+        else { lastErr = std::strerror(errno); socket::close(fd); }
     }
     freeaddrinfo(res);
     if (fd_ < 0) return "connect " + cfg_.host + ":" + std::to_string(cfg_.port) + ": " + lastErr;
+    st_.connected = true;
     int one = 1;
-    ::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    socket::setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
     logf("connected tcp " + cfg_.host + ":" + std::to_string(cfg_.port));
 
     // --- 0x01 handshake: 22-byte body with a random field3 and seq0. The server validates neither.
@@ -162,18 +165,22 @@ std::string Session::connectAndLogin() {
     hs.field3 = rng()();
     uint16_t seq0 = uint16_t(rng()());
     if (seq0 == 0) seq0 = 1;
-    Bytes body;
-    putLe32(body, hs.proto);
-    putLe32(body, hs.field2);
-    putLe32(body, hs.field3);
-    putLe32(body, (0x0694u << 16) | seq0);   // build 1684 rides extra1's high half
-    putLe32(body, 0);
-    putLe16(body, 0x4000);   // DreamSeeker sends 0xc0e0; DD accepts both
+    hs.extended = true;
+    hs.extra1 = (0x0694u << 16) | seq0;   // build 1684 rides extra1's high half
+    hs.tail = 0x4000;   // stock DreamSeeker sends 0x4000 or 0xc0e0; DD accepts both
+    Bytes body = encodeHandshake(hs);
     auto hf = encodeFrame(0x0001, body);
     if (!hf || !writeAll(*hf)) return "send handshake failed";
     wire("c2s", 0x0001, body);
     st_.c2s[0x0001]++;
 
+    HandshakeReply hr;
+    if (std::string e = readHandshakeReply(hs, hr); !e.empty()) return e;
+    seq_ = seq0;
+    return login(hr);
+}
+
+std::string Session::readHandshakeReply(const Handshake& hs, HandshakeReply& hr) {
     Frame reply;
     if (!readFrameBlocking(reply, 15000))
         return "no handshake reply (" + (reader_.error().empty() ? std::string("timeout/closed") : reader_.error()) + ")";
@@ -182,15 +189,46 @@ std::string Session::connectAndLogin() {
     Bytes plain;
     if (reply.type != 0x0001 || !decryptBody(reply.payload, base, plain))
         return "handshake reply type " + std::to_string(reply.type) + " did not decrypt under the base key";
-    HandshakeReply hr;
     if (!parseHandshakeReply(plain, hr)) return "handshake reply too short";
     key_ = loginKey(base, hr.nonce);
     logf("handshake ok: server major " + std::to_string(hr.major) + ", nonce " + std::to_string(hr.nonce.size()) +
          " bytes, K_login derived");
+    return "";
+}
 
+// After a world reboot (0x001e) the stock client handshakes again on the same connection: a sequenced 0x0001 under the
+// current key whose body has no seq0 field (the c2s sequence carries on), then the reply and login as on a new connection.
+std::string Session::relogin() {
+    if (fd_ < 0) return "not connected";
+    Handshake hs;
+    hs.proto = 516;
+    hs.field2 = 276;
+    hs.field3 = rng()();
+    Bytes body;
+    putLe32(body, hs.proto);
+    putLe32(body, hs.field2);
+    putLe32(body, hs.field3);
+    putLe16(body, 0x0694);
+    putLe32(body, 0);
+    putLe16(body, 0x4000);
+    if (!sendFrame(0x0001, body)) return "send handshake failed";
+    HandshakeReply hr;
+    if (std::string e = readHandshakeReply(hs, hr); !e.empty()) return e;
+    st_ = SessionStats{};
+    st_.connected = true;
+    resetResources();   // the next owner is told about every file again
+    recent_.clear();
+    recentNext_ = 0;
+    t0_ = std::chrono::steady_clock::now();
+    prodDue_ = sentProd_ = sentRefresh_ = false;
+    pingCount_ = kKeepaliveFirstCount;
+    pingOutstanding_ = false;
+    return login(hr);
+}
+
+std::string Session::login(const HandshakeReply& hr) {
     // --- 0x1a credential: the guest block from the per-install digest, or a caller-minted account record ---
     pace(40, 150);
-    seq_ = seq0;
     if (!cfg_.accountRecord.empty()) {
         st_.accountLogin = true;
         logf("account login: sending a " + std::to_string(cfg_.accountRecord.size()) + "-byte 0x1a record for " +
@@ -262,6 +300,7 @@ void Session::run(std::chrono::milliseconds duration) {
                 return;
             }
             processFrame(f);
+            if (st_.rebootRequested) return;
         }
         if (prodDue_ && fd_ >= 0) {   // the 0xb7 for the first 0x000e (handle()), after the frames read with it
             prodDue_ = false;
@@ -275,12 +314,12 @@ void Session::run(std::chrono::milliseconds duration) {
         if (pumpHook_) pumpHook_();
         if (fd_ < 0) return;
         // Rounded up to whole ms: truncating would turn the last sub-millisecond of each call into a poll(0) spin.
-        pollfd p{fd_, POLLIN, 0};
-        int r = ::poll(&p, 1, pollTimeoutMs(std::chrono::duration_cast<std::chrono::microseconds>(end - now)));
+        socket::PollFd p{fd_, POLLIN, 0};
+        int r = socket::poll(&p, 1, pollTimeoutMs(std::chrono::duration_cast<std::chrono::microseconds>(end - now)));
         if (r < 0 && errno == EINTR) continue;
         if (r > 0) {
             uint8_t buf[65536];
-            ssize_t n = ::recv(fd_, buf, sizeof buf, 0);
+            auto n = socket::recv(fd_, buf, sizeof buf, 0);
             if (n <= 0) {
                 st_.serverClosed = true;
                 st_.closeReason = n == 0 ? "server closed the connection" : std::strerror(errno);
@@ -292,8 +331,42 @@ void Session::run(std::chrono::milliseconds duration) {
     }
 }
 
+void Session::noteFrame(bool c2s, uint16_t type, size_t len) {
+    constexpr size_t kRecent = 12;
+    Recent r{c2s, type, len, std::chrono::steady_clock::now()};
+    if (recent_.size() < kRecent) recent_.push_back(r);
+    else recent_[recentNext_] = r;
+    recentNext_ = (recentNext_ + 1) % kRecent;
+}
+
+std::string Session::endSummary() const {
+    auto now = std::chrono::steady_clock::now();
+    auto secs = [&](std::chrono::steady_clock::time_point t) { return std::chrono::duration<double>(now - t).count(); };
+    auto fmt = [](double v) { char b[32]; std::snprintf(b, sizeof b, "%.1f", v); return std::string(b); };
+    long long up = (long long)secs(t0_);
+    uint64_t in = 0, out = 0;
+    for (const auto& kv : st_.s2c) in += kv.second;
+    for (const auto& kv : st_.c2s) out += kv.second;
+    std::string s = "after " + std::to_string(up / 60) + "m" + std::to_string(up % 60) + "s: " +
+                    (st_.rebootRequested ? "world reboot" : st_.closeReason.empty() ? "closed by the client" : st_.closeReason) + "; " +
+                    std::to_string(in) + " s2c / " + std::to_string(out) + " c2s frames, " + std::to_string(st_.badChecksum) + " bad checksums";
+    if (recent_.empty()) return s;
+    s += "; last frames (oldest first, s ago):";
+    for (size_t i = 0; i < recent_.size(); i++) {
+        const Recent& r = recent_[(recentNext_ + i) % recent_.size()];
+        char b[48];
+        std::snprintf(b, sizeof b, " %s %04x/%zu@%s", r.c2s ? "c2s" : "s2c", r.type, r.len, fmt(secs(r.at)).c_str());
+        s += b;
+    }
+    return s;
+}
+
 bool Session::replyWinget(uint32_t reqId, const std::string& value) {
-    Bytes r(value.begin(), value.end());
+    Bytes r;
+    for (char c : value) {
+        if (c == '\\') r.push_back('\\');
+        r.push_back(uint8_t(c));
+    }
     r.push_back(0);
     putLe32(r, reqId);
     bool ok = sendFrame(0x00a9, r);
@@ -332,7 +405,11 @@ void Session::answerCertChallenge(uint8_t flag) {
 void Session::processFrame(const Frame& f) {
     Bytes plain;
     bool ok = f.payload.empty() ? true : decryptBody(f.payload, key_, plain);
-    if (!ok) { st_.badChecksum++; return; }
+    if (!ok) {
+        if (st_.badChecksum++ < 5) logf("s2c " + hexEncode(Bytes{uint8_t(f.type >> 8), uint8_t(f.type)}) + " (" + std::to_string(f.payload.size()) + " bytes) failed its checksum: dropped");
+        return;
+    }
+    noteFrame(false, f.type, plain.size());
     st_.s2c[f.type]++;
     if (st_.s2c[f.type] == 1) st_.s2cOrder.push_back(f.type);
     wire("s2c", f.type, plain);
@@ -372,8 +449,7 @@ void Session::handle(uint16_t type, ByteSpan body) {
         break;
     case 0x0007:
         // Keepalive. With no ping outstanding, the count reaching 1000 sends an empty c2s 0x0016 and resets the count.
-        // The server's empty 0x0016 echo clears the outstanding flag. On an idle world the client sends no 0x0016, and
-        // DreamDaemon keeps the connection anyway, so liveness does not depend on it.
+        // The server's empty 0x0016 echo clears the outstanding flag. An idle connection is kept by the 0x008f answer.
         if (!pingOutstanding_ && uint16_t(pingCount_ + 1) == kKeepaliveFrames) {
             pingCount_ = 0;
             pingOutstanding_ = true;
@@ -385,6 +461,11 @@ void Session::handle(uint16_t type, ByteSpan body) {
     case 0x0016:
         pingOutstanding_ = false;
         pingCount_ = 0;
+        break;
+    case 0x008f:
+        // DreamDaemon probes a connection that has sent nothing for about 10 minutes, and ends it with 0x0000 reason 8
+        // ("Connection timed out.") about 5 minutes later unless the client has answered: the same body as 0x0090.
+        sendFrame(0x0090, body);
         break;
     case 0x00a9: {
         // winget(control, prop): [control\0][prop\0][reqid u32][flag u8]. Always answer, or the DM proc parks. With no
@@ -431,6 +512,10 @@ void Session::handle(uint16_t type, ByteSpan body) {
         }
         break;
     }
+    case 0x001e:
+        st_.rebootRequested = true;
+        logf("world reboot (0x001e)");
+        break;
     case 0x0000:
     case 0x00b6:
         logf("server control frame " + std::to_string(type) + ": " + hexEncode(body.subspan(0, std::min<size_t>(body.size(), 48))));

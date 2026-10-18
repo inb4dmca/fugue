@@ -50,18 +50,18 @@ int64_t goAtoi(const std::string& s, bool* ok = nullptr) {
     bool neg = false;
     if (i < s.size() && (s[i] == '+' || s[i] == '-')) neg = s[i++] == '-';
     if (i >= s.size()) return 0;
-    unsigned __int128 v = 0;
+    uint64_t v = 0;
+    const uint64_t limit = uint64_t(INT64_MAX) + unsigned(neg);
     bool range = false;
     for (; i < s.size(); i++) {
         if (s[i] < '0' || s[i] > '9') return 0;
-        v = v * 10 + unsigned(s[i] - '0');
-        if (v > (unsigned __int128)1 << 64) { v = (unsigned __int128)1 << 64; }
+        unsigned digit = unsigned(s[i] - '0');
+        if (v > (limit - digit) / 10) { range = true; v = limit; }
+        else if (!range) v = v * 10 + digit;
     }
-    const unsigned __int128 maxPos = (unsigned __int128)std::numeric_limits<int64_t>::max();
-    if (!neg && v > maxPos) { range = true; v = maxPos; }
-    if (neg && v > maxPos + 1) { range = true; v = maxPos + 1; }
     if (ok) *ok = !range;
-    return neg ? int64_t(-(__int128)v) : int64_t(v);
+    if (neg && v == uint64_t(INT64_MAX) + 1) return INT64_MIN;
+    return neg ? -int64_t(v) : int64_t(v);
 }
 
 // Plain decimals only ("12", "1.5", ".5", "1.", "1e3", signs). Anything else (inf,
@@ -530,8 +530,9 @@ ParseResult parseIcon(const uint8_t* d, size_t n) {
     return ok;
 }
 
-// The frame a free-running state shows `elapsed` deciseconds into its clock (render/scene.cpp passes
-// deciseconds since the Unix epoch). rewind plays 0..n-1 then back down to 1; loop n holds the last frame after n plays.
+// The frame a free-running state shows `elapsed` deciseconds into its clock (render/scene.cpp passes deciseconds since
+// the Unix epoch, or since the icon start of the atom, turf, image or screen object for a finite loop). rewind plays
+// 0..n-1 then back down to 1; loop n holds the last frame after n plays.
 int frameAtTime(const IconState& st, double elapsed) {
     if (st.frames <= 1) return 0;
     struct Step { int frame; double delay; };

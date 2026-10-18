@@ -53,7 +53,8 @@ struct VerbDef {
     uint32_t flagWord() const { return (flags & 0x80) ? flagsExt : uint32_t(flags); }
 };
 
-// The canonical 0x0011 JSON the model stores in World::verbById.
+// The canonical 0x0011 JSON the model stores in World::verbById. Name, desc and category come back without
+// text-macro markers.
 bool parseVerbDef(const std::string& json, VerbDef& out);
 
 constexpr uint8_t kVerbSrcDefault = 0x00, kVerbSrcInView = 0x01, kVerbSrcInOView = 0x02, kVerbSrcUsrLoc = 0x03, kVerbSrcRangeMod = 0x04,

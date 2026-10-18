@@ -6,6 +6,7 @@
 // and are never sent.
 #pragma once
 #include <string>
+#include <vector>
 
 namespace fugue::shell {
 
@@ -13,11 +14,12 @@ struct Route {
     enum Kind {
         Swallow,      // empty command: a deliberate "this key does nothing" (masks a default) - claim the key, do nothing
         Command,      // text = a command line for the session (verb invocation)
-        Move,         // `.north` ... `.southwest`: dir = BYOND dir bits. The stock move command, which the server answers
-                      // by calling client.North() and so on. Never the world's held-key movement verb (see routeCommand)
+        Move,         // `.north` ... `.southwest`, `.center`: dir = BYOND dir bits (0 for `.center`). The stock move
+                      // command, which the server answers by calling client.North() ... client.Center()
         SetMacroSet,  // text = macro set name (`.winset "mainwindow.macro=hotkeymode ..."`); winsetBody holds the whole winset
         Winset,       // a `.winset "..."` with no macro key (a skin button's `.winset "rpanewindow.left=;"`): text = params
         Quit,         // `.quit`
+        Reconnect,    // `.reconnect`: end the session and connect to the same world again
         Screenshot,   // `.screenshot` (dialog) or `.screenshot auto` (text = "auto": no dialog); shell/screenshot.h
         Macros,       // `.macros`: the macro editor (Client > Macros...; shell/macrodialog.h)
         Options,      // `.options`: the "Options and Messages" window, whose Client menu holds Macros...
@@ -32,8 +34,13 @@ struct Route {
     bool down = true;
 };
 
-// `keyName` is the macro key that fired (the `[[*]]` substitution of the Any macro); `up` is a +UP firing.
+// `keyName` is the key an Any macro fired for, "" for any other macro; `up` is a +UP firing. `[[*]]` becomes the name as
+// a quoted DM string, or escaped without quotes where the command already quotes it, and nothing for a non-Any macro.
 Route routeCommand(const std::string& command, const std::string& keyName, bool up);
+
+// A macro command runs line by line (a winset's \n is a CRLF); an empty line, or one that starts with whitespace, runs
+// nothing.
+std::vector<std::string> macroCommandLines(const std::string& command);
 
 // A command the world registered for the client to run (a browse window's on-close). It uses the same router with one
 // difference: a `.`-prefixed name that is not a stock client command is the world's own verb, and is sent. The session

@@ -64,6 +64,9 @@ public:
     void pageCall(const QString& window, const QString& fn, const QStringList& args);
     // The skin created or destroyed the BROWSER control `ctl` (in skin window `win`); the skin owns the pane.
     void adoptControl(const QString& win, const QString& ctl, BrowserPane* pane);
+    // The windowless page already running for that control, handed to the skin as the control's own pane with its page
+    // state intact, or nullptr. Use it in place of a new pane, and do not adoptControl() it.
+    BrowserPane* takeHidden(const QString& win, const QString& ctl);
     void releaseControl(BrowserPane* pane);
     // Applies a world winset of a popup's `title` (`winset(M, "name", "title=X")`) when its value changes.
     // See popupTitle() in browsehost.cpp for the other writers of that title.
@@ -91,6 +94,7 @@ signals:
     void byondLink(const QUrl& url);               // a Topic for the world
     void commandRequested(const QString& command);  // winset command=...
     void chatPageReady();
+    void worldLink(const QString& url);            // a page link to another world (byond://host:port)
     void popupClosedByPlayer(const QString& name);
     // The world's `on-close` command for a popup the player closed (never one the world closed itself). It is set
     // by winset and runs exactly as if typed; see routeWorldCommand in shell/inputrouter.h.

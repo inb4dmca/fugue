@@ -19,16 +19,18 @@ function(fugue_shell_test name stem)
   endif()
   add_executable(${stem} tests/${stem}.cpp)
   target_link_libraries(${stem} PRIVATE fugue_shell Qt6::Test Qt6::Network)
-  add_test(NAME ${name} COMMAND ${stem})
+  add_test(NAME ${name} COMMAND ${stem} -o -,txt)
   set_tests_properties(${name} PROPERTIES ENVIRONMENT "${_shell_test_env}")
 endfunction()
 
+fugue_shell_test(shell_urlopener urlopener_test)   # macOS QFileOpenEvent URL delivery, without Launch Services
 fugue_shell_test(shell          shell_test)       # one QtTest executable
-fugue_shell_test(shell_input    input_test)       # pointer events -> MapPointer, arrow keys -> builtinMove, command routing
+fugue_shell_test(shell_input    input_test)       # pointer events -> MapPointer, keys -> their macro bindings only, command routing
 fugue_shell_test(shell_live     live_test)        # winset -> widgets, menu bar, skin button / menu commands, cross-thread sync
 fugue_shell_test(shell_browse   browse_test)      # browse(): popups, loopback origin, page<->client bridge, chat page
 fugue_shell_test(shell_prompt   prompt_test)      # alert()/input() PromptHost, the INFO control's StatPanelWidget, paste in every key-taking widget
 fugue_shell_test(shell_ttmetrics ttmetrics_test)  # MeasureText's TrueType metrics
+fugue_shell_test(shell_skinfont skinfont_test)    # skin control fonts: stock defaults, .dmf and winset font-family/size/style
 if(TARGET browse_test)
   target_sources(browse_test PRIVATE ${PROJECT_SOURCE_DIR}/app/renderthread.cpp)   # the map-remount test drives the real render thread
 endif()
@@ -38,5 +40,5 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/paste_scan_test.cpp)
   add_executable(paste_scan_test tests/paste_scan_test.cpp)
   target_link_libraries(paste_scan_test PRIVATE Qt6::Test Qt6::Core)
   target_compile_definitions(paste_scan_test PRIVATE FUGUE_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
-  add_test(NAME shell_paste_scan COMMAND paste_scan_test)
+  add_test(NAME shell_paste_scan COMMAND paste_scan_test -o -,txt)
 endif()

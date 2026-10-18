@@ -84,26 +84,37 @@ void fill(Hit& h, const HitAtom& a, int sx, int sy, const Sprite& sp) {
     h.spriteX = sx; h.spriteY = sy; h.spriteW = sp.w; h.spriteH = sp.h;
 }
 
-// One pass over client.screen in client.screen order: later HUD objects (and later dests of one object) beat earlier
-// ones. allowBBox=false withholds mouse_opacity 2's widening. hitAt itself uses hudTop; a test-only hook uses
-// this client.screen-order-only rule.
-bool hudPass(const HitScene& s, int px, int py, bool allowBBox, Hit& out) {
+// Visits client.screen entries in `ord` order: a later entry (and a later dest of one entry) beats an earlier one.
+// allowBBox=false withholds mouse_opacity 2's widening.
+bool hudScan(const HitScene& s, const std::vector<size_t>& ord, int px, int py, bool allowBBox, Hit& out, double& plane) {
     bool found = false;
-    for (const HitHud& hu : s.hud) {
+    for (size_t i : ord) {
+        const HitHud& hu = s.hud[i];
         if (hu.atom < 0 || size_t(hu.atom) >= s.atoms.size()) continue;
         const HitAtom& a = s.atoms[size_t(hu.atom)];
         if (effOpacity(a.mouseOpacity) == kMouseOpacityNone) continue;
         bool whole = allowBBox && effOpacity(a.mouseOpacity) >= kMouseOpacityBBox;
         for (const auto& d : hu.dests) {
             int lx = px - d.x, ly = py - d.y;
-            if (lx < 0 || ly < 0 || lx >= hu.tileW || ly >= hu.tileH) continue;   // drawn clipped to the cell
+            if (lx < 0 || ly < 0 || lx >= hu.tileW || ly >= hu.tileH) continue;
             const HitLayer* best = nullptr;
             for (const HitLayer& l : hu.layers)
                 if (covers(l, lx, ly, whole)) best = &l;
-            if (best) { fill(out, a, d.x + best->x, d.y + best->y, *best->sprite); found = true; }
+            if (!best) continue;
+            fill(out, a, d.x + hu.originX, d.y + hu.originY - best->sprite->h, *best->sprite);
+            plane = best->plane;
+            found = true;
         }
     }
     return found;
+}
+
+// client.screen order only. hitAt itself uses hudTop; a test-only hook uses this rule.
+bool hudPass(const HitScene& s, int px, int py, bool allowBBox, Hit& out) {
+    std::vector<size_t> ord(s.hud.size());
+    for (size_t i = 0; i < ord.size(); i++) ord[i] = i;
+    double plane = 0;
+    return hudScan(s, ord, px, py, allowBBox, out, plane);
 }
 
 // The topmost client.screen atom at (px,py) in DreamSeeker's HUD draw order: plane, then layer, then client.screen
@@ -115,23 +126,7 @@ bool hudTop(const HitScene& s, int px, int py, Hit& out, double& plane) {
         if (s.hud[a].plane != s.hud[b].plane) return s.hud[a].plane < s.hud[b].plane;
         return s.hud[a].layer < s.hud[b].layer;
     });
-    bool found = false;
-    for (size_t i : ord) {
-        const HitHud& hu = s.hud[i];
-        if (hu.atom < 0 || size_t(hu.atom) >= s.atoms.size()) continue;
-        const HitAtom& a = s.atoms[size_t(hu.atom)];
-        if (effOpacity(a.mouseOpacity) == kMouseOpacityNone) continue;
-        bool whole = effOpacity(a.mouseOpacity) >= kMouseOpacityBBox;
-        for (const auto& d : hu.dests) {
-            int lx = px - d.x, ly = py - d.y;
-            if (lx < 0 || ly < 0 || lx >= hu.tileW || ly >= hu.tileH) continue;   // drawn clipped to the cell
-            const HitLayer* best = nullptr;
-            for (const HitLayer& l : hu.layers)
-                if (covers(l, lx, ly, whole)) best = &l;
-            if (best) { fill(out, a, d.x + best->x, d.y + best->y, *best->sprite); plane = hu.plane; found = true; }
-        }
-    }
-    return found;
+    return hudScan(s, ord, px, py, /*allowBBox=*/true, out, plane);
 }
 
 }  // namespace

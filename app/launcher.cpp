@@ -15,11 +15,18 @@
 #include <QThread>
 #include <QTimer>
 #include <signal.h>
+#include <chrono>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <thread>
 #include <string>
 #include <vector>
 #include "fugue_env.h"
@@ -33,8 +40,12 @@
 #include "pager/target.h"
 #include "pager/ui/pagerwindow.h"
 #include "shell/fugueicon.h"
+#include "shell/urlopener.h"
 
 int clientMain(int argc, char** argv);   // app/main.cpp
+bool takeRelaunch(std::vector<std::string>* args);   // app/main.cpp
+bool clientInterrupted();                            // app/main.cpp
+bool linkClientSpawned();                            // app/main.cpp
 
 namespace {
 using namespace fugue;
@@ -55,8 +66,15 @@ const char* kPagerUsage =
     "  -list               print the saved server list and this box's readiness checklist, then exit\n"
     "  -login              sign in: fetch the account's key block from the hub (password: $FUGUE_BYOND_PASSWORD or prompt; stored nowhere)\n"
     "  -keytxt <path>      key.txt to use for this run\n"
+#ifdef _WIN32
+    "  -install-desktop    register Fugue as this user's byond:// handler (HKCU only; no Start menu shortcut)\n"
+#elif defined(__APPLE__)
+    "                      on macOS, copy Fugue.app to Applications and open it to register byond:// links\n"
+#else
     "  -install-desktop    add Fugue (io.github.toomykins.Fugue.desktop + its icon) to this user's menu and make it the byond:// handler\n"
     "                      (writes under $XDG_DATA_HOME only)\n"
+#endif
+    "  --url <link>        join one clicked byond:// link; it must be the only argument (the Windows link handler)\n"
     "  --                  everything after is passed to the client verbatim\n";
 
 struct PagerOpts {
@@ -70,6 +88,10 @@ struct PagerOpts {
 
 PagerOpts parsePagerArgs(const std::vector<std::string>& a) {
     PagerOpts o;
+    if (!a.empty() && a[0] == "--url") {
+        if (auto u = pager::handlerUrl(a, &o.bad)) o.join = *u;
+        return o;
+    }
     for (size_t i = 0; i < a.size(); i++) {
         std::string s = a[i];
         if (s == "--") { o.pass.assign(a.begin() + long(i) + 1, a.end()); break; }
@@ -107,12 +129,23 @@ PagerOpts parsePagerArgs(const std::vector<std::string>& a) {
 
 // The password prompt for headless -login: echo off on the controlling terminal (via stty).
 std::string readPassword() {
+#ifdef _WIN32
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD old = 0;
+    bool tty = GetConsoleMode(input, &old) != 0;
+    if (tty && !SetConsoleMode(input, old & ~ENABLE_ECHO_INPUT)) return {};
+#else
     termios old{};
     bool tty = ::tcgetattr(STDIN_FILENO, &old) == 0;
     if (tty) { termios t = old; t.c_lflag &= ~tcflag_t(ECHO); ::tcsetattr(STDIN_FILENO, TCSANOW, &t); }
+#endif
     std::string line;
     for (int c; (c = std::fgetc(stdin)) != EOF && c != '\n';) line.push_back(char(c));
+#ifdef _WIN32
+    if (tty) { SetConsoleMode(input, old); std::fputc('\n', stderr); }
+#else
     if (tty) { ::tcsetattr(STDIN_FILENO, TCSANOW, &old); std::fputc('\n', stderr); }
+#endif
     while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
     return line;
 }
@@ -148,6 +181,10 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     const std::string self = QCoreApplication::applicationFilePath().toStdString();
 
     if (o.install) {
+#ifdef __APPLE__
+        std::fprintf(stderr, "pager: on macOS, copy Fugue.app to Applications and open it to register byond:// links.\n");
+        return 1;
+#endif
         auto r = pager::installDesktop(self, fugue::shell::fugueIconPngs());   // Fugue's icon into hicolor (shell/fugueicon.h)
         if (!r.ok) { std::fprintf(stderr, "pager: install-desktop: %s\n", r.err.c_str()); return 1; }
         std::printf("wrote %s -> %s\n", r.desktopPath.c_str(), self.c_str());
@@ -240,7 +277,11 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     QProcess* child = nullptr;
     auto stopChild = [&] {
         if (child && child->state() != QProcess::NotRunning) {
+#ifdef _WIN32
+            child->terminate();
+#else
             ::kill(pid_t(child->processId()), SIGINT);   // a clean disconnect lets the same account straight back in
+#endif
             if (!child->waitForFinished(4000)) child->kill();
         }
     };
@@ -251,7 +292,11 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     auto stopWarmer = [&] {
         if (warmer && warmer->state() != QProcess::NotRunning) {
             warmCancelled = true;
+#ifdef _WIN32
+            warmer->terminate();
+#else
             ::kill(pid_t(warmer->processId()), SIGINT);
+#endif
             if (!warmer->waitForFinished(3000)) warmer->kill();
         }
     };
@@ -453,6 +498,21 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     });
     QObject::connect(app.get(), &QCoreApplication::aboutToQuit, &win, stopChild);
     QObject::connect(app.get(), &QCoreApplication::aboutToQuit, &win, stopWarmer);   // a download in progress keeps what arrived
+    // A link opened while the pager runs joins like the Join button, and like it is refused while a game runs.
+    auto openLink = [&](const QUrl& url) {
+        win.raise();
+        win.activateWindow();
+        if (child && child->state() != QProcess::NotRunning) { win.setStatus("Close the game before joining another server.", true); return; }
+        std::string error;
+        auto addr = pager::parseTarget(url.toString(QUrl::FullyEncoded).toStdString(), &error);
+        if (!addr) { win.setStatus(QString::fromStdString(error), true); return; }
+        emit win.joinRequested(QString::fromStdString(*addr), false, QString());
+    };
+#ifdef Q_OS_MACOS
+    fugue::shell::UrlOpener urlOpener(&win, openLink);
+#else
+    (void)openLink;
+#endif
     win.show();
     // Signed out (and not a remembered guest), the Sign in window opens over the pager. With "Sign in automatically"
     // off, a saved account waits there to be confirmed. An -account override is not held.
@@ -479,6 +539,11 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#ifdef Q_OS_MACOS
+    // BYOND's CTRL macros refer to the physical Control key, not Command.
+    QCoreApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
+#endif
+    const auto started = std::chrono::steady_clock::now();
     // Mode selection: pager/dsargv.h chooseMode. Installed as dreamseeker (a symlink or copy, any case), the whole
     // command line is DreamSeeker's, so the mode is the client even in a release build.
     std::vector<std::string> args;
@@ -492,5 +557,24 @@ int main(int argc, char** argv) {
     std::vector<char*> cargv{argv[0]};
     for (auto& s : rest) cargv.push_back(s.data());
     cargv.push_back(nullptr);
-    return clientMain(int(cargv.size()) - 1, cargv.data());
+    const int rc = clientMain(int(cargv.size()) - 1, cargv.data());
+    std::vector<std::string> next;
+    if (!takeRelaunch(&next)) return rc;
+    // The old window's helper processes are reaped first, or they stay zombies of the new run. Worlds that link to each
+    // other hop this client at most once a second.
+#ifndef _WIN32
+    for (auto until = std::chrono::steady_clock::now() + std::chrono::seconds(2); std::chrono::steady_clock::now() < until;) {
+        pid_t r = ::waitpid(-1, nullptr, WNOHANG);
+        if (r < 0) break;
+        if (r == 0) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+#endif
+    std::this_thread::sleep_until(started + std::chrono::seconds(1));
+    if (clientInterrupted()) return rc;
+    std::string err;
+    std::vector<std::string> env;
+    if (linkClientSpawned()) env.push_back("FUGUE_LINK_CLIENT=1");   // the cap holds across hops
+    if (fugue::pager::runSelf(argv[0], next, false, &err, env)) return rc;   // Windows starts the next run instead of exec
+    std::fprintf(stderr, "[app] could not join the linked world: %s\n", err.c_str());
+    return rc;
 }

@@ -1,4 +1,5 @@
 #include "app/sessionworker.h"
+#include "net/guest.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -7,6 +8,7 @@
 #include <set>
 #include <cstring>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -21,6 +23,7 @@
 #include "model/verbmenu.h"
 #include "model/world.h"
 #include "net/input.h"
+#include "net/reconnect.h"
 #include "proto/enc_c2s_0002_input.h"
 #include "render/mousechain.h"
 #include "render/hittest.h"
@@ -73,7 +76,7 @@ shell::StatView buildStatView(const model::Session& m, render::ResStore& res, in
             shell::StatRowView r{QString::fromStdString(l.name), QString::fromStdString(model::statText(w, l)), click, {}};
             std::vector<uint8_t> px;
             int cell = model::iconSizeOf(w);
-            if (parsed && sv.isAtom() && render::statRowIcon(m, res, sv.appid, cell, clockNs, px))
+            if (parsed && sv.isAtom() && render::statRowIcon(m, res, sv.appid, cell, clockNs, px, l.icon.ns))
                 r.icon = QImage(px.data(), cell, cell, cell * 4, QImage::Format_RGBA8888).copy();
             v.rows.append(r);
         }
@@ -87,9 +90,8 @@ void SessionWorker::post(Job j) {
     if (inbox_.size() < 4096) inbox_.push_back(std::move(j));   // bounded, so a stalled session cannot grow it without limit
 }
 void SessionWorker::postMouse(const fugue::shell::MapPointer& p, bool rightClickToWire, const std::string& control) { post(MouseJob{p, rightClickToWire, control}); }
-void SessionWorker::postCommand(const QString& line) { post(CmdJob{line.toStdString()}); }
-void SessionWorker::postMove(int dir, bool down) { post(MoveJob{dir, down}); }
-void SessionWorker::postStockMove(int dir) { post(MoveJob{dir, true, true}); }
+void SessionWorker::postCommand(const QString& line, bool promptNull) { post(CmdJob{line.toStdString(), promptNull}); }
+void SessionWorker::postStockMove(int dir) { post(MoveJob{dir}); }
 void SessionWorker::postTopic(const QString& href) { post(TopicJob{href.toStdString()}); }
 void SessionWorker::postMenuQuery(const fugue::shell::MapPointer& p, const QPoint& globalPos) { post(MenuJob{p, globalPos}); }
 void SessionWorker::postAtomVerb(quint16 verbId, quint8 kind, quint32 ref, bool viaArgument, const QString& atom) {
@@ -99,6 +101,7 @@ void SessionWorker::postPromptAnswer(quint32 id, bool alert, const QString& text
 void SessionWorker::postPromptCancel(quint32 id, bool alert) { post(PromptJob{id, alert, true, {}}); }
 void SessionWorker::postArgAnswer(quint32 id, const QString& text) { post(ArgJob{id, false, text.toStdString()}); }
 void SessionWorker::postArgCancel(quint32 id) { post(ArgJob{id, true, {}}); }
+void SessionWorker::postArgNone(quint32 id) { post(ArgJob{id, false, {}, true}); }
 void SessionWorker::postStatTab(int index) { post(StatTabJob{index}); }
 void SessionWorker::postStatRow(int row, const std::string& control, const std::string& button, int mods, bool dbl, bool icon, int iconX,
                                 int iconY) {
@@ -106,8 +109,59 @@ void SessionWorker::postStatRow(int row, const std::string& control, const std::
 }
 
 void SessionWorker::run() {
-    auto log = [this](const std::string& m) { std::fprintf(stderr, "[session] %s\n", m.c_str()); };
-    net::Session s(cfg_, log);
+    std::string dir = cfg_.stateDir.empty() ? fugue::net::defaultStateDir() : cfg_.stateDir;
+    if (!dir.empty()) {
+        // Status also goes to files, since a desktop-menu launch has no terminal (audio/note.h).
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        std::string nerr;
+        if (!audio::setNoteFile(dir + "/audio.log", &nerr)) std::fprintf(stderr, "[session] audio status file: %s\n", nerr.c_str());
+        sessionLog_ = dir + "/session.log";
+    }
+    auto log = [](const std::string& m) { std::fprintf(stderr, "[session] %s\n", m.c_str()); };
+    std::unique_ptr<net::Session> s;
+    bool sameConnection = false;
+    for (bool first = true;; first = false) {
+        reconnect_ = false;
+        if (!sameConnection) s = std::make_unique<net::Session>(cfg_, log);
+        const net::SessionEnding e = runSession(*s, first, sameConnection);
+        if (stop_) return;
+        const net::ReconnectStep step = net::reconnectStep(e, first, reconnect_);
+        sameConnection = step.sameConnection;
+        if (!sameConnection) s->close();
+        for (const QString& l : QString::fromStdString(step.message).split('\n', Qt::SkipEmptyParts)) emit localOutput(l);
+        int ms = step.delayMs;
+        if (ms < 0) {   // only .reconnect starts another
+            while (!stop_ && !reconnect_) QThread::msleep(50);
+        } else {
+            for (auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms); !stop_ && !reconnect_ && std::chrono::steady_clock::now() < end;)
+                QThread::msleep(50);
+        }
+        if (stop_) return;
+        if (reconnect_) sameConnection = false;
+    }
+}
+
+void SessionWorker::noteSessionEnd(const std::string& line) {
+    std::fprintf(stderr, "[session] ended %s\n", line.c_str());
+    if (sessionLog_.empty()) return;
+    std::error_code ec;
+    const char* mode = std::filesystem::file_size(sessionLog_, ec) > (1u << 20) ? "w" : "a";
+    if (std::FILE* f = std::fopen(sessionLog_.c_str(), mode)) {
+        std::time_t t = std::time(nullptr);
+        char ts[32] = "";
+        if (std::tm* tm = std::localtime(&t)) std::strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", tm);
+        std::fprintf(f, "%s %s:%u %s\n", ts, cfg_.host.c_str(), unsigned(cfg_.port), line.c_str());
+        std::fclose(f);
+    }
+}
+
+net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool afterReboot) {
+    auto log = [](const std::string& m) { std::fprintf(stderr, "[session] %s\n", m.c_str()); };
+    {
+        std::lock_guard<std::mutex> g(inMu_);
+        inbox_.clear();
+    }
     s.setManualPrompts(true);       // the GUI's PromptHost answers alert()/input(); never auto-cancel them
     model::PromptBook prompts;      // pending dialogs
     // Missing-verb-argument dialogs held for the GUI, by a client-local id. An entry leaves on the dialog's one outcome
@@ -123,9 +177,9 @@ void SessionWorker::run() {
     struct ChoiceFetch { bool verbArg; quint32 id; std::chrono::steady_clock::time_point deadline; bool abandoned = false; };
     std::deque<ChoiceFetch> choiceFetches;
     std::map<quint32, shell::PromptRequest> argHeld;   // verb-argument dialogs held for their 0x003f (by pendingArgs id)
-    // A list argument's choices as the 0x003f sent them: the listbox shows them unescaped, and the 0x0039 pick
-    // carries the server's own string (net::ListResolve).
-    std::map<quint32, std::vector<std::string>> argRawChoices;
+    // Verb-argument dialogs whose listbox the 0x003f filled: the listbox shows the choices unescaped and without
+    // text-macro markers (model::parseExpansionReply), and a pick goes back in the 0x0039 as net::listPickText.
+    std::set<quint32> argServerLists;
     // List resolves in flight (c2s 0x0039 sent, s2c 0x0039 awaited), in SEND order: the answer names no request, so
     // the oldest owns it. Stock DreamSeeker sends the verb when the answer arrives and not before
     // (net::InputModel::completeResolve). An input() in list's pick resolves on the same s2c 0x0039
@@ -194,17 +248,6 @@ void SessionWorker::run() {
     };
     // Sound (s2c 0x006d) bypasses the model: the feed resolves its ordinal against the 0x000e list as it stands after
     // this frame's ingest, and reads the bytes from the resource store.
-    {
-        // Audio status also goes to a file, since a desktop-menu launch has no terminal (audio/note.h).
-        std::string dir = cfg_.stateDir;
-        if (dir.empty()) if (const char* h = std::getenv("HOME"); h && *h) dir = std::string(h) + "/.fugue";
-        std::string nerr;
-        if (!dir.empty()) {
-            std::error_code ec;
-            std::filesystem::create_directories(dir, ec);
-            if (!audio::setNoteFile(dir + "/audio.log", &nerr)) log("audio status file: " + nerr);
-        }
-    }
     audio::Player player(audioSpec_);
     audio::SoundFeed sounds(player, audio::SoundFeed::Env{
         [&](uint32_t ord, uint32_t& id) {
@@ -241,10 +284,10 @@ void SessionWorker::run() {
                         argHeld.erase(it);
                         std::vector<std::string> ch;
                         if (model::parseExpansionReply(body, ch)) for (const std::string& c : ch) r.choices << QString::fromStdString(net::unescapeVerbText(c));
-                        argRawChoices[r.id] = ch;
+                        argServerLists.insert(r.id);
                         std::string raw;
                         for (const std::string& c : ch) raw += (raw.empty() ? "" : "|") + c;
-                        std::fprintf(stderr, "[prompt] verb-argument id=%u: %d choices from 0x003f (as sent: %s)\n", r.id, int(r.choices.size()), raw.substr(0, 200).c_str());
+                        std::fprintf(stderr, "[prompt] verb-argument id=%u: %d choices from 0x003f (%s)\n", r.id, int(r.choices.size()), raw.substr(0, 200).c_str());
                         emit promptRequested(r);
                     }
                 }
@@ -288,6 +331,22 @@ void SessionWorker::run() {
                 QStringList args;
                 for (const std::string& a : pc.args) args << QString::fromStdString(a);
                 emit pageCall(QString::fromStdString(pc.target), QString::fromStdString(pc.fn), args);
+            }
+        } else if (type == 0x0079) {
+            model::LinkFrame lf;
+            if (model::parseLinkFrame(body, lf)) {
+                if (lf.kind == model::LinkFrame::Topic) {
+                    bool ok = s.sendInput(proto::enc::kTopicMsg, proto::enc::encodeTopic(lf.url));
+                    std::fprintf(stderr, "[link] topic %s %s\n", lf.url.substr(0, 120).c_str(), ok ? "sent" : "NOT SENT");
+                } else if (lf.kind == model::LinkFrame::External) {
+                    std::fprintf(stderr, "[link] open %s\n", lf.url.substr(0, 200).c_str());
+                    emit externalLink(QString::fromStdString(lf.url));
+                } else if (lf.kind == model::LinkFrame::World) {
+                    std::fprintf(stderr, "[link] world %s\n", lf.url.substr(0, 200).c_str());
+                    emit worldLink(QString::fromStdString(lf.url));
+                } else {
+                    std::fprintf(stderr, "[link] scheme not opened: %s\n", lf.url.substr(0, 200).c_str());
+                }
             }
         } else if (type == 0x00fe) {
             for (auto& r : model::parseBrowseRscFrame(body)) if (!declareRsc(r)) rscUnresolved.push_back(r);
@@ -333,6 +392,9 @@ void SessionWorker::run() {
                 rsc_->alias(alias, id);
                 log("browse_file \"" + name + "\" filed as " + alias);
             }
+        } else if (std::string ctl; model::outputFileControl(s.resources().offerParams(id), ctl)) {
+            log("output_file \"" + name + "\" -> control " + ctl + " (" + std::to_string(data.size()) + " bytes)");
+            emit outputFile(QString::fromStdString(ctl), QString::fromStdString(std::string(reinterpret_cast<const char*>(data.data()), data.size())));
         }
         std::string err;
         uint32_t claimed = id;
@@ -346,24 +408,46 @@ void SessionWorker::run() {
         feed.submitWinget(q, nowMs(), winReply);
     });
     s.setMapStyleProvider([&] { return feed.live().defaultMapStyle(); });
-    std::string err = s.connectAndLogin();
-    emit loggedIn(QString::fromStdString(err));
-    if (!err.empty()) return;
+    net::SessionEnding out;
+    out.afterReboot = afterReboot;
+    std::string err = afterReboot ? s.relogin() : s.connectAndLogin();
+    if (first) emit loggedIn(QString::fromStdString(err));
+    out.connected = s.stats().connected;
+    if (!err.empty()) {
+        out.why = err;
+        noteSessionEnd("at login: " + err);
+        return out;
+    }
+    out.loggedIn = true;
 
     uint64_t skinLoadsSeen = 0;
     uint64_t chatSeen = 0;
     shell::StatView lastStatView;
     QString lastName;
+    int64_t lastTickNs = 0, lastFrameNs = 0;
     std::string lastAssembleErr;
     std::map<std::string, std::string> lastAuxErr;   // per secondary map (render::assembleSecondaryMap)
     bool dlLogged = false;
+    auto flushChat = [&] {
+        const model::World& w = m.world();
+        if (w.chatTotal == chatSeen) return;
+        size_t take = size_t(std::min<uint64_t>(w.chatTotal - chatSeen, w.chatHtml.size()));
+        QStringList l;
+        for (size_t i = w.chatHtml.size() - take; i < w.chatHtml.size(); i++) l << QString::fromStdString(w.chatHtml[i]);
+        chatSeen = w.chatTotal;
+        emit chatLines(l);
+    };
     // ---- input: everything below runs on this thread, the socket's only writer ----
     // A verb's candidate srcs (model::verbSrcCandidates): client, own mob, the movables it can see, usr.contents,
     // client.screen, turfs in view, the own area. With one candidate the verb is sent; with several, the player is asked
     // (srcChoice), as stock DreamSeeker does.
     auto srcFor = [&](uint16_t id) {
         std::vector<net::SrcCandidate> out;
-        for (const model::VerbSrcCandidate& c : model::verbSrcCandidates(m.world(), id)) out.push_back({{c.src.kind, c.src.ref}, c.name});
+        const model::World& w = m.world();
+        for (const model::VerbSrcCandidate& c : model::verbSrcCandidates(w, id)) {
+            bool own = c.src.kind == proto::enc::kVerbSrcClient || (c.src.kind == proto::enc::kVerbSrcMob && w.haveSelf && c.src.ref == w.selfRef);
+            out.push_back({{c.src.kind, c.src.ref}, c.name, !own});
+        }
         return out;
     };
     // A typed atom argument's candidates (model::verbArgCandidates; net::InputModel::ArgResolver): the atoms a view,
@@ -427,9 +511,11 @@ void SessionWorker::run() {
             pr.message = QString::fromStdString(ap.message);
             pr.typeMask = ap.kind == net::ArgPrompt::Message ? model::kInputMessage : ap.kind == net::ArgPrompt::Num ? model::kInputNum : model::kInputText;
             pr.inList = ap.kind == net::ArgPrompt::List;
+            pr.allowNull = ap.allowNull;
+            for (const std::string& c : ap.choices) pr.choices << QString::fromStdString(c);
             pendingArgs[pr.id] = *r.missing;
             std::fprintf(stderr, "[input] command \"%s\": argument %zu missing - prompting \"%s\"\n", line.c_str(), r.missing->index + 1, ap.title.c_str());
-            if (pr.inList) {
+            if (pr.inList && !r.missing->atoms) {
                 // The listbox is filled by a 0x003f round trip addressed by the argument's ordinal. The dialog is held until
                 // it answers (or kChoicesWaitMs passes), so it opens complete, as an input() in list does.
                 bool ok = s.sendInput(net::kVerbExpansionMsg, net::encodeVerbExpansionRequest(*r.missing));
@@ -442,7 +528,9 @@ void SessionWorker::run() {
             }
             return;
         }
-        if (!r.error.empty()) {
+        if (!r.error.empty() && r.quiet) {
+            std::fprintf(stderr, "[input] command \"%s\" not sent: %s\n", line.c_str(), r.error.c_str());
+        } else if (!r.error.empty()) {
             std::fprintf(stderr, "[input] command \"%s\" refused locally: %s\n", line.c_str(), r.error.c_str());
             // The refusal is two output lines, as stock DreamSeeker prints them.
             for (const QString& l : QString::fromStdString(r.error).split('\n')) emit localOutput(l);
@@ -452,7 +540,9 @@ void SessionWorker::run() {
             std::fprintf(stderr, "[input] command \"%s\": 0x%04x len=%zu %s\n", line.c_str(), f.type, f.body.size(), ok ? "sent" : "NOT SENT");
         }
     };
-    auto runCommand = [&](const std::string& line) { runResult(line, im.verbCommand(line, m.world().haveSelf, srcFor, argAtoms)); };
+    auto runCommand = [&](const std::string& line, bool promptNull) {
+        runResult(line, im.verbCommand(line, m.world().haveSelf, srcFor, argAtoms, promptNull));
+    };
     auto drainInbox = [&] {
         std::deque<Job> jobs;
         { std::lock_guard<std::mutex> g(inMu_); jobs.swap(inbox_); }
@@ -473,19 +563,12 @@ void SessionWorker::run() {
                 std::string what = std::string("mouse-") + (mj->p.kind == K::Press ? "press" : mj->p.kind == K::Move ? "move" : "release") + "(" + chain.note() + ")";
                 sendBodies(what.c_str(), fr);
             } else if (auto* mv = std::get_if<MoveJob>(&j)) {
-                net::FrameOut f;
-                if (mv->stock) {
-                    f = im.stockMoveFrame(mv->dir);
-                    bool ok = s.sendInput(f.type, f.body);
-                    std::fprintf(stderr, "[input] move dir=%d: 0x%04x len=%zu %s (sub 0: stock move command)\n", mv->dir, f.type, f.body.size(),
-                                 ok ? "sent" : "NOT SENT");
-                } else if (im.moveFrame(mv->dir, mv->down, m.world().haveSelf, m.world().selfRef, f)) {
-                    bool ok = s.sendInput(f.type, f.body);
-                    std::fprintf(stderr, "[input] move dir=%d %s: 0x%04x len=%zu %s (%s)\n", mv->dir, mv->down ? "down" : "up", f.type, f.body.size(),
-                                 ok ? "sent" : "NOT SENT", im.moveVerb() ? "movement verb" : "sub 0");
-                }
+                net::FrameOut f = net::stockMoveFrame(mv->dir);
+                bool ok = s.sendInput(f.type, f.body);
+                std::fprintf(stderr, "[input] move dir=%d: 0x%04x len=%zu %s (sub 0: stock move command)\n", mv->dir, f.type, f.body.size(),
+                             ok ? "sent" : "NOT SENT");
             } else if (auto* cj = std::get_if<CmdJob>(&j)) {
-                runCommand(cj->line);
+                runCommand(cj->line, cj->promptNull);
             } else if (auto* aj = std::get_if<ArgJob>(&j)) {
                 if (auto sc = pendingSrcs.find(aj->id); sc != pendingSrcs.end()) {
                     net::SrcChoice choice = std::move(sc->second);
@@ -496,21 +579,20 @@ void SessionWorker::run() {
                     for (const net::SrcCandidate& c : choice.candidates)
                         if (c.name == aj->text) { picked.push_back(c); break; }
                     if (picked.empty()) { std::fprintf(stderr, "[input] \"%s\": \"%s\" is not in the list - nothing sent\n", choice.title.c_str(), aj->text.c_str()); continue; }
-                    runResult(choice.line + " <- src \"" + aj->text + "\"", im.verbCommand(choice.line, m.world().haveSelf, [&](uint16_t) { return picked; }, argAtoms));
+                    runResult(choice.line + " <- src \"" + aj->text + "\"",
+                              im.verbCommand(choice.line, m.world().haveSelf, [&](uint16_t) { return picked; }, argAtoms, choice.promptNull));
                     continue;
                 }
                 auto it = pendingArgs.find(aj->id);
                 if (it == pendingArgs.end()) continue;
                 net::MissingArg miss = std::move(it->second);
                 pendingArgs.erase(it);
-                std::vector<std::string> raw;
-                if (auto rc = argRawChoices.find(aj->id); rc != argRawChoices.end()) { raw = std::move(rc->second); argRawChoices.erase(rc); }
+                bool serverList = argServerLists.erase(aj->id) > 0;
                 if (aj->cancel) { std::fprintf(stderr, "[input] %s argument %zu cancelled - nothing sent\n", miss.verb.name.c_str(), miss.index + 1); continue; }
+                if (aj->none) { runResult(miss.line + " <- None", net::InputModel::completeNull(miss, m.world().haveSelf, argAtoms)); continue; }
                 // The value is the argument, verbatim: it is never re-parsed as a typed line, whose quote rules would
-                // eat a leading ' or ". A listbox pick goes back as the 0x003f's own string (argRawChoices).
-                std::string value = aj->text;
-                for (const std::string& c : raw)
-                    if (net::unescapeVerbText(c) == aj->text) { value = c; break; }
+                // eat a leading ' or ". A pick from a 0x003f listbox goes back as net::listPickText.
+                std::string value = serverList ? net::listPickText(aj->text) : aj->text;
                 runResult(miss.line + " <- \"" + aj->text + "\"", net::InputModel::completeArg(miss, value, m.world().haveSelf, argAtoms));
             } else if (auto* qj = std::get_if<MenuJob>(&j)) {
                 // Right-click verb menu: hit-test the scene the player saw, then apply the model's eligibility rules
@@ -566,10 +648,16 @@ void SessionWorker::run() {
                     if (t.kind == model::kTargetTurf) { t.x = int(aj->ref & 0xffff) + 1; t.y = int(aj->ref >> 16) + 1; }
                     std::string text = net::atomArgumentText(aj->atom, model::dmRefOf(m.world(), t));
                     runResult(ve->second.name + " <- menu \"" + text + "\"",
-                              net::InputModel::atomArgument(ve->second, net::VerbSrc{vs.kind, vs.ref}, aj->kind, aj->ref, text, m.world().haveSelf));
+                              net::InputModel::atomArgument(ve->second, net::VerbSrc{vs.kind, vs.ref}, aj->kind, aj->ref, text, m.world().haveSelf,
+                                                            aj->atom, argAtoms));
+                    continue;
+                } else if (auto ve = im.verbs().find(aj->verbId); ve != im.verbs().end()) {
+                    // The atom's own verb: the atom is the src (kind 1 obj / 2 mob / 3 turf), and its arguments are
+                    // prompted for as from the stat panel.
+                    runResult(ve->second.name + " <- menu on \"" + aj->atom + "\"",
+                              net::InputModel::atomVerb(ve->second, net::VerbSrc{aj->kind, aj->ref}, aj->atom, m.world().haveSelf, argAtoms));
                     continue;
                 } else {
-                    // The atom's own verb: the atom is the src (kind 1 obj / 2 mob / 3 turf).
                     body = proto::enc::encodeVerb(aj->verbId, aj->kind, aj->ref, {});
                 }
                 bool ok = s.sendInput(proto::enc::kClientCmd, body);
@@ -645,7 +733,7 @@ void SessionWorker::run() {
             runResult(rv.line, net::InputModel::completeResolve(rv.r, kind, value, m.world().haveSelf, argAtoms));
         }
     };
-    while (!stop_ && !s.stats().serverClosed) {
+    while (!stop_ && !reconnect_ && !s.stats().serverClosed && !s.stats().rebootRequested) {
         drainInbox();
         drainListReplies();
         for (size_t i = 0; i < rscUnresolved.size();) { if (declareRsc(rscUnresolved[i])) rscUnresolved.erase(rscUnresolved.begin() + long(i)); else i++; }
@@ -722,6 +810,11 @@ void SessionWorker::run() {
         if (feed.counters().skinLoads != skinLoadsSeen) { skinLoadsSeen = feed.counters().skinLoads; emit skinLoaded(); }
         syncBrowseNames();
         if (QString n = QString::fromStdString(w.name); n != lastName) { lastName = n; emit worldName(n); }
+        if (w.tickNanos != lastTickNs || w.frameNanos != lastFrameNs) {
+            lastTickNs = w.tickNanos;
+            lastFrameNs = w.frameNanos;
+            emit frameTiming(lastTickNs, lastFrameNs);
+        }
         // The main window icon is re-resolved when its value changes, and on every tick until its file arrives.
         if (skin::IconResolver::Out io; icon.update(feed.live().mainIcon(), io)) {
             log("window icon \"" + io.value + "\" -> " + (!io.bytes.empty() ? std::to_string(io.bytes.size()) + " bytes" : std::string(io.none ? "none" : "not here yet")));
@@ -729,14 +822,7 @@ void SessionWorker::run() {
         }
         s.resources().prioritize(icon.takeWanted());
 
-        if (w.chatTotal != chatSeen) {
-            uint64_t fresh = w.chatTotal - chatSeen;
-            size_t take = size_t(std::min<uint64_t>(fresh, w.chatHtml.size()));
-            QStringList l;
-            for (size_t i = w.chatHtml.size() - take; i < w.chatHtml.size(); i++) l << QString::fromStdString(w.chatHtml[i]);
-            chatSeen = w.chatTotal;
-            emit chatLines(l);
-        }
+        flushChat();
         // Audio status is logged only when it changes.
         if (now >= nextAudioLog) {
             nextAudioLog = now + std::chrono::seconds(5);
@@ -778,8 +864,14 @@ void SessionWorker::run() {
         }
 
     }
-    if (s.stats().serverClosed) emit status("server closed: " + QString::fromStdString(s.stats().closeReason));
-    s.close();
+    flushChat();   // a closing 0x0000's line arrives with the close
+    const net::SessionStats& st = s.stats();
+    out.accepted = st.sawSelfRef;
+    out.reboot = st.rebootRequested;
+    out.refused = m.world().sessionEnd.seen;
+    out.why = out.refused ? m.world().sessionEnd.text : st.closeReason;
+    noteSessionEnd(s.endSummary() + (out.refused ? "; the server said: " + out.why : ""));
+    return out;
 }
 
 bool SessionWorker::spaceCompletion(const QString& line, QString& out) const {

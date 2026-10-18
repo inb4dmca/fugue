@@ -1,7 +1,7 @@
 // Player macro lists (skin/usermacros.h): the Client > Macros layer.
 // File format: the bytes stock DreamSeeker 516.1684 writes to cfg/macros.dmf parse, and what we write reads back identically in the same shape.
 // Editing: the entry editor's commit rule, including that a blank key or command deletes.
-// Precedence: skin set > this game's list > global list; a key the skin binds is in use.
+// Precedence: skin set > this game's list > global list; a key the skin binds is in use. Any: which spec answers a key.
 // Storage: paths under the state dir, with a save/load round trip.
 #include <QTemporaryDir>
 #include <QtTest>
@@ -125,6 +125,125 @@ private slots:
         MacroSet noGame;
         QCOMPARE(QString::fromStdString(lookupLayered(&skin, noGame, global, key("F6"), false)->command), QString("hello"));
         QCOMPARE(QString::fromStdString(lookupLayered(nullptr, noGame, global, key("F1"), false)->command), QString("zap user"));
+    }
+    void anyAnswersEveryKeyWithTheBestFittingModifiers() {
+        auto set = [](std::initializer_list<const char*> specs) {
+            MacroSet s;
+            for (const char* sp : specs) editUserMacro(s, "", sp, sp);
+            return s;
+        };
+        auto any = [](const MacroSet& s, const char* k, bool repeat = false) {
+            const MacroEntry* e = s.findAny(key(k), repeat);
+            return e ? QString::fromStdString(e->spec) : QString("<none>");
+        };
+        MacroSet a = set({"Any", "SHIFT+Any", "CTRL+SHIFT+Any", "CTRL+ALT+Any"});
+        QCOMPARE(any(a, "Q"), QString("Any"));
+        QCOMPARE(any(a, "CTRL+Q"), QString("Any"));
+        QCOMPARE(any(a, "SHIFT+Q"), QString("SHIFT+Any"));
+        QCOMPARE(any(a, "CTRL+SHIFT+Q"), QString("CTRL+SHIFT+Any"));
+        QCOMPARE(any(a, "SHIFT+ALT+Q"), QString("SHIFT+Any"));
+        QCOMPARE(any(a, "CTRL+SHIFT+ALT+Q"), QString("CTRL+ALT+Any"));
+        MacroSet b = set({"Any", "CTRL+Any", "SHIFT+Any", "ALT+Any"});
+        QCOMPARE(any(b, "CTRL+SHIFT+Q"), QString("CTRL+Any"));
+        QCOMPARE(any(b, "SHIFT+ALT+Q"), QString("ALT+Any"));
+        QCOMPARE(any(b, "CTRL+ALT+Q"), QString("ALT+Any"));
+        QCOMPARE(any(b, "CTRL+SHIFT+ALT+Q"), QString("ALT+Any"));
+        MacroSet c = set({"Any+REP", "ALT+Any", "CTRL+SHIFT+Any"});
+        QCOMPARE(any(c, "CTRL+SHIFT+ALT+Q"), QString("CTRL+SHIFT+Any"));
+        QCOMPARE(any(c, "Q"), QString("Any+REP"));
+        QCOMPARE(any(c, "Q", true), QString("<none>"));  // Any never repeats, +REP or not
+        MacroSet d = set({"Any", "Any+REP", "SHIFT+ALT+Any", "CTRL+SHIFT+Any"});
+        QCOMPARE(any(d, "Q"), QString("Any"));
+        QCOMPARE(any(d, "CTRL+SHIFT+ALT+Q"), QString("SHIFT+ALT+Any"));
+        MacroSet e = set({"Any+UP", "SHIFT+Any+UP"});
+        QCOMPARE(any(e, "SHIFT+Q+UP"), QString("Any+UP"));
+        QCOMPARE(any(set({"SHIFT+Any+UP"}), "SHIFT+Q+UP"), QString("<none>"));
+        // the key's own binding is found apart from Any
+        MacroSet f = set({"Any", "Z"});
+        QVERIFY(f.lookup(key("Z"), false));
+        QVERIFY(!f.lookup(key("Q"), false));
+        QCOMPARE(QString::fromStdString(lookupLayeredAny(&f, MacroSet{}, MacroSet{}, key("Q"), false)->spec), QString("Any"));
+        for (auto [canon, name] : {std::pair{"NORTH", "North"}, {"SHIFT", "Shift"}, {"CTRL", "Ctrl"}, {"NORTHWEST", "Northwest"},
+                                   {"BACK", "Back"}, {"F11", "F11"}, {"A", "A"}, {"[", "["}})
+            QCOMPARE(QString::fromStdString(anyKeyName(canon)), QString(name));
+    }
+    void ownBindingFallsBackToFewerModifiers() {
+        auto set = [](std::initializer_list<const char*> specs) {
+            MacroSet s;
+            for (const char* sp : specs) {
+                bool off = sp[0] == '!';
+                editUserMacro(s, "", sp + off, sp + off);
+                s.entries.back().disabled = off;
+            }
+            return s;
+        };
+        auto fire = [](const MacroSet& s, const char* k, bool repeat = false) {
+            const MacroEntry* e = lookupHeld({&s}, key(k), repeat);
+            return e ? QString::fromStdString(e->spec) : QString("<none>");
+        };
+        MacroSet z = set({"Z"});
+        for (const char* k : {"Z", "CTRL+Z", "SHIFT+Z", "ALT+Z", "CTRL+SHIFT+ALT+Z"}) QCOMPARE(fire(z, k), QString("Z"));
+        QCOMPARE(fire(z, "Q"), QString("<none>"));
+        MacroSet a = set({"SHIFT+Z", "CTRL+Z", "ALT+Z"});
+        QCOMPARE(fire(a, "Z"), QString("<none>"));
+        QCOMPARE(fire(a, "CTRL+SHIFT+Z"), QString("CTRL+Z"));
+        QCOMPARE(fire(a, "CTRL+ALT+Z"), QString("ALT+Z"));
+        QCOMPARE(fire(a, "SHIFT+ALT+Z"), QString("ALT+Z"));
+        QCOMPARE(fire(a, "CTRL+SHIFT+ALT+Z"), QString("ALT+Z"));
+        MacroSet b = set({"CTRL+SHIFT+Z", "ALT+Z", "Z"});
+        QCOMPARE(fire(b, "CTRL+Z"), QString("Z"));
+        QCOMPARE(fire(b, "CTRL+ALT+Z"), QString("ALT+Z"));
+        QCOMPARE(fire(b, "CTRL+SHIFT+ALT+Z"), QString("CTRL+SHIFT+Z"));
+        QCOMPARE(fire(set({"CTRL+SHIFT+Z", "SHIFT+ALT+Z", "CTRL+ALT+Z"}), "CTRL+SHIFT+ALT+Z"), QString("CTRL+ALT+Z"));
+        // releases: the +UP bindings, by the same order
+        MacroSet u = set({"Z", "Z+UP", "CTRL+Z", "SHIFT+Z+UP"});
+        QCOMPARE(fire(u, "CTRL+Z+UP"), QString("Z+UP"));
+        QCOMPARE(fire(u, "SHIFT+ALT+Z+UP"), QString("SHIFT+Z+UP"));
+        QCOMPARE(fire(set({"Z", "CTRL+Z+UP"}), "CTRL+SHIFT+Z+UP"), QString("CTRL+Z+UP"));
+        // repeats: a hold repeats if the combination that claims the press has a REP binding (repeats()); each repeat
+        // runs the first REP binding the modifiers held then reach
+        auto repeats = [](const MacroSet& s, const char* k) { return matchHeld({&s}, key(k)).rep != nullptr; };
+        MacroSet r = set({"Z+REP"});
+        QCOMPARE(fire(r, "CTRL+Z"), QString("Z+REP"));
+        QCOMPARE(fire(r, "CTRL+Z", true), QString("Z+REP"));
+        QVERIFY(repeats(r, "CTRL+Z"));
+        MacroSet r2 = set({"Z+REP", "CTRL+Z"});
+        QCOMPARE(fire(r2, "CTRL+Z"), QString("CTRL+Z"));
+        QVERIFY(!repeats(r2, "CTRL+Z"));
+        QVERIFY(repeats(r2, "Z"));
+        QCOMPARE(fire(r2, "CTRL+Z", true), QString("Z+REP"));
+        MacroSet both = set({"Z", "Z+REP"});
+        QCOMPARE(fire(both, "Z"), QString("Z"));
+        QVERIFY(repeats(both, "Z"));
+        QCOMPARE(fire(both, "Z", true), QString("Z+REP"));
+        MacroSet r3 = set({"Z", "CTRL+Z+REP"});
+        QCOMPARE(fire(r3, "CTRL+Z"), QString("CTRL+Z+REP"));
+        QCOMPARE(fire(r3, "SHIFT+Z", true), QString("<none>"));
+        MacroSet r4 = set({"CTRL+Z", "CTRL+Z+REP", "Z+REP"});
+        QCOMPARE(fire(r4, "CTRL+Z"), QString("CTRL+Z"));
+        QCOMPARE(fire(r4, "CTRL+Z", true), QString("CTRL+Z+REP"));
+        // a disabled binding is passed over
+        QCOMPARE(fire(set({"Z", "!CTRL+Z"}), "CTRL+Z"), QString("Z"));
+        QCOMPARE(fire(set({"Z", "!SHIFT+Z", "CTRL+Z"}), "CTRL+SHIFT+Z"), QString("CTRL+Z"));
+        QCOMPARE(fire(set({"!Z"}), "CTRL+Z"), QString("<none>"));
+        QCOMPARE(fire(set({"!CTRL+Z+REP", "Z+REP"}), "CTRL+Z", true), QString("Z+REP"));
+        QVERIFY(!repeats(set({"CTRL+Z", "!CTRL+Z+REP", "Z+REP"}), "CTRL+Z"));
+        QCOMPARE(fire(set({"!CTRL+Z", "CTRL+Z+REP", "Z"}), "CTRL+Z"), QString("CTRL+Z+REP"));
+        // with the player's lists: each combination is the skin's, then a list's, before fewer modifiers are tried
+        MacroSet skinZ = set({"Z"}), skinCQ = set({"CTRL+Q", "Z"}), skinOff = set({"!CTRL+Z", "Z", "!Q"}), none;
+        MacroSet global = set({"CTRL+Z", "Q"});
+        auto layered = [&](const MacroSet& s, const char* k) {
+            const MacroEntry* e = lookupLayered(&s, none, global, key(k), false);
+            return e ? QString::fromStdString(e->command) + (&s.entries.front() <= e && e <= &s.entries.back() ? "" : " (list)")
+                     : QString("<none>");
+        };
+        QCOMPARE(layered(skinZ, "CTRL+Z"), QString("CTRL+Z (list)"));
+        QCOMPARE(layered(skinZ, "CTRL+Q"), QString("Q (list)"));
+        QCOMPARE(layered(skinCQ, "CTRL+SHIFT+Q"), QString("CTRL+Q"));
+        QCOMPARE(layered(skinCQ, "Q"), QString("Q (list)"));
+        QCOMPARE(layered(skinOff, "CTRL+Z"), QString("Z"));
+        QCOMPARE(layered(skinOff, "Q"), QString("<none>"));
+        QCOMPARE(layered(skinOff, "CTRL+Q"), QString("<none>"));
     }
     void storage() {
         QCOMPARE(QString::fromStdString(userMacrosPath("/s", "")), QString("/s/macros.dmf"));

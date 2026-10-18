@@ -190,7 +190,7 @@ void BrowseHost::open(const QString& name0, const QString& params, const QString
     if (declared_ && declared_(name)) {
         pendingDocked_[name] = {params, html};
         if (hidden_ && hidden_(name)) {
-            // Held until a later winset is-visible=true hands it to the real control (adoptControl), but it runs now.
+            // It runs now, windowless; a later is-visible=true hands this same page to the control (takeHidden).
             openHidden(name, file, p, html);
             return;
         }
@@ -404,6 +404,23 @@ void BrowseHost::adoptControl(const QString& win, const QString& ctl, BrowserPan
     }
 }
 
+// A BROWSER control is one browser in stock DreamSeeker: showing a hidden one does not reload its page. vg's credits
+// rely on it: the page is set up while hidden and makes its own control visible.
+BrowserPane* BrowseHost::takeHidden(const QString& win, const QString& ctl) {
+    for (auto it = slots_.begin(); it != slots_.end(); ++it) {
+        const QString& n = it.key();
+        if (!it->hidden || !(n == ctl || n == win + "." + ctl || n.section('.', -1) == ctl)) continue;
+        it->hidden = false;
+        it->docked = true;
+        it->win = win;
+        pendingDocked_.remove(n);
+        controls_.append({win, ctl, it->pane});
+        LOGB("control \"%s\" created: it takes over the page that ran hidden\n", ctl.toUtf8().constData());
+        return it->pane;
+    }
+    return nullptr;
+}
+
 void BrowseHost::releaseControl(BrowserPane* pane) {
     for (int i = 0; i < controls_.size(); i++) if (controls_[i].pane == pane) { controls_.removeAt(i); break; }
     for (auto it = slots_.begin(); it != slots_.end();) { if (it->pane == pane && it->docked) it = slots_.erase(it); else ++it; }
@@ -590,6 +607,9 @@ QString BrowseHost::handleCall(BrowserPane* from, const model::ByondUrl& u) {
             if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) f.write(QJsonDocument(o).toJson());
         }
         js = jsCallback(cb, ret);
+    } else if (u.path.find_first_of(".:") != std::string::npos) {
+        LOGB("page link to another world: %s\n", u.raw.substr(0, 200).c_str());
+        emit worldLink(QString::fromStdString(u.raw));
     } else {
         QString sig = QString::fromStdString(u.path);
         if (!dropLogged_.contains("call:" + sig)) { dropLogged_.insert("call:" + sig); LOGB("page called byond://%s - a client-side call this client does not answer\n", u.path.c_str()); }

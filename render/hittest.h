@@ -48,11 +48,14 @@
 //                     mouse_opacity; the image's own mouse_opacity and alpha are ignored), named in the image's own icon
 //                     frame. An override image replaces the parent's shape (scene.cpp imagesOn).
 //
-// Not modelled (the scene stats count these): a HUD atom's overlay on another plane (the atom is ordered by its own
-// plane/layer as one unit), a plane master's mouse_opacity 2, its rule for client.screen objects on its plane,
-// slate/relay folding, render_source relays, maptext links (<a href>), animated appearances' mid-tween positions, and an
-// image on a parent at mouse_opacity 2 (whether the image's rectangle joins the parent's).
-// One documented choice: a HUD sprite is clipped to its screen_loc cell (it is drawn clipped, so it is hit-tested clipped).
+// Not modelled (the scene stats count these): HUD atoms ordered against each other by an overlay's plane (each atom is
+// one unit at its own plane/layer; against the map each layer goes by its own plane), a plane master's mouse_opacity 2,
+// its rule for client.screen objects on its plane, slate/relay folding, render_source relays, maptext links (<a href>),
+// animated appearances' mid-tween positions, and an image on a parent at mouse_opacity 2 (whether the image's rectangle
+// joins the parent's).
+// A HUD object is hit over everything it draws: a sprite larger than a tile, its pixel offsets and its attached client.images
+// are not clipped to the screen_loc cell. icon-x/icon-y count from the atom's own icon, so an overlay drawn 24 px east of it
+// answers icon-x 25..56.
 #pragma once
 #include <cstdint>
 #include <string>
@@ -90,21 +93,22 @@ struct HitFrame {
 
 struct HitLayer {
     SpritePtr sprite;
-    int x = 0, y = 0;            // top-left in the map image (HUD: inside the tile)
+    int x = 0, y = 0;            // top-left in the map image (HUD: inside the pass canvas)
     int atom = -1;               // index into HitScene::atoms
     HitFrame frame;              // map layers only
     bool own = false;            // the atom's OWN icon (not one of its overlays/underlays): see hittest.cpp covers()
-    double plane = 0;            // map layers: the (resolved) plane it is drawn on - where the HUD slots in (hitAt)
+    double plane = 0;            // the (resolved) plane it is drawn on: HUD and map layers meet by it (hitAt)
     bool maptext = false;        // a maptext box: answers only under mouse_opacity 2, never by its ink (see "maptext" above)
 };
 
 struct HitHud {
     int atom = -1;
     double plane = 0, layer = 0;                  // the screen atom's resolved plane and layer: its hit-test order
-    int tileW = 0, tileH = 0;
-    std::vector<HitLayer> layers;                 // draw order, tile coordinates
+    int tileW = 0, tileH = 0;                     // the hit canvas: the cell joined with every layer
+    int originX = 0, originY = 0;                 // the atom's own icon's bottom-left: icon-x/icon-y count from it
+    std::vector<HitLayer> layers;                 // draw order, canvas coordinates, each on its own resolved plane
     struct Dest { int x, y; };
-    std::vector<Dest> dests;                      // screen_loc range form repeats the tile
+    std::vector<Dest> dests;                      // canvas top-left; screen_loc range form repeats it
 };
 
 // Everything a pointer question needs, immutable once built (share it across threads via shared_ptr).

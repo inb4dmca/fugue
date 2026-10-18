@@ -32,6 +32,7 @@
 #include "shell/browserpane.h"
 #include "shell/fugueicon.h"
 #include "shell/paste.h"
+#include "shell/skinfont.h"
 
 namespace fugue::shell {
 
@@ -137,6 +138,7 @@ SkinWindow::SkinWindow(QWidget* parent) : QWidget(parent), live_(std::make_share
     host_->setHiddenPredicate([this](const QString& n) { return declaresHiddenBrowser(n); });
     host_->setChatBacklog([this] { return chat_; });
     connect(host_, &BrowseHost::byondLink, this, &SkinWindow::byondLink);
+    connect(host_, &BrowseHost::worldLink, this, &SkinWindow::worldLink);
     connect(host_, &BrowseHost::commandRequested, this, &SkinWindow::commandEntered);
     connect(host_, &BrowseHost::onCloseCommand, this, [this](const QString&, const QString& cmd) { emit worldCommand(cmd); });
     // The live skin is mutated from the session thread, so this window syncs on the GUI thread, coalescing a burst
@@ -215,6 +217,7 @@ void SkinWindow::syncStatusBar(const skin::SkinSnapshot& s) {
         status_->setAutoFillBackground(true);
         status_->setBackgroundRole(QPalette::Button);   // OS chrome, not the skin's background colour
         status_->setTextFormat(Qt::PlainText);           // an atom's name is data, not markup
+        status_->setFont(skinMenuFont());
         if (map_) status_->setText(map_->hoverName());
     }
     status_->setGeometry(0, height() - kStatusBarH, width(), kStatusBarH);
@@ -288,18 +291,25 @@ QWidget* SkinWindow::makeWidget(const skin::Control& c) {
             le->setText(cmd.startsWith('!') ? cmd.mid(1) : QString());
         });
         le->installEventFilter(new SpaceCompleterFilter(le, &spaceCompleter_));
+        connect(le, &QLineEdit::textChanged, this, [this, path = c.window + "." + c.name](const QString& t) {
+            live_->setInputText(path, t.toStdString());
+        });
         w = le;
     } else if (c.type == "BROWSER") {
-        auto* bp = new BrowserPane(this, host_->profile());
+        BrowserPane* bp = host_->takeHidden(QString::fromStdString(c.window), QString::fromStdString(c.name));
+        if (!bp) {
+            bp = new BrowserPane(this, host_->profile());
+            host_->adoptControl(QString::fromStdString(c.window), QString::fromStdString(c.name), bp);   // shows a page sent before the control existed
+        }
         browsers_.insert(QString::fromStdString(c.name), bp);
         w = bp;
-        host_->adoptControl(QString::fromStdString(c.window), QString::fromStdString(c.name), bp);   // shows a page sent before the control existed
     } else if (c.type == "BUTTON") {
-        auto* b = new QPushButton(QString::fromStdString(c.name), this);
+        auto* b = new SkinButton(QString::fromStdString(c.name), this);
         QString cmd = QString::fromStdString(c.elem ? c.elem->str("command", "") : "");
-        // A `button-type = pushbox` button sets its own is-checked before its command runs (a grouped one is a radio
-        // member and only ever goes true). The command must see the new state, since vg's commands test it.
-        bool pushbox = c.elem && skin::lowerAscii(c.elem->str("button-type", "")) == "pushbox";
+        // A `button-type = pushbox` or `checkbox` button sets its own is-checked before its command runs (a grouped one
+        // is a radio member and only ever goes true). The command must see the new state, since vg's commands test it.
+        std::string bt = c.elem ? skin::lowerAscii(c.elem->str("button-type", "")) : "";
+        bool pushbox = bt == "pushbox" || bt == "checkbox";
         std::string path = c.window + "." + c.name, group = c.elem ? c.elem->str("group", "") : "";
         if (!cmd.isEmpty() || pushbox)
             connect(b, &QPushButton::clicked, this, [this, cmd, pushbox, path, group] {
@@ -313,7 +323,7 @@ QWidget* SkinWindow::makeWidget(const skin::Control& c) {
             });
         w = b;
     } else if (c.type == "LABEL") {
-        w = new QLabel(this);
+        w = new SkinLabel(this);
     } else {
         auto* f = new QFrame(this);   // placeholder for a control type this client does not model
         f->setFrameShape(QFrame::StyledPanel);
@@ -357,8 +367,8 @@ void SkinWindow::applyProps(const skin::Control& c, QWidget* w, const skin::Skin
     w->setEnabled(!c.disabled);
     if (auto* b = qobject_cast<QPushButton*>(w)) {
         if (prop("text", v)) b->setText(QString::fromStdString(v));
-        std::string chk;
-        bool pushbox = c.elem && skin::lowerAscii(c.elem->str("button-type", "")) == "pushbox";
+        std::string chk, bt = c.elem ? skin::lowerAscii(c.elem->str("button-type", "")) : "";
+        bool pushbox = bt == "pushbox" || bt == "checkbox";
         if (s.props.controlProp(c.window, c.name, "is-checked", chk) || (c.elem && c.elem->get("is-checked")) || pushbox) {
             if (!(s.props.controlProp(c.window, c.name, "is-checked", chk))) chk = c.elem->str("is-checked", "false");
             b->setCheckable(true);
@@ -367,7 +377,8 @@ void SkinWindow::applyProps(const skin::Control& c, QWidget* w, const skin::Skin
     } else if (auto* le = qobject_cast<QLineEdit*>(w); le && c.type == "INPUT") {
         // `command` goes to the bar. A new `!` default replaces the text only while the bar still shows the old default
         // unedited. Otherwise the player's text is left alone.
-        std::string cmd;
+        std::string cmd, text;
+        if (s.props.controlProp(c.window, c.name, "text", text) && le->text().toStdString() != text) le->setText(QString::fromStdString(text));
         prop("command", cmd);
         QString now = QString::fromStdString(cmd), was = le->property("fugueInputCommand").toString();
         if (now != was || !le->property("fugueInputCommand").isValid()) {
@@ -393,6 +404,25 @@ void SkinWindow::applyProps(const skin::Control& c, QWidget* w, const skin::Skin
         std::string mode = c.elem ? c.elem->str("zoom-mode", "normal") : "normal";
         if (s.props.controlProp(c.window, c.name, "zoom-mode", zm)) mode = zm;
         map_->setMapScale(zoom, icon, letterbox, mode);
+    }
+    if (c.type == "BUTTON" || c.type == "LABEL" || c.type == "INPUT" || c.type == "INFO") {
+        std::string fam, size, style;
+        prop("font-family", fam);
+        prop("font-size", size);
+        prop("font-style", style);
+        QString key = QString::fromStdString(fam + '\n' + size + '\n' + style);
+        if (!w->property("fugueFont").isValid() || key != w->property("fugueFont").toString()) {
+            w->setProperty("fugueFont", key);
+            const SkinFont sf = skinControlFont(fam, size, style);
+            if (auto* b = dynamic_cast<SkinButton*>(w)) b->setSkinFont(sf);
+            else if (auto* l = dynamic_cast<SkinLabel*>(w)) l->setSkinFont(sf);
+            else w->setFont(sf.font);
+        }
+    }
+    if (auto* l = dynamic_cast<SkinLabel*>(w)) {
+        std::string al;
+        prop("align", al);
+        l->setAlignment(skinLabelAlign(al));
     }
     // Colours come from the overlay only; the file's own per-control colours are not applied.
     QString css;
@@ -493,6 +523,7 @@ void SkinWindow::rebuildMenu(const skin::Menu& m) {
     }
     if (!bar_) {
         bar_ = new QMenuBar(this);
+        bar_->setFont(skinMenuFont());
         // Stock DreamSeeker's system-menu entries (shell/macrodialog.h) sit under the caption icon. The window manager
         // owns that icon here, so the same entries sit behind the window icon in the menu bar's corner.
         sysBtn_ = new BarCornerButton(bar_);
@@ -502,6 +533,7 @@ void SkinWindow::rebuildMenu(const skin::Menu& m) {
         sysBtn_->setToolTip("Options & Messages, Macros...");
         sysBtn_->setIcon(windowIcon());
         auto* sys = new QMenu(sysBtn_);
+        sys->setFont(skinMenuFont());
         addSystemMenuItems(sys, [this](const QString& c) { emit menuCommand(c); });
         sysBtn_->setMenu(sys);
         connect(this, &QWidget::windowIconChanged, sysBtn_, &QToolButton::setIcon);
@@ -511,6 +543,7 @@ void SkinWindow::rebuildMenu(const skin::Menu& m) {
                         bar_->style()->pixelMetric(QStyle::PM_MenuBarVMargin, nullptr, bar_);
         QMenuBar probe;
         probe.setStyle(bar_->style());
+        probe.setFont(bar_->font());
         probe.addMenu("X");
         const int itemH = std::max(8, probe.sizeHint().height() - 2 * pad);
         sysBtn_->setIconSize(QSize(itemH - 4, itemH - 4));
@@ -528,6 +561,7 @@ void SkinWindow::rebuildMenu(const skin::Menu& m) {
     };
     for (const skin::MenuCat& c : m.cats) {
         QMenu* menu = bar_->addMenu(withAccel(c.label, c.accel));
+        menu->setFont(bar_->font());   // a popup does not inherit its parent's font
         menu->setEnabled(!c.disabled);
         QHash<QString, QActionGroup*> groups;
         for (const skin::MenuItem& it : c.items) {
@@ -603,9 +637,10 @@ void SkinWindow::syncFromLive() {
     markInfoShown();
     if (map_ != lastMapSignalled_) { lastMapSignalled_ = map_; if (map_) emit mapReady(map_); }
     if (QSize cl(s.client.dx(), s.client.dy()); cl != lastClient_ && cl.width() > 0 && cl.height() > 0) { lastClient_ = cl; emit clientResized(cl); }
-    if (s.macro != lastMacro_) {
+    if (s.macro != lastMacro_ || s.macroGen != lastMacroGen_) {
         bool first = lastMacro_.empty();
         lastMacro_ = s.macro;
+        lastMacroGen_ = s.macroGen;
         if (!first || !s.macro.empty()) emit macroChanged(QString::fromStdString(s.macro));
     }
     if (s.focusSeq != lastFocusSeq_) {
@@ -793,6 +828,11 @@ void SkinWindow::showBrowse(const QString& name, const QString& params, const QS
     if (live_->loaded()) syncRuntimeMaps(live_->snapshot());   // a runtime map may already name this popup as its parent
 }
 void SkinWindow::closeBrowse(const QString& name) { host_->close(name); }
+// output(file, control) loads the file into that browser control, never into a window of its own.
+void SkinWindow::showOutputFile(const QString& control, const QString& html) {
+    if (declaresBrowser(control)) host_->open(control, QString(), html);
+    else std::fprintf(stderr, "[browse] output(file) to \"%s\": not a browser control of this skin - dropped\n", control.toUtf8().constData());
+}
 void SkinWindow::pageCall(const QString& window, const QString& fn, const QStringList& args) { host_->pageCall(window, fn, args); }
 
 static const skin::Elem* declaredBrowser(const skin::File* f, const QString& name) {

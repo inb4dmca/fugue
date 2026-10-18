@@ -1,0 +1,41 @@
+name: Bug report
+description: Something looks or acts differently from stock DreamSeeker
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Fugue version
+      description: The output of `fugue-qt --version`, or the version in the About dialog.
+      placeholder: fugue-qt 0.5.1
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: How you run it
+      options:
+        - Flatpak
+        - Linux, built from source
+        - macOS, built from source
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server or game
+      placeholder: /vg/station
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what stock DreamSeeker does instead
+      description: Steps to get there help most. A screenshot is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Client log
+      description: The last lines of `~/.fugue/client.log` from around the time it happened (under Flatpak, `~/.var/app/io.github.toomykins.Fugue/.fugue/client.log`). Check it for anything private first.
+      render: text

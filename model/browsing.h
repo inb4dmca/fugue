@@ -34,6 +34,9 @@ BrowseParams parseBrowseParams(const std::string& s);
 
 // "##action=browse_file;options=window%3dx" -> opts "window=x". false for any other offer (load_rsc included).
 bool browseFileOptions(const std::string& offerParams, std::string& opts);
+// output(file, "win.ctl") is a file push too: "##action=output_file;window=win.ctl" -> control "win.ctl". The file is
+// the page for that browser control. false for any other offer.
+bool outputFileControl(const std::string& offerParams, std::string& control);
 // "file=NAME" out of a decoded options string ("" when absent).
 std::string browseFileAlias(const std::string& opts);
 
@@ -47,7 +50,7 @@ struct RscRecord { uint32_t ordinal = 0; std::string name; };
 std::vector<RscRecord> parseBrowseRscFrame(ByteSpan body);
 
 // output(value, "window.control:function") -> a call into the page's JS. false when it is not page traffic (plain chat,
-// a function nobody exports, or the function-less ".browser" replace form).
+// the chat's own ":output", or the function-less ".browser" replace form).
 struct PageCall {
     std::string window, fn;
     // The whole addressed control, before the colon ("rpane.hosttracker"). `window` drops the last dotted part, which
@@ -57,6 +60,14 @@ struct PageCall {
     std::vector<std::string> args;   // one per list2params parameter, each decoded individually AFTER the split
 };
 bool parsePageCall(const std::string& control, const std::string& rawValue, PageCall& out);
+
+// link(url), s2c 0x0079 [url\0]. "?..." and "byond://?..." are a Topic for this world; other byond:// is another world;
+// http, https, ftp and mailto open outside the client; anything else is refused.
+struct LinkFrame {
+    enum Kind { Topic, World, External, Refused } kind = Refused;
+    std::string url;
+};
+bool parseLinkFrame(ByteSpan body, LinkFrame& out);
 
 // A byond:// (or "?...") URL a page navigated to.
 struct ByondUrl {

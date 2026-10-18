@@ -82,6 +82,11 @@ StatPanelWidget::StatPanelWidget(QWidget* parent) : QWidget(parent) {
     table_->viewport()->installEventFilter(this);
 }
 
+void StatPanelWidget::changeEvent(QEvent* e) {
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::FontChange && table_) rebuildRows();   // clickable rows carry their own copy of the font
+}
+
 bool StatPanelWidget::eventFilter(QObject* o, QEvent* e) {
     if (o != table_->viewport() || view_.verbTab) return QWidget::eventFilter(o, e);
     auto t = e->type();
@@ -153,7 +158,7 @@ void StatPanelWidget::rebuildRows() {
             a->setTextAlignment(Qt::AlignLeft | Qt::AlignTop);   // stock: a label sits at the top of an icon row
             if (!view_.rows[i].icon.isNull()) b->setData(kIconRole, view_.rows[i].icon);
             if (view_.rows[i].clickable) {
-                QFont ft = b->font();
+                QFont ft = table_->font();   // the INFO control's font (an item's own font() is the application's)
                 ft.setUnderline(true);
                 b->setFont(ft);
                 b->setToolTip("Click to click this atom");

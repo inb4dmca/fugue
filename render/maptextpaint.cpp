@@ -68,13 +68,17 @@ SpritePtr paintMaptext(std::string_view markup, std::string_view mapStyle, int b
         sp->w = boxW;
         sp->h = boxH;
         sp->px.assign(size_t(boxW) * size_t(boxH) * 4, 0);
-        const int blockTop = boxH - L.height;  // the last line flush with the box bottom
+        // valign bottom (the default) sets the last line flush with the box bottom.
+        const int blockTop = L.valign == 0 ? 0 : L.valign == 1 ? (boxH - L.height) / 2 : boxH - L.height;
         bool painted = false;
         std::lock_guard<std::mutex> g(g_mu);
         // Pass 0: every outline, pass 1: every fill, so a halo never covers a neighbouring glyph's ink.
         for (int pass = 0; pass < 2; pass++) {
             for (const DsLine& ln : L.lines) {
-                int x0 = ln.align == 1 ? (boxW - ln.width) / 2 : ln.align == 2 ? boxW - ln.width : 0;
+                // A left-aligned line the box cannot hold whole is not drawn; a centred or right-aligned one is clipped.
+                if (ln.align == 0 && (blockTop + ln.top < 0 || blockTop + ln.top + ln.height > boxH)) continue;
+                const int aw = ln.width + ln.overhang;
+                int x0 = ln.align == 1 ? (boxW - aw) / 2 : ln.align == 2 ? boxW - aw : 0;
                 int baseline = blockTop + ln.top + ln.ascent;
                 for (const DsGlyph& gl : ln.glyphs) {
                     const DsFace& f = L.faces[size_t(gl.face)];
@@ -83,12 +87,13 @@ SpritePtr paintMaptext(std::string_view markup, std::string_view mapStyle, int b
                     auto m = glyphLocked(f, gl.cp);
                     if (!m) continue;
                     int gx = x0 + gl.x + m->left, gy = baseline - f.ascent + m->top;
+                    const int minX = f.bitmap && f.italic ? 1 : 0;   // bitmap italic never inks the box's first column
                     for (int y = (pass == 0 ? -1 : 0); y < m->h + (pass == 0 ? 1 : 0); y++) {
                         int dy = gy + y;
                         if (dy < 0 || dy >= boxH) continue;
                         for (int x = (pass == 0 ? -1 : 0); x < m->w + (pass == 0 ? 1 : 0); x++) {
                             int dx = gx + x;
-                            if (dx < 0 || dx >= boxW) continue;
+                            if (dx < minX || dx >= boxW) continue;
                             int cov = 0;
                             if (pass == 1) {
                                 cov = m->a[size_t(y) * size_t(m->w) + size_t(x)];

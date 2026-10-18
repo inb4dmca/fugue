@@ -1,5 +1,6 @@
 #include "model/prompt.h"
 #include "net/input.h"
+#include "net/textmacro.h"
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
@@ -38,13 +39,15 @@ bool parseAlertRequest(ByteSpan b, Prompt& out) {
     p.id = le32(b.data());
     size_t pos = 4;
     if (!cstrAt(b, pos, p.message) || !cstrAt(b, pos, p.title)) return false;
+    p.message = net::plainText(p.message);
+    p.title = net::plainText(p.title);
     if (b.size() - pos < 2) return false;
     unsigned count = le16(b.data() + pos);
     pos += 2;
     for (unsigned i = 0; i < count; i++) {
         std::string s;
         if (!cstrAt(b, pos, s)) return false;
-        if (!s.empty()) p.buttons.push_back(std::move(s));
+        if (!s.empty()) p.buttons.push_back(net::plainText(s));
     }
     if (pos != b.size()) return false;
     if (p.buttons.empty()) p.buttons.push_back("OK");   // a one-argument alert() shows and returns "OK"
@@ -57,6 +60,8 @@ bool parseInputRequest(ByteSpan b, Prompt& out) {
     p.kind = Prompt::Input;
     size_t pos = 0;
     if (!cstrAt(b, pos, p.title) || !cstrAt(b, pos, p.def) || !cstrAt(b, pos, p.message)) return false;
+    p.title = net::plainText(p.title);
+    p.message = net::plainText(p.message);
     if (b.size() - pos != 10) return false;
     p.typeMask = le32(b.data() + pos);
     p.filter = b[pos + 4];
@@ -75,7 +80,7 @@ bool parseExpansionReply(ByteSpan b, std::vector<std::string>& out) {
     for (unsigned i = 0; i < n; i++) {
         std::string s;
         if (!cstrAt(b, pos, s)) return false;
-        v.push_back(std::move(s));
+        v.push_back(net::plainText(s));
     }
     if (pos != b.size()) return false;
     out = std::move(v);

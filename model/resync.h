@@ -19,7 +19,7 @@ namespace fugue::model {
 
 constexpr uint16_t kResyncMobMsg = 0x000b;
 constexpr uint16_t kResyncObjMsg = 0x003d;
-constexpr uint64_t kGcAppearances = 500;   // collect past 500 new appearance records
+constexpr uint64_t kGcAppearances = 500;   // collect on the 501st appearance record since the last collection
 constexpr size_t kGcMinFree = 32;          // a table frees its unreachable records only past this many of them
 constexpr int kResyncSweepTicks = 5;       // the sweep fires on the tick its counter, set to 1 by a teardown, passes 4
 

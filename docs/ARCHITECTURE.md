@@ -9,14 +9,16 @@
 | `model/` | the world model built from decoded messages (map, atoms, appearances, HUD, stat panel, verbs, browsers, chat) |
 | `skin/` | `.dmf` skin parser, layout, `winset` / `winget` rules, macros |
 | `render/` | icon (`.dmi`) decoding and the compositor: planes and layers, overlays, colour and alpha, transforms, animation, maptext, filters |
-| `audio/` | sound: Ogg Vorbis (vendored stb_vorbis), WAV, tracker modules (libopenmpt), the channel mixer, and the output sinks |
+| `audio/` | sound: Ogg Vorbis (vendored stb_vorbis), WAV, tracker modules (libopenmpt), the channel mixer, and the output sinks (Core Audio on macOS, external PCM players on Linux) |
 | `shell/` | the Qt Widgets/WebEngine window: skin window, map widget, stat panel, input, HTML browser panes and the loopback origin |
 | `account/` | account files, `key.txt` handling, login records, hub primitives |
 | `pager/` | the launcher: server list, sign-in, join logic, DreamSeeker command-line compatibility, window UI |
 | `app/` | the `fugue-qt` executable: the `pager` and `client` modes |
 | `tools/` | the canonical JSON writer and `gdifont`, the generator for the bitmap-font width tables |
 | `tests/`, `*/tests/` | tests and their recorded data |
+| `platform/` | shared Linux/macOS socket and close-on-exec pipe helpers |
 | `packaging/flatpak/` | Flatpak manifest, desktop entry, AppStream metadata, icons and their sources |
+| `packaging/macos/` | app bundle metadata, icon generation, Qt/WebEngine deployment and dependency relocation |
 | `cmake/` | the `fugue_module()` helper |
 
 `pager/`, `account/` and `render/` have their own `README.md` with a file table.
@@ -45,8 +47,12 @@ Many BYOND games draw part of their interface as HTML: `browse()` windows, a cha
 skin. Fugue hosts that HTML in Qt WebEngine. `SessionWorker` turns `browse`, `browse_rsc` and output-to-browser messages
 into signals; `shell::BrowseHost` on the GUI thread owns every page.
 
-A page goes into the skin's BROWSER control of that name if one exists (held until it is created, never floated);
-otherwise into a top-level dialog transient for the main window. Closing a popup runs the world's `on-close` command,
+A page goes into the skin's BROWSER control of that name if one exists (never floated); otherwise into a top-level
+dialog transient for the main window. A page for a control the skin declares `is-visible = false` runs windowless, and
+when the control is shown it takes over that running page rather than reloading it. `output(file, "win.ctl")` arrives
+as a file push with `##action=output_file` and is that control's page; it never opens a window of its own.
+`output(value, "win.ctl:fn")` calls `fn` in the page, whatever the function is called; only the chat page's own
+`:output` is chat. Closing a popup runs the world's `on-close` command,
 and a closed popup is hidden, not destroyed, as in stock DreamSeeker. A popup's title follows the page's `<title>` and
 the world's `winset`; the loopback address is never shown.
 

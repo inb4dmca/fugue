@@ -7,9 +7,10 @@
 // mutex, held only for in-memory work; the change callback runs outside it.
 //
 // The winset/winget rules follow stock DreamSeeker 516: which key has a consumer on which target kind, the
-// left/right canonical spelling, radio-group unchecking, focus only on INPUT/MAP, macro= refused for an unknown
-// set. Winsets and wingets are answered locally, never sent as a Topic. A lone name answers the bare value, a
-// ';' list answers k=v in query order (an unknown name as `k=`), and a flagged empty-prop query is `type`.
+// left/right canonical spelling, radio-group unchecking, focus only on INPUT/MAP. A macro= of an unknown set is refused
+// here; stock answers that name and binds no keys. Winsets and wingets are answered locally, never sent as a Topic.
+// A lone name answers the bare value, a ';' list answers k=v in query order (an unknown name as `k=`), and a flagged
+// empty-prop query is `type`.
 // A `<X>.*` control is answered by wingetWildcard; any other wildcard control is not answerable.
 //
 // Extensions beyond stock, each labelled where it is implemented. None overrides a value stock answers:
@@ -20,7 +21,7 @@
 //
 // Stock behaviour also modelled: the null-control globals, "<X>.*" wildcards, `id` everywhere, `pos` (pane-local for a
 // pane, the file pos for a hidden window or an unplaced control), every window's `dpi`, an unplaced control's file
-// `size`, window places, runtime-created controls and the GUI's focus. A side no window is stated for stays empty
+// `size`, window places, runtime-created controls and macros, and the GUI's focus. A side no window is stated for stays empty
 // until the GUI shows a pane whose on-show claims it (setPaneShown, skin/layout.h inferSlots).
 #pragma once
 #include <cstdint>
@@ -49,7 +50,8 @@ struct SkinSnapshot {
     Rect client;
     Tree tree;
     PropStore props;
-    MacroTable macros;
+    MacroTable macros;            // with the macros a winset created or changed
+    uint64_t macroGen = 0;        // bumps when a winset changes a macro set's bindings
     std::string macro;            // the active macro set name
     std::string focus;            // last control a winset focused ("window.name" or as addressed), "" = none
     uint64_t focusSeq = 0;        // bumps each time a winset sets focus (even to the same control)
@@ -96,7 +98,8 @@ public:
     std::string wingetType(const std::string& control) const;
     // The default MAP control's `style` (what a winset last set, else the .dmf's). Stock lays out MeasureText() with
     // this sheet: MeasureText(t, null, w) after `winset map style=S` answers MeasureText(t, S, w) (render/dsmaptext.h).
-    // The is-default map, else the first map; "" with no skin or no map.
+    // The is-default map, else the first map; "" with no skin or no map. A text-color the control sets (not "none") leads
+    // the sheet as a `body` colour rule: stock draws maptext that names no colour in it, else white.
     std::string defaultMapStyle() const;
     // The MAP controls a winset `parent=` created (SkinSnapshot::runtime), by name: the secondary maps the session thread
     // assembles a scene for (render/scene.h assembleSecondaryMap).
@@ -131,6 +134,8 @@ public:
     // control, "<popup>.browser" for a popup's page, "" for the main window itself (the answer is then its name,
     // "mainwindow"). A winset `focus` overrides it until the GUI reports again.
     void setGuiFocus(const std::string& id);
+    // The GUI's half of an INPUT's text: what the player has typed. winget answers it, and a winset replaces it.
+    void setInputText(const std::string& id, const std::string& text);
     // The GUI really has content for this pane window now (the map has its first frame, or the statpanels their
     // first tab: a statpanel or a verb panel). Stock runs a pane's on-show when it shows the pane, and only that
     // fills a split side the skin leaves empty (skin/layout.h inferSlots). The on-show runs here through the same
@@ -168,7 +173,7 @@ public:
     Stats stats() const;
 
 private:
-    enum class Kind { Unknown, Control, Popup, Menu, Window, Runtime };
+    enum class Kind { Unknown, Control, Popup, Menu, Window, Runtime, Macro };
     // ---- all *Locked: caller holds mu_
     void relayoutLocked();
     Kind resolveLocked(const std::string& name) const;
@@ -180,6 +185,8 @@ private:
     bool setFocusLocked(const std::string& target, bool on);
     void uncheckSiblingsLocked(const std::string& target);
     bool wingetLocked(const std::string& control, const std::string& param, std::string& out) const;
+    bool controlFocusLocked(const std::string& id, const std::string& param, std::string& out) const;
+    bool buttonUncheckedLocked(const std::string& id, const std::string& param, std::string& out) const;
     Menu menuLocked() const;
     bool isMenuTarget(const std::string& name) const;
     std::string menuElemLocked(const std::string& name) const;
@@ -201,6 +208,11 @@ private:
     std::string parentWindowLocked(const std::string& v) const;
     bool runtimeWingetLocked(const RuntimeCtl& r, const std::string& param, std::string& out) const;
     WinsetResult clientWinsetLocked(const std::string& body);   // clientWinset, caller holds mu_
+    // Macro elements: see usedMacros_.
+    const MacroSet* builtMacroSetLocked(const std::string& name) const;
+    const MacroSet* macroElemLocked(const std::string& name, size_t& index) const;
+    bool applyMacroPairLocked(const WinsetPair& p);
+    bool createMacroLocked(const std::vector<WinsetPair>& pairs, size_t parent, std::vector<bool>& consumed, WinsetResult& r);
 
     mutable std::mutex mu_;
     std::shared_ptr<const File> file_;
@@ -240,7 +252,12 @@ private:
     // The menus and macro sets stock DreamSeeker has built, in build order. winget(null,"macro") and "menu" list only the
     // sets some window has named, and a "<set>.*" wildcard enumerates nothing before that. Seeded at load from every
     // window's `menu` / `macro`, grown by a `macro` winset (this client does not consume a `menu` winset).
+    // A built set's macros are elements: winexists answers MACRO, and a winset of `name`, `command` or `is-disabled`
+    // changes the binding. `winset(src, "id", "parent=<set>;name=...;command=...")` adds one to a built set (a set not
+    // built yet drops it); when the set already binds that combination, that binding takes the command and keeps its id.
+    // `parent=none`, `parent=null` or `parent=` removes a macro made that way; a .dmf macro cannot be removed.
     std::vector<std::string> usedMenus_, usedMacros_;
+    uint64_t macroGen_ = 0;
     Stats stats_;
     std::mutex cbMu_;                       // guards onChange_ only (set from the GUI thread, read from any mutating thread)
     std::function<void()> onChange_;

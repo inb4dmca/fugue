@@ -8,7 +8,8 @@ namespace fugue::proto {
 namespace {
 
 // Example: `05 00 | ea 01 00 00` is reason 5, requiredVersion 490. A 6-byte body with version 0 and the 2-byte form
-//   both emit requiredVersion 0.
+//   both emit requiredVersion 0. A 3-5 byte body does too: DreamSeeker's u32 read underflows to 0 and the frame is still
+//   handled, so it is accepted here rather than refused.
 canon::Json decode(State&, ByteSpan body) {
     if (body.size() < 2) throw DecodeError("short session");
     Reader r(body);

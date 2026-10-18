@@ -25,11 +25,14 @@ struct WinsetPair {
     bool ok = false;
 };
 
-std::vector<std::string> splitOutsideQuotes(std::string_view s);
+// escapes: a backslash inside quotes escapes the next byte.
+std::vector<std::string> splitOutsideQuotes(std::string_view s, bool escapes = false);
 // id = the winset's control operand ("" when each key carries its own [window.]elem.key path). urlEncoded: the props
-// came from the WORLD (a 0x00a8 winset) and each value is url-decoded after the split: '+' is a space, %XX a byte.
+// came from the WORLD (a 0x00a8 winset) and each value is url-decoded after the split: '+' is a space, %XX a byte. A
+// "..." value is not url-decoded; its \n is a CRLF, \t a tab, and any other escaped byte stands for itself.
 // Stock DreamSeeker 516 decodes them so that `pos=100%2c120` reads back "100,120", `text=a+b` reads "a b", and
-// `background-color=%23ff0000` answers "#ff0000" (re-encoded). vg's list2params winsets need it.
+// `background-color=%23ff0000` answers "#ff0000" (re-encoded). vg's list2params winsets need it. A world value also
+// loses its text-macro markers (net::plainText): stock shows `title="[area.name]"` without them.
 std::vector<WinsetPair> splitWinset(std::string_view id, std::string_view props, bool urlEncoded = false);
 
 // `.winset"..."` / `.winset "..."` -> the bare params inside the quotes; false for anything else.

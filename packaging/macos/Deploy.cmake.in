@@ -1,0 +1,33 @@
+cmake_minimum_required(VERSION 3.20)
+# Deploy Qt frameworks/plugins, WebEngineProcess/resources and non-system dylibs. The explicit library path also
+# resolves dependencies of Homebrew plugins whose own rpaths do not point at the common Qt library directory.
+set(bundle "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/Fugue.app")
+execute_process(COMMAND "@FUGUE_MACDEPLOYQT@" "${bundle}" "-libpath=@FUGUE_QT_LIBS@"
+  -always-overwrite -no-codesign
+  RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE errors)
+message(STATUS "macdeployqt: ${output}${errors}")
+# macdeployqt can report missing libraries but still return success.
+if(NOT result EQUAL 0 OR "${output}${errors}" MATCHES "ERROR:")
+  message(FATAL_ERROR "Could not deploy Fugue.app")
+endif()
+# Some split Qt distributions leave the helper's direct imports pointing into the build-machine Qt prefix.
+# It only exists after the first deployment, so explicitly deploy it in a second pass.
+file(GLOB_RECURSE helpers "${bundle}/Contents/QtWebEngineProcess")
+if(NOT helpers)
+  message(FATAL_ERROR "Qt WebEngineProcess was not deployed")
+endif()
+set(executables)
+foreach(helper IN LISTS helpers)
+  list(APPEND executables "-executable=${helper}")
+endforeach()
+execute_process(COMMAND "@FUGUE_MACDEPLOYQT@" "${bundle}" "-libpath=@FUGUE_QT_LIBS@"
+  ${executables} -no-plugins -no-codesign
+  RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE errors)
+if(NOT result EQUAL 0 OR "${output}${errors}" MATCHES "ERROR:")
+  message(FATAL_ERROR "Could not deploy WebEngineProcess: ${output}${errors}")
+endif()
+include("@PROJECT_SOURCE_DIR@/packaging/macos/Relocate.cmake")
+# install_name_tool/strip invalidate existing Homebrew signatures. Re-sign the completed bundle, including nested
+# frameworks and WebEngineProcess. Ad-hoc signing is for local use, NOT Developer ID signing or notarization.
+execute_process(COMMAND /usr/bin/codesign --force --deep --sign - "${bundle}" COMMAND_ERROR_IS_FATAL ANY)
+execute_process(COMMAND /usr/bin/codesign --verify --deep --strict "${bundle}" COMMAND_ERROR_IS_FATAL ANY)

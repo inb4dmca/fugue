@@ -1,7 +1,17 @@
 #include "shell/ttmetrics.h"
+#include "platform/file.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include <QFont>
 #include <QFontDatabase>
@@ -12,7 +22,9 @@
 #include <QRawFont>
 #include <QString>
 
+#include "fugue_env.h"
 #include "render/dsmaptext.h"
+#include "render/gdifon.h"
 #include "render/maptextpaint.h"
 
 namespace fugue::shell {
@@ -52,6 +64,46 @@ bool sameFamily(const QString& want, const QString& got) {
     return false;
 }
 
+// Where a stock bitmap face's file is looked for: FUGUE_FONT_DIR, ~/.fugue/fonts, Windows' font folder, then the
+// folders Wine's packages install its compatible faces to (on macOS also its app bundles' and the Library font folders).
+std::vector<std::string> bitmapFontDirs() {
+    std::vector<std::string> d;
+    if (std::string v = fugueEnvOr("FONT_DIR"); !v.empty()) d.push_back(v);
+    const std::string home = platform::homeDir();
+    if (!home.empty()) d.push_back(home + "/.fugue/fonts");
+    if (const char* w = std::getenv("WINDIR"); w && *w) d.push_back(std::string(w) + "/Fonts");
+    for (const char* p : {"/usr/share/wine/fonts", "/usr/local/share/wine/fonts", "/opt/wine-stable/share/wine/fonts",
+                          "/opt/wine-staging/share/wine/fonts", "/opt/wine-devel/share/wine/fonts"})
+        d.push_back(p);
+#ifdef __APPLE__
+    for (const char* p : {"/opt/homebrew/share/wine/fonts", "/Applications/Wine Stable.app/Contents/Resources/wine/share/wine/fonts",
+                          "/Applications/Wine Staging.app/Contents/Resources/wine/share/wine/fonts",
+                          "/Applications/Wine Devel.app/Contents/Resources/wine/share/wine/fonts"})
+        d.push_back(p);
+    if (!home.empty()) d.push_back(home + "/Library/Fonts");
+    d.push_back("/Library/Fonts");
+#endif
+    return d;
+}
+
+// The first file found for `file` (lower-case name; the upper-case spelling is tried too) that holds raster strikes.
+std::vector<render::FonStrike> loadBitmapFace(const std::string& file) {
+    std::string upper = file;
+    for (char& c : upper) c = char(std::toupper(uint8_t(c)));
+    for (const std::string& dir : bitmapFontDirs())
+        for (const std::string& name : {file, upper}) {
+            std::ifstream in(dir + "/" + name, std::ios::binary);
+            if (!in) continue;
+            std::ostringstream ss;
+            ss << in.rdbuf();
+            auto strikes = render::parseFon(ss.str());
+            if (strikes.empty()) continue;
+            std::fprintf(stderr, "[maptext] bitmap face from %s/%s\n", dir.c_str(), name.c_str());
+            return strikes;
+        }
+    return {};
+}
+
 }  // namespace
 
 void installTrueTypeMetrics() {
@@ -75,12 +127,21 @@ void installTrueTypeMetrics() {
             out.descent = m.descent();
         }
         out.advance = [m](char32_t cp) { return m.horizontalAdvance(QString::fromUcs4(&cp, 1)); };
+        out.overhang = [m](char32_t cp) { return cp > 0xFFFF ? 0 : std::max(0, -m.rightBearing(QChar(char16_t(cp)))); };
         return true;
     });
 }
 
 void installMaptextGlyphs() {
-    render::setGlyphRasterizer([](const render::DsFace& face, char32_t cp, render::GlyphMask& out) {
+    auto files = std::make_shared<std::map<std::string, std::vector<render::FonStrike>>>();
+    for (const auto& [family, file] : {std::pair<std::string, std::string>{"small fonts", "smalle.fon"},
+                                       {"ms sans serif", "sserife.fon"}, {"courier", "coure.fon"}})
+        if (auto s = loadBitmapFace(file); !s.empty()) (*files)[family] = std::move(s);
+    render::setGlyphRasterizer([files](const render::DsFace& face, char32_t cp, render::GlyphMask& out) {
+        if (face.bitmap) {
+            auto it = files->find(face.family);
+            if (it != files->end() && render::fonGlyph(it->second, face, cp, out)) return true;
+        }
         QFont f;
         if (face.bitmap) {
             const bool mono = face.family == "courier";

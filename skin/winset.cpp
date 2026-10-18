@@ -1,16 +1,19 @@
 #include "skin/winset.h"
 
 #include "skin/dmf.h"
+#include "net/textmacro.h"
 
 namespace fugue::skin {
 
-std::vector<std::string> splitOutsideQuotes(std::string_view s) {
+std::vector<std::string> splitOutsideQuotes(std::string_view s, bool escapes) {
     std::vector<std::string> out;
     bool inQ = false;
     long start = -1;
     for (size_t i = 0; i < s.size(); i++) {
         char r = s[i];
-        if (r == '"') {
+        if (escapes && inQ && r == '\\') {
+            i++;
+        } else if (r == '"') {
             inQ = !inQ;
             if (start < 0) start = long(i);
         } else if (!inQ && (r == ';' || r == '&' || r == ' ' || r == '\t' || r == '\n')) {
@@ -38,11 +41,23 @@ std::string urlDecode(const std::string& v) {
     }
     return out;
 }
+
+std::string unescapeQuoted(const std::string& v) {
+    std::string out;
+    for (size_t i = 0; i < v.size(); i++) {
+        if (v[i] != '\\' || i + 1 == v.size()) { out.push_back(v[i]); continue; }
+        char c = v[++i];
+        if (c == 'n') out += "\r\n";
+        else if (c == 't') out.push_back('\t');
+        else out.push_back(c);
+    }
+    return out;
+}
 }  // namespace
 
 std::vector<WinsetPair> splitWinset(std::string_view id, std::string_view props, bool urlEncoded) {
     std::vector<WinsetPair> out;
-    for (const std::string& a : splitOutsideQuotes(props)) {
+    for (const std::string& a : splitOutsideQuotes(props, urlEncoded)) {
         WinsetPair p;
         p.raw = a;
         size_t eq = a.find('=');
@@ -52,7 +67,10 @@ std::vector<WinsetPair> splitWinset(std::string_view id, std::string_view props,
         while (b < e && val[b] == '"') b++;
         while (e > b && val[e - 1] == '"') e--;
         p.value = val.substr(b, e - b);
-        if (urlEncoded) p.value = urlDecode(p.value);
+        if (urlEncoded && val.size() >= 2 && val.front() == '"' && val.back() == '"')
+            p.value = net::plainText(unescapeQuoted(val.substr(1, val.size() - 2)));
+        else if (urlEncoded)
+            p.value = net::plainText(urlDecode(p.value));
         p.target = std::string(id);
         p.key = lhs;
         if (p.target.empty()) {
@@ -242,7 +260,7 @@ std::string expandSkinParams(std::string_view cmd, int w, int h) {
 bool parsePair(std::string_view v, std::string_view seps, long long& a, long long& b) {
     std::string s;
     for (size_t i = 0; i < v.size();) {
-        if (v[i] == '%' && i + 2 < v.size() + 0 && v[i + 1] == '2' && (v[i + 2] == 'c' || v[i + 2] == 'C')) { s.push_back(','); i += 3; }
+        if (v[i] == '%' && i + 2 < v.size() && v[i + 1] == '2' && (v[i + 2] == 'c' || v[i + 2] == 'C')) { s.push_back(','); i += 3; }
         else s.push_back(v[i++]);
     }
     size_t i = s.find_first_of(seps);

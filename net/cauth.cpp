@@ -1,4 +1,5 @@
 #include "net/cauth.h"
+#include "platform/file.h"
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -87,7 +88,7 @@ void urlEncode(std::string& o, std::string_view s) {
 }
 }  // namespace
 
-std::string cauthPath(const std::string& stateDir) { return (std::filesystem::path(stateDir) / "cauth.txt").string(); }
+std::string cauthPath(const std::string& stateDir) { return (std::filesystem::path(stateDir) / "cauth.txt").generic_string(); }
 
 std::string cauthEntryName(std::string_view account, std::string_view host, std::string_view port) {
     std::string o;
@@ -163,9 +164,14 @@ void CauthCache::mint(bool keepKey, std::string* err) {
 
     std::error_code ec;
     fs::create_directories(dir_, ec);
+#ifdef _WIN32
+    std::string data;
+    for (auto& l : kept) data += l.name + ' ' + l.value + '\n';
+    platform::privateWrite(path, data, err);
+#else
     const std::string tmp = path + ".tmp";
     {
-        std::ofstream f(tmp, std::ios::trunc);
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
         if (!f) { if (err) *err = "cannot write " + tmp; return; }
         fs::permissions(tmp, fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::replace, ec);
         for (auto& l : kept) f << l.name << ' ' << l.value << '\n';
@@ -173,6 +179,7 @@ void CauthCache::mint(bool keepKey, std::string* err) {
     }
     fs::rename(tmp, path, ec);
     if (ec && err) *err = "cannot replace " + path + ": " + ec.message();
+#endif
 }
 
 uint32_t cauthKeyFor(const std::string& stateDir, const std::string& name, std::string* err, uint64_t now) {

@@ -1,16 +1,17 @@
 // A blocking TCP game session: handshake -> K_login -> guest 0x1a -> post-login frames -> frame pump.
 //
-// Threading: plain POSIX sockets and ONE thread. The thread that calls run() is the only reader and writer of the
+// Threading: plain native sockets (POSIX / Winsock) and ONE thread. The thread that calls run() is the only reader and writer of the
 // socket. Every reply (resource pulls, prompt answers, the 0x0016 keepalive) is produced inline from the frame handler
 // on that thread, so there is no write lock. The observer runs on the session thread and must only enqueue; a GUI
-// runs run() on its own thread and hands decoded frames over. net/ stays Qt-free, so this file uses <sys/socket.h>.
+// runs run() on its own thread and hands decoded frames over. net/ stays Qt-free (platform/socket.h).
 //
 // Login sequence: handshake, K_login, the 0x1a, then post-login frames. One K_login cipher is used in both
 // directions, and s2c frames carry no seq.
 // The 0xb7 answers the first 0x000e. The 0x0d and 0x19 answer the first 0x0071. The 0x0b body must be 4 bytes, and
-// 19 is sent exactly once. The handshake body ends in a u16 that is 0xc0e0 in DreamSeeker; this client sends 0x4000,
-// which DD also accepts.
+// 19 is sent exactly once. The handshake body ends in a u16 that stock DreamSeeker sends as 0x4000 or 0xc0e0;
+// this client sends 0x4000.
 #pragma once
+#include "platform/sockettypes.h"
 #include <chrono>
 #include <functional>
 #include <map>
@@ -23,6 +24,7 @@
 #include "net/bytes.h"
 #include "net/cauth.h"
 #include "net/frame.h"
+#include "net/handshake.h"
 #include "net/respump.h"
 
 namespace fugue::net {
@@ -68,6 +70,8 @@ struct SessionStats {
     uint64_t promptsAnswered = 0;
     bool serverClosed = false;
     std::string closeReason;
+    bool rebootRequested = false;           // 0x001e arrived: the world is rebooting and the client must log in again
+    bool connected = false;                 // the TCP connection was made
     bool sawSelfRef = false;                // 0x0071 arrived: the server made us a /client and ran world-init
     bool sawWorldInit = false;              // 0x003b arrived
     bool accountLogin = false;              // the 0x1a carried an account record, not the guest credential
@@ -90,6 +94,9 @@ public:
 
     // Connects, handshakes, logs in (as a guest, or with accountRecord) and sends the post-login frames. Returns "" or an error.
     std::string connectAndLogin();
+    // After stats().rebootRequested: handshakes and logs in again on the same connection, as the stock client does when
+    // the world reboots. stats() start over. Returns "" or an error.
+    std::string relogin();
     // Pump frames for `duration` (or until the server closes). Returns when done; the socket stays open.
     void run(std::chrono::milliseconds duration);
     // run()'s poll() timeout for `left` of its budget: whole ms rounded up, at most 100, never negative. poll() treats
@@ -111,7 +118,7 @@ public:
     // parked until then. This lets a skin hold winexists("browseroutput") until its layout is measured (skin/skinfeed.h).
     using WingetHandler = std::function<void(ByteSpan body)>;
     void setWingetHandler(WingetHandler h) { wingetHandler_ = std::move(h); }
-    // [value\0][reqid u32 LE]. Session thread only.
+    // [value\0][reqid u32 LE], each backslash in the value doubled: the server unescapes it. Session thread only.
     bool replyWinget(uint32_t reqId, const std::string& value);
     // MeasureText (0x00fc) lays text out against the default MAP control's `style` param, as stock DreamSeeker does
     // (render/dsmaptext.h). Unset = no map style.
@@ -124,6 +131,8 @@ public:
     void setManualPrompts(bool on) { manualPrompts_ = on; }
     bool manualPrompts() const { return manualPrompts_; }
     const SessionStats& stats() const { return st_; }
+    // One line on how the session ended: its length, the close reason, frame counts and the last frames each way.
+    std::string endSummary() const;
     const ResourceStats& resourceStats() const { return res_->stats(); }
     ResourcePump& resources() { return *res_; }
     uint32_t sessionLoginKey() const { return key_; }
@@ -143,6 +152,8 @@ private:
     void wire(const char* dir, uint16_t type, ByteSpan body);
     void logf(const std::string& s) { if (log_) log_(s); }
     bool readFrameBlocking(Frame& out, int timeoutMs);
+    std::string readHandshakeReply(const Handshake& hs, HandshakeReply& hr);   // sets key_
+    std::string login(const HandshakeReply& hr);
     void pace(int lo, int hi);
     void answerCertChallenge(uint8_t flag);
 
@@ -160,7 +171,8 @@ private:
     std::set<uint32_t> resReported_;
     uint64_t resSeen_ = 0;
     void reportNewResources();
-    int fd_ = -1;
+    void resetResources();
+    socket::Handle fd_ = -1;
     FrameReader reader_;
     uint32_t key_ = 0;
     uint16_t seq_ = 1;
@@ -168,6 +180,10 @@ private:
     std::unique_ptr<ResourcePump> res_;
     void* wireFile_ = nullptr;   // FILE*
     std::chrono::steady_clock::time_point t0_;
+    struct Recent { bool c2s; uint16_t type; size_t len; std::chrono::steady_clock::time_point at; };
+    std::vector<Recent> recent_;
+    size_t recentNext_ = 0;
+    void noteFrame(bool c2s, uint16_t type, size_t len);
     std::function<void()> pumpHook_;
     bool prodDue_ = false;       // the first s2c 0x000e was handled: send 0xb7 once the buffered frames are drained
     bool sentProd_ = false;      // the 0xb7 that answers the first s2c 0x000e went out

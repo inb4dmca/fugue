@@ -3,7 +3,7 @@
 // What DreamSeeker does:
 //   * Text is laid out with GDI fonts: CreateFont(lfHeight = -em), then the face's per-character advance widths
 //     (GetTextExtentPoint: a plain sum, no kerning) and GetTextMetrics' tmHeight/tmAscent. A CSS size N (px is treated
-//     as pt) is rounded to integer pt, em = round(N*4/3), except that pt 9 maps to em 13.
+//     as pt) is rounded to integer pt, em = round(N*4/3), except that pt 9 measures as em 13 (it is drawn at em 12).
 //   * Faces: no font-family (or `sans-serif`) gives "MS Sans Serif" 10pt, a bitmap font (sserife.fon: 8/10/12pt).
 //     "Small Fonts" has one 7pt strike, so under the Wine profile every size up to 13pt measures alike. `monospace`, <tt>, <code>
 //     and <pre> give the "Courier" bitmap. Any other family is that TrueType face; an unknown one falls back to Arial.
@@ -15,7 +15,8 @@
 //     run of n spaces counts n-1 of them). Wrapping is greedy at spaces, tabs and &nbsp;, and after '-' (not '/'). A
 //     word wider than the whole width is cut by character.
 //   * The style sheet is the default map control's `style` followed by the call's own `style`: `.class` rules apply in
-//     stylesheet order, and `body` styles the base.
+//     stylesheet order, and `body` styles the base. The first declaration of a property
+//     wins; `font:` sets family, size, weight and style together, defaulting what it omits.
 //   * "" gives DreamSeeker's "cannot measure" (the server resumes with null); whitespace or tags only gives height 0.
 //
 // Two profiles, because Windows and wine ship different bitmap fonts. The Windows profile (the default) has Small Fonts
@@ -55,15 +56,19 @@ MeasureTextAnswer dsMeasureTextAnswer(std::string_view text, std::string_view ma
 struct TrueTypeFace {
     int ascent = 0, descent = 0;
     std::function<int(char32_t)> advance;
+    std::function<int(char32_t)> overhang;   // ink right of the advance (GDI's -C when C < 0, else 0); may be empty
 };
 using TrueTypeResolver = std::function<bool(const std::string& family, int emPx, bool bold, bool italic, TrueTypeFace& out)>;
 void setTrueTypeResolver(TrueTypeResolver r);
 
+// Unicode -> cp1252 byte; -1 = not in the code page.
+int cp1252Byte(char32_t cp);
+
 // THE SAME LAYOUT, for DRAWING maptext (render/maptextpaint.h; one layout drives both
-// the drawing and the MeasureText reply, so a runechat box the server sized from our reply holds exactly the lines we
-// draw). Lines stack from the block's top (y 0) as the measured height adds up; the block's height is the measure.
-// Colour, text-align and -dm-text-outline are read here (they never change a measurement) by applyProps:
-// colour default white, a line takes its first run's alignment.
+// the drawing and the MeasureText reply, so a runechat box the server sized from our reply holds the lines we
+// draw). Lines stack from the block's top (y 0) as the measured height adds up; the block's height is the measure,
+// except that pt 9 is laid out at its drawn em 12.
+// Colour, text-align, valign and -dm-text-outline are read here (they never change a measurement) by applyProps.
 struct DsFace {
     std::string family;   // "ms sans serif" / "small fonts" / "courier" (a bitmap face) or the TrueType family used
     int em = 0;           // the GDI request, px (CreateFont(-em))
@@ -77,15 +82,26 @@ struct DsPaint {
     uint32_t outlineColor = 0x000000ffu;
 };
 struct DsGlyph { char32_t cp = 0; int x = 0; int face = 0; int paint = 0; };   // spaces and tabs only advance: not listed
-struct DsLine { int top = 0, ascent = 0, width = 0, align = 0; std::vector<DsGlyph> glyphs; };   // align 0 left 1 center 2 right
+// align 0 left 1 center 2 right; `overhang` px (last glyph's ink past its advance) count toward a centred/right line's width.
+struct DsLine { int top = 0, ascent = 0, height = 0, width = 0, overhang = 0, align = 0; std::vector<DsGlyph> glyphs; };
 struct DsLayout {
     bool ok = false;      // false: nothing to draw ("" or whitespace/tags only)
     int width = 0, height = 0;
+    int valign = 2;       // where the block sits in its box (its first glyph's valign): 0 top, 1 middle, 2 bottom
     std::vector<DsLine> lines;
     std::vector<DsFace> faces;
     std::vector<DsPaint> paints;
 };
 DsLayout dsLayoutMaptext(std::string_view text, std::string_view mapStyle, int width, GdiProfile profile = GdiProfile::Windows);
+
+// The unscaled advance of cp1252 byte `b` (b < 0: the default char) in `face`'s strike; -1 for TrueType or out of range.
+int dsBitmapAdvance(const DsFace& face, int b, GdiProfile profile = GdiProfile::Windows);
+
+// The character height (tmHeight - tmInternalLeading) of the strike GDI picks for a bitmap family at CreateFont(-em); 0 otherwise.
+int dsBitmapCharHeight(std::string_view family, int em, GdiProfile profile = GdiProfile::Windows);
+// That bitmap face at CreateFont(-em), and its pen advance for `cp` (strike width, scaled, plus bold's 1 px).
+DsFace dsBitmapFace(std::string_view family, int em, bool bold, GdiProfile profile = GdiProfile::Windows);
+int dsBitmapAdvancePx(const DsFace& face, char32_t cp, GdiProfile profile = GdiProfile::Windows);
 
 // The c2s 0x00fc reply body [w u16][h u16][id u32] for a decoded request, laid out against the default map's style.
 std::string dsMeasureTextReplyBody(const MeasureTextRequest& req, std::string_view mapStyle,

@@ -105,6 +105,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Other files worth knowing about
 
+* Map text in DreamSeeker's bitmap faces is drawn from font files already on the user's machine (Windows' or Wine's
+  `.fon` files, read at run time by `render/gdifon.h`); no font file or glyph bitmap is included.
 * `pager/dsargv.h` reproduces the observable behaviour of DreamSeeker's command-line parsing; it contains no BYOND
   code.
 * `net/md5.cpp` is a straightforward implementation of RFC 1321 written for this project, not copied code.

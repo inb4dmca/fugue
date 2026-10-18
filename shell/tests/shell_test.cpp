@@ -133,6 +133,8 @@ private slots:
         QCOMPARE(QString::fromStdString(macroSpecFor(&e)), QString("CTRL+SHIFT+WEST"));
         QKeyEvent m(QEvent::KeyPress, Qt::Key_Control, Qt::ControlModifier);
         QCOMPARE(QString::fromStdString(macroSpecFor(&m)), QString(""));
+        QKeyEvent c(QEvent::KeyPress, Qt::Key_Clear, Qt::KeypadModifier);
+        QCOMPARE(QString::fromStdString(macroSpecFor(&c)), QString("CENTER"));
     }
 };
 

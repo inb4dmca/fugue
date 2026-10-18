@@ -9,6 +9,7 @@
 #include <vector>
 #include "account/store.h"
 #include "pager/listing.h"
+#include "net/rscstore.h"
 
 namespace fugue::pager {
 
@@ -47,7 +48,7 @@ std::string windowWording(std::string line);
 // The argv PREFIX a join runs: explicit/$FUGUE_CLIENT, else {selfExe,"client"} when selfIsClient, else a `fugue` binary next to selfExe or on $PATH
 bool resolveClientArgv(const std::string& explicitIn, const CheckOptions& opt, std::vector<std::string>* argv, std::string* err);
 
-struct CacheStats { long long files = 0, bytes = 0, capBytes = 1LL << 30; };
+struct CacheStats { long long files = 0, bytes = 0, capBytes = net::RscStore::kDefaultCapBytes; };   // the client's cap
 CacheStats scanRscCache(const std::string& dir);   // the cache scan's rule: <2-hex>/<8-hex> files
 std::string rscDir();                              // ~/.fugue/rsc
 

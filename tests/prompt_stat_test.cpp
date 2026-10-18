@@ -3,13 +3,20 @@
 // DreamSeeker on the wire; the request frames are the ones stock DreamDaemon emits for alert() and input().
 #include <QtTest>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include "model/prompt.h"
 #include "model/statpanel.h"
+#include "model/verbmenu.h"
+#include "model/world.h"
+#include "net/input.h"
+#include "net/textmacro.h"
 
 using namespace fugue;
 using namespace fugue::model;
 
 namespace {
+const std::string kImp = "\xff\x16";   // `\improper`
 Bytes hx(const char* s) { auto b = hexDecode(s); if (!b) qFatal("bad hex %s", s); return *b; }
 std::string hs(const Bytes& b) { return hexEncode(b); }
 void cs(Bytes& b, const std::string& s) { b.insert(b.end(), s.begin(), s.end()); b.push_back(0); }
@@ -223,6 +230,97 @@ private slots:
         QCOMPARE(QString::fromStdString(hs(PromptBook::resolvedInput(0, 0, 0xffff).body)), QString::fromStdString(hs(encodeInputNull(0))));
     }
 
+    // A bare DM string keeps `\improper` as FF 16 (`\proper` FF 15). Stock DreamDaemon strips a leading marker from an
+    // in-list choice but sends one inside the text, and the other strings as they are; stock DreamSeeker shows none of
+    // them, answers an alert() with the label as shown, and an in-list pick resolves from the shown text.
+    void textMacroMarkersAreDropped() {
+        QCOMPARE(net::plainText("Go to " + kImp + "Research Lab"), std::string("Go to Research Lab"));
+        QCOMPARE(net::plainText("\xff\x15" "space"), std::string("space"));
+        QCOMPARE(net::plainText(std::string("tail\xff")), std::string("tail"));
+        QCOMPARE(net::plainText("caf\xc3\xa9"), std::string("caf\xc3\xa9"));
+    }
+    void alertWithoutMarkers() {
+        PromptBook b;
+        const Prompt* p = b.onFrame(kAlertMsg, alertReq(3, "Go to " + kImp + "Arrival Area?", kImp + "Arrival Area", {kImp + "Arrival Area", "Plain", ""}));
+        QVERIFY(p);
+        QCOMPARE(p->message, std::string("Go to Arrival Area?"));
+        QCOMPARE(p->title, std::string("Arrival Area"));
+        QCOMPARE(p->buttons, (std::vector<std::string>{"Arrival Area", "Plain"}));
+        std::string label = p->buttons[0];   // answering drops the prompt
+        QCOMPARE(QString::fromStdString(hs(b.answerAlert(3, label).body)), QString("03000000" "4172726976616c2041726561" "00"));
+    }
+    void inputInListWithoutMarkers() {
+        PromptBook b;
+        const Prompt* p = b.onFrame(kInputMsg, inputReq(kImp + "Arrival Area", "", kImp + "Arrival Area", 0x1080, 0, kInputFilterList, 4));
+        QVERIFY(p);
+        QCOMPARE(p->title, std::string("Arrival Area"));
+        QCOMPARE(p->message, std::string("Arrival Area"));
+        Bytes reply; putLe16(reply, 2); cs(reply, "Go to " + kImp + "Research Lab"); cs(reply, "Plain");
+        p = b.onFrame(kExpansionReplyMsg, reply);
+        QVERIFY(p);
+        QCOMPARE(p->choices, (std::vector<std::string>{"Go to Research Lab", "Plain"}));
+        std::string pick = p->choices[0];
+        PromptReply r = b.answerInput(4, pick);
+        QCOMPARE(r.type, kInputResolveMsg);
+        QCOMPARE(QString::fromStdString(hs(r.body)), QString("476f2d746f2d52657365617263682d4c616220" "00" "04000000" "00000000"));
+    }
+    // A verb argument's listbox (app/sessionworker.cpp) shows unescapeVerbText of each 0x003f choice, and a pick goes back
+    // as listPickText of the shown text, which stock DreamDaemon resolves to the member with the marker inside it.
+    void verbArgumentListboxWithoutMarkers() {
+        Bytes reply; putLe16(reply, 2); cs(reply, "Go to " + kImp + "Research Lab"); cs(reply, "\\'q");
+        std::vector<std::string> ch;
+        QVERIFY(parseExpansionReply(reply, ch));
+        QCOMPARE(int(ch.size()), 2);
+        QCOMPARE(net::unescapeVerbText(ch[0]), std::string("Go to Research Lab"));
+        QCOMPARE(net::unescapeVerbText(ch[1]), std::string("'q"));
+        QCOMPARE(net::listPickText(net::unescapeVerbText(ch[0])), std::string("Go-to-Research-Lab"));
+    }
+    void statRowsWithoutMarkers() {
+        Session s;
+        std::vector<std::string> tabs = {"Status", kImp + "Arrival Area"};
+        s.ingest(0x006a, statFrame(0, &tabs, 0, {{"Area:", kImp + "Arrival Area", 0}, {kImp + "Arrival Area", "row", 1}}));
+        QCOMPARE(int(s.world().stat.lines.size()), 2);
+        QCOMPARE(statText(s.world(), s.world().stat.lines[0]), std::string("Arrival Area"));
+        StatValue v;
+        QVERIFY(parseStatValue(s.world().stat.lines[0].valueJson, v));
+        QCOMPARE(v.text, std::string("Arrival Area"));
+        QCOMPARE(s.world().stat.lines[1].name, std::string("Arrival Area"));
+        // A statpanel() tab is shown plain; selecting it sends the name as the server sent it, which is what stock
+        // DreamDaemon then holds in client.statpanel.
+        QCOMPARE(statTabs(s.world()), (std::vector<std::string>{"Status", "Arrival Area"}));
+        QCOMPARE(statTabWireName(s.world(), 1), kImp + "Arrival Area");
+    }
+    void verbsWithoutMarkers() {
+        Bytes v; putLe16(v, 1); cs(v, kImp + "Zap Gun"); cs(v, kImp + "Shoots"); cs(v, kImp + "Weird");
+        v.push_back(0xff); v.push_back(0); v.push_back(0x04); v.push_back(0);
+        Session s;
+        s.ingest(0x0011, v);
+        VerbDef d;
+        QVERIFY(parseVerbDef(s.world().verbById.at(1), d));
+        QCOMPARE(d.name, std::string("Zap Gun"));
+        QCOMPARE(d.desc, std::string("Shoots"));
+        QCOMPARE(d.category, std::string("Weird"));
+        QCOMPARE(verbCategories(s.world()), (std::vector<std::string>{"Weird"}));
+        QCOMPARE(int(verbsInCategory(s.world(), "Weird").size()), 1);
+        QCOMPARE(statTabs(s.world()), (std::vector<std::string>{"Weird"}));
+        // The command bar's verb table: stock DreamSeeker runs the verb for `Zap-Gun`.
+        net::InputModel im;
+        im.onFrame(0x0011, v);
+        std::string rest;
+        const net::VerbEntry* e = im.matchVerb("Zap-Gun", rest);
+        QVERIFY(e);
+        QCOMPARE(e->name, std::string("Zap Gun"));
+        QCOMPARE(e->category, std::string("Weird"));
+        QCOMPARE(e->desc, std::string("Shoots"));
+    }
+    void chatWithoutMarkers() {
+        Session s;
+        Bytes out; cs(out, kImp + "Arrival Area\n");
+        s.ingest(0x0027, out);
+        QCOMPARE(s.world().chat.back(), std::string("Arrival Area"));
+        QCOMPARE(s.world().chatHtml.back(), std::string("Arrival Area"));
+    }
+
     // ---- stat panel ----
     void tabBodyMatchesStockDreamSeeker() {  // tabs: Alpha, Beta, Commands (verbs), Status
         QCOMPARE(QString::fromStdString(hs(encodeStatTabBody(1, 1, "Alpha"))), QString("010001416c70686100"));
@@ -338,6 +436,23 @@ private slots:
         v.kind = 0x04; QVERIFY(!statRowRef(w, v, ref));
         v.kind = 0x02; v.hasAppid = false; QVERIFY(!statRowRef(w, v, ref));
         v.hasAppid = true; w.bounds.maxX = 0; v.kind = 0x01; QVERIFY(!statRowRef(w, v, ref));  // no bounds: refuse, never divide by zero
+    }
+    void numberRowsPrintAsStockDreamSeeker() {  // the wire carries float32; each pair is (sent value, stock's text)
+        const std::pair<float, const char*> cases[] = {
+            {0.f, "0"}, {3.f, "3"}, {-17.5f, "-17.5"}, {123.4f, "123.4"}, {-123.4f, "-123.4"}, {177.7f, "177.7"},
+            {0.1f, "0.1"}, {1.f / 3.f, "0.333333"}, {3.14159265f, "3.14159"}, {65.4321f, "65.4321"},
+            {2.5e-05f, "2.5e-05"}, {1.2345e-05f, "1.2345e-05"}, {0.0001f, "0.0001"}, {-0.000123456f, "-0.000123456"}, {1e-07f, "1e-07"},
+            {999999.f, "999999"}, {123456.7f, "123457"}, {999999.5f, "1e+06"}, {1e6f, "1e+06"}, {-1e6f, "-1e+06"},
+            {1234567.f, "1.23457e+06"}, {16777216.f, "1.67772e+07"}, {1e15f, "1e+15"}, {1e20f, "1e+20"}, {1.5e38f, "1.5e+38"},
+        };
+        World w;
+        for (auto [f, want] : cases) {
+            double d = f;
+            uint64_t bits; std::memcpy(&bits, &d, 8);
+            char hex[32]; std::snprintf(hex, sizeof hex, "0x%llx", (unsigned long long)bits);
+            World::StatLine l{0, "n", std::string("{\"appid\":0,\"hasAppid\":false,\"head\":0,\"kind\":42,\"num\":{\"f64\":\"") + hex + "\"},\"text\":\"\"}"};
+            QCOMPARE(QString::fromStdString(statText(w, l)), QString(want));
+        }
     }
     // A click on a stat-panel row, as stock DreamSeeker sends it: the location is "Probe" and the control is "infowindow.info".
     // Params are as client/Click receives them.

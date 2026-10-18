@@ -32,9 +32,10 @@ struct PromptRequest {
     bool inList = false;
     QStringList choices;         // `in list`
     // A missing verb argument (net::argPrompt) is the client's own dialog, not a world input(). Nothing on the server
-    // waits on it, so its outcome is argAccepted or argCancelled, never accepted or cancelled. An `as num` field
+    // waits on it, so its outcome is argAccepted, argCancelled or argNone, never accepted or cancelled. An `as num` field
     // refuses a non-number in place, as stock DreamSeeker does.
     bool verbArg = false;
+    bool allowNull = false;      // verbArg: a nullable argument's dialog also has None, reported as argNone
 };
 
 class PromptHost : public QObject {
@@ -52,6 +53,7 @@ signals:
     void cancelled(quint32 id, bool alert);
     void argAccepted(quint32 id, const QString& text);            // verbArg requests only
     void argCancelled(quint32 id);
+    void argNone(quint32 id);
 private:
     void showNext();
     QDialog* build(const PromptRequest& r);

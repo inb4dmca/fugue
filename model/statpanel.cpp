@@ -1,11 +1,13 @@
 #include "model/statpanel.h"
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <set>
 #include "model/json.h"
+#include "net/textmacro.h"
 
 namespace fugue::model {
 
@@ -15,7 +17,7 @@ bool parseStatValue(const std::string& js, StatValue& out) {
     if (v.kind != JVal::Obj) return false;
     out = StatValue{};
     out.kind = uint8_t(v["kind"].n);
-    out.text = v["text"].bytesOrStr();
+    out.text = net::plainText(v["text"].bytesOrStr());
     out.appid = v["appid"].u32();
     out.head = v["head"].u32();
     out.hasAppid = v["hasAppid"].b;
@@ -30,24 +32,13 @@ bool parseStatValue(const std::string& js, StatValue& out) {
     return true;
 }
 
-std::string plainAtomName(const std::string& s) {
-    if (s.find('\xff') == std::string::npos) return s;
-    std::string o;
-    for (size_t i = 0; i < s.size(); i++) {
-        if ((unsigned char)s[i] == 0xff) { i++; continue; }
-        o.push_back(s[i]);
-    }
-    return o;
-}
+std::string plainAtomName(const std::string& s) { return net::plainText(s); }
 
+// DreamSeeker prints a stat number as %g: 6 significant digits, exponent form past them (1.23457e+06, 1e-07).
 static std::string trimNum(double f) {
     char b[64];
-    std::snprintf(b, sizeof b, "%.6f", f);   // BYOND prints statpanel numbers without a trailing ".000000"
-    std::string s = b;
-    if (s.find('.') != std::string::npos) {
-        while (!s.empty() && s.back() == '0') s.pop_back();
-        if (!s.empty() && s.back() == '.') s.pop_back();
-    }
+    auto r = std::to_chars(b, b + sizeof b, f, std::chars_format::general, 6);   // %.6g, locale-independent
+    std::string s(b, r.ptr);
     if (s == "-0") s = "0";
     return s;
 }
@@ -137,7 +128,8 @@ std::vector<VerbDef> verbsInCategory(const World& w, const std::string& label) {
 }
 
 std::vector<std::string> statTabs(const World& w) {
-    std::vector<std::string> t = w.stat.tabs;
+    std::vector<std::string> t;
+    for (const std::string& n : w.stat.tabs) t.push_back(net::plainText(n));
     for (auto& c : verbCategories(w)) t.push_back(std::move(c));
     return t;
 }

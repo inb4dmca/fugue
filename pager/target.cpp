@@ -57,8 +57,7 @@ std::optional<std::string> parseTarget(std::string_view in, std::string* err) {
         for (char c : s) dots += c == '.';
         if (dots == 1 && s.find_first_of(":/") == std::string::npos && !allDigitsDotted(s))
             return fail(goQuote(s) + " is a hub WORLD reference (byond://Key.World), not an address \xe2\x80\x94 "
-                        "the real pager resolves those through the hub's live-game directory, which this client does not implement. "
-                        "Use the server's host:port");
+                        "Fugue does not look hub worlds up by name. Use the server's host:port");
         return fail(goQuote(s) + " has no port \xe2\x80\x94 a BYOND address is host:port (e.g. play.example.org:7777)");
     }
     if (host.empty()) return fail(goQuote(s) + " has no host");

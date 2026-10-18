@@ -35,10 +35,14 @@ std::string formatUserMacros(const MacroSet& s);
 bool editUserMacro(MacroSet& s, const std::string& oldSpec, const std::string& spec, const std::string& command,
                    const std::string& id = "");
 
-// The macro a key fires with the player's lists beneath the skin's set: the skin first (a key it binds - even a disabled
-// binding - is "in use", and its answer stands), then this game's list, then the global list. `skin` may be null.
+// The macro a key fires with the player's lists beneath the skin's set (lookupHeld): per modifier combination the skin
+// (a key it binds, even disabled, is "in use"), then this game's list, then the global list. `skin` may be null.
 const MacroEntry* lookupLayered(const MacroSet* skin, const MacroSet& game, const MacroSet& global, const MacroKey& k,
                                 bool repeat);
+HeldMatch matchLayered(const MacroSet* skin, const MacroSet& game, const MacroSet& global, const MacroKey& k);
+// The same for the Any macro that answers the key (MacroSet::findAny); it fires before the key's own.
+const MacroEntry* lookupLayeredAny(const MacroSet* skin, const MacroSet& game, const MacroSet& global, const MacroKey& k,
+                                   bool repeat);
 
 // Storage paths under the client's state dir. worldKey "" = the global list.
 std::string userMacrosPath(const std::string& stateDir, const std::string& worldKey);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(fugue_qt VERSION 0.5.0 LANGUAGES CXX)
+project(fugue_qt VERSION 0.5.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,7 +8,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
-add_compile_options(-Wall -Wextra -Wno-unused-parameter)
+if(MSVC)
+  add_compile_options(/W4 /wd4100 /utf-8 /bigobj /Zc:__cplusplus)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+  # Narrow paths and argv are UTF-8 throughout the client, including the Qt-free modules.
+  add_link_options("/MANIFESTINPUT:${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/fugue.manifest")
+else()
+  add_compile_options(-Wall -Wextra -Wno-unused-parameter)
+endif()
+if(WIN32)
+  add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00)
+  link_libraries(ws2_32 advapi32)
+endif()
 add_compile_definitions(FUGUE_VERSION="${PROJECT_VERSION}")   # fugue_version.h
 
 # The metainfo must list the version being built.
@@ -21,7 +32,7 @@ if(_metainfo)
 endif()
 
 # Release build: the player-facing binary. The pager is the no-argument default. Test hooks (FUGUE_AUTO_*, pager
-# --auto-join/--quit-after) are compiled out, and the client sets PR_SET_DUMPABLE=0.
+# --auto-join/--quit-after) are compiled out, and the client disables core dumps (PR_SET_DUMPABLE=0 on Linux).
 option(FUGUE_RELEASE "build the shippable fugue-qt (pager default, no dev hooks)" OFF)
 
 # Headless-only build: just the Qt-free/Core modules, tools and tests (no window, no pager UI). This is an explicit opt-out;

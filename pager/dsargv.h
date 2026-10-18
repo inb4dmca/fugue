@@ -22,6 +22,7 @@ namespace fugue::pager {
 
 struct DsArgv {
     std::string target;        // raw for a bare argument, byond://-prefixed for +connect; "" = none
+    int targetArg = -1;        // index in args of that bare argument or of its +connect
     bool trace = false;        // -trace
     bool pager = false;        // -pager
     int security = -1;         // -trusted 0 / -safe 1 / -ultrasafe 2; -1 = not given; the last one wins

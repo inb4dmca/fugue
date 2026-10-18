@@ -8,6 +8,7 @@
 #include <QByteArray>
 #include <QProcessEnvironment>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,6 +30,11 @@ std::string displayCommand(const std::vector<std::string>& argv);
 // The environment a child gets: the pager's, minus every password variable.
 QProcessEnvironment childEnvironment();
 extern const char* const kPasswordVars[];   // names only
+
+// Runs this binary again as argv0 + args with childEnvironment() plus extraEnv ("NAME=value") and only stdin/stdout/stderr
+// open: in place of this process (returns only on failure), or detached.
+bool runSelf(const std::string& argv0, const std::vector<std::string>& args, bool detach, std::string* err = nullptr,
+             const std::vector<std::string>& extraEnv = {});
 
 // ~/.fugue/client.log (HOME-relative); "" if no HOME.
 std::string clientLogPath();
@@ -60,6 +66,11 @@ const char* const kDesktopFile = "io.github.toomykins.Fugue.desktop";
 const char* const kLegacyDesktopFile = "fugue.desktop";   // a second Fugue entry: removed only if its content is ours
 std::string desktopQuote(const std::string& s);
 std::string desktopEntry(const std::string& exe);
+// The Windows byond:// handler command: `"<exe>" pager --url "%1"`.
+std::string urlHandlerCommand(const std::string& exe);
+// `--url <link>`, the handler's whole argument list: the link, or nullopt when there is anything else, or the link holds
+// a quote, whitespace or a control character (it could have been split into extra arguments).
+std::optional<std::string> handlerUrl(const std::vector<std::string>& args, std::string* err = nullptr);
 struct DesktopResult { std::string desktopPath, mimeappsPath, err; std::vector<std::string> iconPaths; bool ok = false; };
 // Writes ONLY under $XDG_DATA_HOME (default ~/.local/share): applications/<app id>.desktop,
 // applications/mimeapps.list, and each of `icons` (size, PNG bytes) as icons/hicolor/<s>x<s>/apps/<app id>.png

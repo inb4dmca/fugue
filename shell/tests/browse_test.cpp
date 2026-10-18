@@ -76,7 +76,9 @@ private slots:
         auto st = host->store();
         st->put(1, "app.js", kAppJs);
         st->put(2, "app.css", kAppCss);
-        st->put(3, "px.png", std::string("\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\1\0\0\0\1\x08\x06\0\0\0\x1f\x15\xc4\x89\0\0\0\rIDATx\x9cc\xf8\xff\xff?\0\5\xfe\2\xfe\xa7\x35\x81\x84\0\0\0\0IEND\xaeB`\x82", 74));
+        static constexpr char png[] = "\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\1\0\0\0\1\x08\x06\0\0\0\x1f\x15\xc4\x89"
+                                      "\0\0\0\rIDATx\x9c" "c\xf8\xff\xff?\0\5\xfe\2\xfe\xa7\x35\x81\x84\0\0\0\0IEND\xae" "B`\x82";
+        st->put(3, "px.png", std::string(png, sizeof png - 1));
     }
     void cleanupTestCase() { delete topics; delete cmds; delete host; delete anchor; }
 
@@ -153,19 +155,23 @@ private slots:
         o.setBridge([](int, const QByteArray& body) { return QString("ok:") + QString::fromUtf8(body); });
         st->declare("", 500);                                          // an unnamed record that never lands
         QNetworkAccessManager nam;
-        struct R { QNetworkReply* r; QElapsedTimer t; qint64 ms = -1; };
+        // Separate pools keep Qt's connection reuse/scheduling from queuing a request behind a held one. This test
+        // measures the origin's hold budget, not QNetworkAccessManager's platform-dependent connection scheduler.
+        struct R { std::unique_ptr<QNetworkAccessManager> nam; QNetworkReply* r; QElapsedTimer t; qint64 ms = -1; };
         std::vector<std::unique_ptr<R>> rs;
         auto fire = [&](const QString& file) {
             auto x = std::make_unique<R>();
+            x->nam = std::make_unique<QNetworkAccessManager>();
             x->t.start();
-            x->r = nam.get(QNetworkRequest(QUrl(o.base() + file)));
+            x->r = x->nam->get(QNetworkRequest(QUrl(o.base() + file)));
             R* raw = x.get();
-            QObject::connect(x->r, &QNetworkReply::finished, [raw] { raw->ms = raw->t.elapsed(); });
+            QObject::connect(x->r, &QNetworkReply::finished, x->r, [raw] { raw->ms = raw->t.elapsed(); });
             rs.push_back(std::move(x));
             return raw;
         };
         auto status = [](R* x) { return x->r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(); };
         R* u1 = fire("missing1.png");
+        QVERIFY(QTest::qWaitFor([&] { return o.held() == 1; }, 3000));  // make u1 deterministically the oldest
         R* u2 = fire("missing2.png");
         QVERIFY(QTest::qWaitFor([&] { return o.held() == 2; }, 3000));
         R* u3 = fire("missing3.png");                                  // a third unknown name: not held
@@ -267,6 +273,18 @@ private slots:
         // ...and the page stayed where it was (a Topic is not a navigation)
         QCOMPARE(evs(p, "document.getElementById('out').textContent"), QString("upd:1,2"));
         QCOMPARE(p->url().host(), QString("127.0.0.1"));
+    }
+    void aWorldAddressIsAWorldLinkNotATopic() {
+        BrowserPane* p = host->paneFor("pop2");
+        QSignalSpy worlds(host, &BrowseHost::worldLink);
+        topics->clear();
+        ev(p, "location = 'byond://127.0.0.1:5000?x=1'");
+        QVERIFY(QTest::qWaitFor([&] { return worlds.count() >= 1; }, 5000));
+        QCOMPARE(worlds.at(0).at(0).toString(), QString("byond://127.0.0.1:5000?x=1"));
+        ev(p, "location = 'byond://winset?id=pop2&size=300x200'");
+        QTest::qWait(300);
+        QCOMPARE(worlds.count(), 1);
+        QCOMPARE(topics->count(), 0);
     }
     void aBurstOfNavigationsInOneTaskAllArrive() {
         // A DOM-ready handler can issue several byond:// navigations in one task.
@@ -617,6 +635,14 @@ private slots:
         QVERIFY(!p->findOpen());
         QVERIFY(QTest::qWaitFor([&] { QWidget* w = qApp->focusWidget(); return w && p->isAncestorOf(w); }, 5000));
         QCOMPARE(mac.count(), 0);
+        // the platform's Find shortcuts open it too (Cmd+F on macOS)
+        for (const QKeySequence& ks : QKeySequence::keyBindings(QKeySequence::Find)) {
+            QTest::keySequence(qApp->focusWidget(), ks);
+            QVERIFY(p->findOpen());
+            QTest::keyClick(p->findField(), Qt::Key_Escape);
+            QVERIFY(QTest::qWaitFor([&] { QWidget* w = qApp->focusWidget(); return w && p->isAncestorOf(w); }, 5000));
+        }
+        QCOMPARE(mac.count(), 0);
         // page inputs still type: plain keys reach the page's own <input>
         ev(p, "document.getElementById('i').focus()");
         QTest::keyClicks(qApp->focusWidget(), "xy");
@@ -660,6 +686,29 @@ private slots:
         QVERIFY2(p, "the held page opened when the control appeared");
         QVERIFY(QTest::qWaitFor([&] { return p->ready(); }, 15000));
         QCOMPARE(evs(p, "document.getElementById('g').textContent"), QString("held"));
+    }
+    // vg's credits: output(file, "mapwindow.credits") into an is-visible=false BROWSER, set up by a page call while hidden;
+    // the page then makes its own control visible. The control shows that same page, state and all, not a reload.
+    void aHiddenControlKeepsItsPageWhenShown() {
+        BrowseHost* h = win->browseHost();
+        QVERIFY(!win->controlWidget("mainwindow.ghost"));
+        win->showOutputFile("mainwindow.ghost", "<div id=g>default</div><script>function setup(t){document.getElementById('g').textContent=t;}"
+                                                "function start(){location='byond://winset?id=mainwindow.ghost;is-visible=true';}</script>");
+        QVERIFY(h->isHiddenPage("mainwindow.ghost"));
+        QVERIFY(!h->popupFor("mainwindow.ghost"));
+        BrowserPane* p = h->paneFor("mainwindow.ghost");
+        QVERIFY(p);
+        QVERIFY(QTest::qWaitFor([&] { return p->ready(); }, 15000));
+        win->pageCall("mainwindow.ghost", "setup", {"rolled"});
+        QVERIFY(QTest::qWaitFor([&] { return evs(p, "document.getElementById('g').textContent") == "rolled"; }, 5000));
+        win->pageCall("mainwindow.ghost", "start", {});
+        QVERIFY(QTest::qWaitFor([&] { win->syncFromLive(); return win->controlWidget("mainwindow.ghost") != nullptr; }, 5000));
+        QCOMPARE(win->controlWidget("mainwindow.ghost"), static_cast<QWidget*>(p));   // the same browser
+        QVERIFY(!p->isHidden());
+        QVERIFY(!h->isHiddenPage("mainwindow.ghost"));
+        QCOMPARE(evs(p, "document.getElementById('g').textContent"), QString("rolled"));
+        win->showOutputFile("mainwindow.nosuch", "<div>x</div>");   // not a browser control of the skin: no window of its own
+        QVERIFY(!h->popupFor("mainwindow.nosuch") && !h->paneFor("mainwindow.nosuch"));
     }
     // A hidden 1x1 BROWSER fed by browse() with no window of its own, then driven by output() to SetMusic. The page runs
     // windowless, and its play() starts with no user gesture. The page reports "playing" back as a Topic.

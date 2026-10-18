@@ -1,0 +1,10 @@
+{
+  "date": "2026-10-18",
+  "source": "stock-DD",
+  "world": "fugue-qt/tests/data/ddmiops-world/world.dm (+ src.dmi and canvas.dmi from mkdmi.py, shipped as res/559e5263 and res/f57fff71)",
+  "frames": 156,
+  "resources": 119,
+  "viewport": {"w": 800, "h": 800},
+  "eye": {"x": 13, "y": 13, "z": 1},
+  "note": "frames.txt = every s2c frame except 0x009f, recorded with `fuguedump record` against stock DD 516.1684; res/<resID> = verified resource bytes (net.ResID(bytes)==name). dmi/<case>.dmi = DD's own fcopy() of each finished /icon. dreamseeker.png = the 800x800 map control of stock DreamSeeker 516.1684 (wine, hardware mode) against the same world on its own DD."
+}

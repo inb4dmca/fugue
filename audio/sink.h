@@ -1,6 +1,7 @@
 // Sinks: where mixed stereo float goes.
 //
-// The device path pipes raw s16le stereo into a player already on the desktop (pw-play, paplay, aplay, in that order).
+// On macOS the device path uses Core Audio's Audio Queue API (no external player required).
+// On Linux it pipes raw s16le stereo into a player already on the desktop (pw-play, paplay, aplay, in that order).
 // No audio library is needed at build time, and this works on PipeWire, PulseAudio and bare ALSA.
 //   - A player on $PATH may still be unable to reach a server (pw-play with no PipeWire daemon exits at once, and the
 //     first write hits a closed pipe). Each candidate gets a 150 ms grace window to stay alive, and auto walks all
@@ -38,6 +39,9 @@ std::unique_ptr<Sink> openWavSink(const std::string& path, int rate, std::string
 // argv[0] spawned with raw s16le stereo on its stdin; nullptr (with err holding the player's own stderr) when it is
 // missing or dies inside the start grace window.
 std::unique_ptr<Sink> openExecSink(const std::vector<std::string>& argv, std::string* err);
+#ifdef __APPLE__
+std::unique_ptr<Sink> openCoreAudioSink(int rate, std::string* err);
+#endif
 // The Linux candidate list at `rate`, best first.
 std::vector<std::vector<std::string>> execPlayers(int rate);
 // Resolve a spec ("" = $FUGUE_AUDIO, then "auto"). Never nullptr: an unusable device is a NullSink plus `err` saying why.

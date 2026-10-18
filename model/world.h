@@ -47,7 +47,12 @@ struct Atom {
     struct Chain { int64_t startNs = 0, tickNs = 0; std::vector<AnimStep> steps; };
     Glide glide;              // valid iff gliding
     Chain chain;              // valid iff animating
+    // When a non-looping icon state's frames start (Unix ns; 0 = never bound).
+    int64_t iconStartNs = 0;
 };
+
+// Atom::iconStartNs for what is not an Atom.
+struct IconStart { uint32_t appid = 0; int64_t ns = 0; };
 
 // An appearance kept as its decoded canonical fields JSON (embedded verbatim in the snapshot) plus the scalars
 // the model itself reads.
@@ -59,6 +64,8 @@ struct Appearance {
     uint32_t glideSizeBits = 0;   // float32 bits
     bool longGlide = false;       // DM appearance_flags LONG_GLIDE (AppearanceFlags >> 21 & 1)
     bool hasPixelOffsets = false; // a 0x0008 pixel-offset record was present
+    uint32_t iconResID = 0xFFFFFFFFu;   // the icon and icon_state, for Atom::iconStartNs
+    std::string iconState;
     // The verb section, parsed once at ingest (verbmenu.cpp reads it per atom per keypress). haveVerbs false means
     // not filled: parse fieldsJson.
     std::vector<uint16_t> verbs;
@@ -89,6 +96,7 @@ struct World {
     std::string name;
     Bounds bounds;
     int64_t tickNanos = 0;   // 0 = never set -> DefaultTickNanos
+    int64_t frameNanos = 0;  // the client's frame (1 / client.fps, else the tick); 0 = never set
     int mapViewErrs = 0, cellRefreshErrs = 0;
     uint32_t clientAppid = 0;
     bool haveClientAppid = false;
@@ -146,11 +154,13 @@ struct World {
     std::set<uint32_t> layer2Appids;
     bool layer2Indexed = false;
     std::map<std::array<uint16_t, 3>, uint32_t> tiles;      // cumulative map, key (x,y,z) 0-based wire
+    std::map<std::array<uint16_t, 3>, IconStart> tileIconStart;   // per `tiles` cell
     MapGrid grid;
 
     // Remaining sections. Decoder-owned records are kept as the decoder's canonical fields JSON, embedded verbatim
     // like appearances.
     std::map<uint32_t, std::string> images;                 // client.images, key = imageID
+    std::map<uint32_t, IconStart> imageIconStart;           // per `images` id
     std::set<uint32_t> imageAnims;                          // keys of the image animation chains (existence only)
     // The image animation chains themselves (the snapshot prints only the keys above). Stamped at ingest like
     // Atom::chain and sampled by render/scene.cpp, so a client.image fades and slides. Transient: not in the snapshot.
@@ -158,10 +168,11 @@ struct World {
     std::map<uint32_t, std::string> hud;                    // client.screen, key = ref
     std::map<uint32_t, uint32_t> hudAppid;                  // hud's appid per ref, filled at ingest (0x0076) for verbmenu
     std::vector<uint32_t> hudOrder;
+    std::map<uint32_t, IconStart> hudIconStart;             // per `hud` ref, kept while the ref is off the screen
     std::map<uint32_t, std::string> verbById;
     std::vector<uint32_t> verbOrder;
 
-    struct StatLine { uint16_t ordinal = 0; std::string name; std::string valueJson; };
+    struct StatLine { uint16_t ordinal = 0; std::string name; std::string valueJson; IconStart icon; };
     struct Stat {
         std::vector<std::string> tabs;
         int selected = 0;
@@ -276,6 +287,10 @@ private:
     bool decode(uint16_t typ, ByteSpan body, std::string& jsonOut);
     void applyObjectArrays(const JVal& m, uint32_t reg);
     Atom* record(uint32_t id, uint16_t key, bool fresh);   // get-or-create by {id, Key} (world.cpp)
+    void bindAppearance(Atom& a, uint32_t appid);          // sets appid, stamping Atom::iconStartNs
+    void stampIcon(int64_t& startNs, uint32_t from, uint32_t to) const;   // Atom::iconStartNs's rule
+    void stampIcon(IconStart& s, uint32_t appid) const { stampIcon(s.ns, s.appid, appid); s.appid = appid; }
+    void setTile(const std::array<uint16_t, 3>& key, uint32_t appid);
     void addChat(const std::string& plain, const std::string& markup);
 
     World w_;

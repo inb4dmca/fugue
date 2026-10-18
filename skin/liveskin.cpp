@@ -21,7 +21,7 @@ std::string dims(int w, int h) { return std::to_string(w) + "x" + std::to_string
 bool storedKey(const std::string& k) {
     static const char* keys[] = {"is-visible", "is-disabled", "is-checked", "right-click", "pos", "size", "left", "right", "text",
                                  "background-color", "text-color", "on-close", "title", "use-title", "style", "command",
-                                 "icon-size", "zoom", "zoom-mode", "letterbox", "icon"};
+                                 "icon-size", "zoom", "zoom-mode", "letterbox", "icon", "font-family", "font-size", "font-style"};
     for (const char* s : keys) if (k == s) return true;
     return false;
 }
@@ -29,6 +29,15 @@ bool storedKey(const std::string& k) {
 double clampFrac(double f) { return f < 0.1 ? 0.1 : (f > 0.9 ? 0.9 : f); }
 
 std::string boolParam(bool b) { return b ? "true" : "false"; }
+
+bool macroParam(const MacroEntry& e, const std::string& k, std::string& v) {
+    if (k == "id") v = e.id;
+    else if (k == "name") v = e.spec;
+    else if (k == "command") v = e.command;
+    else if (k == "is-disabled") v = boolParam(e.disabled);
+    else return false;
+    return true;
+}
 
 // winget `splitter` text. Stock keeps the value as a 32-bit float: a whole value prints bare ("50", "-10"), anything
 // else with %f ("33.299999" after `splitter=33.3`).
@@ -169,6 +178,8 @@ LiveSkin::Kind LiveSkin::resolveLocked(const std::string& name) const {
     if (windowLocked(name)) return Kind::Window;   // (E2) a skin window: macro / title / focus targets
     if (isMenuTarget(name)) return Kind::Menu;
     if (runtimeLocked(name)) return Kind::Runtime;
+    size_t i;
+    if (macroElemLocked(name, i)) return Kind::Macro;
     return Kind::Unknown;
 }
 
@@ -200,12 +211,18 @@ bool LiveSkin::hasConsumerLocked(Kind kind, const WinsetPair& p) const {
     if (k == "background-color" || k == "style") return kind == Kind::Control;
     if (k == "text-color") {
         std::string t = controlTypeLocked(p.target);
-        return kind == Kind::Control && (t == "OUTPUT" || t == "BROWSER" || t == "INFO" || t == "INPUT" || t == "LABEL");
+        // A MAP's is maptext's default colour (defaultMapStyle).
+        return kind == Kind::Control && (t == "OUTPUT" || t == "BROWSER" || t == "INFO" || t == "INPUT" || t == "LABEL" || t == "MAP");
     }
     if (k == "text") {
         if (kind != Kind::Control) return false;
         std::string t = controlTypeLocked(p.target);
-        return t == "BUTTON" || t == "LABEL";
+        return t == "BUTTON" || t == "LABEL" || t == "INPUT";
+    }
+    // A control's font, consumed by shell/skinwindow (shell/skinfont.h).
+    if (k == "font-family" || k == "font-size" || k == "font-style") {
+        std::string t = controlTypeLocked(p.target);
+        return kind == Kind::Control && (t == "BUTTON" || t == "LABEL" || t == "INPUT" || t == "INFO");
     }
     if (k == "right-click") return kind == Kind::Control && controlTypeLocked(p.target) == "MAP";   // consumed by shell/skinwindow (map)
     // An INPUT's `command`: the bar's default command, shown as its sticky text (`!say "`). Consumed by shell/skinwindow.
@@ -242,9 +259,11 @@ bool LiveSkin::applyPropLocked(const WinsetPair& p) {
     if (!hasConsumerLocked(kind, p)) return false;
     std::string target = p.target;
     bool mapKey = p.key == "icon-size" || p.key == "zoom" || p.key == "zoom-mode" || p.key == "letterbox";
-    if (p.key == "left" || p.key == "right" || p.key == "is-checked" || p.key == "command" || mapKey) {
+    bool inputText = p.key == "text" && kind == Kind::Control && controlTypeLocked(p.target) == "INPUT";
+    if (p.key == "left" || p.key == "right" || p.key == "is-checked" || p.key == "command" || mapKey || inputText) {
         // One canonical spelling for the keys layoutChild reads, so the freshest write wins whatever spelling it used.
-        // is-checked and command are written by a click with the window-qualified name and by a bare winset alike.
+        // is-checked and command are written by a click with the window-qualified name and by a bare winset alike, and
+        // an INPUT's text by the player's typing (setInputText) and a winset alike.
         if (const Control* c = tree_.byName(p.target)) target = c->window + "." + c->name;
     }
     if (kind == Kind::Menu) target = menuElemLocked(p.target);   // one spelling: the bare elem name
@@ -322,7 +341,10 @@ void LiveSkin::applyPairLocked(const WinsetPair& p, WinsetResult& r) {
         return;
     }
     if (!p.ok) { r.unhandled.push_back(p.raw); return; }
-    if (storedKey(p.key)) {
+    if ((p.key == "name" || p.key == "command" || p.key == "is-disabled" || p.key == "parent") && resolveLocked(p.target) == Kind::Macro) {
+        if (applyMacroPairLocked(p)) { r.applied.push_back(p.target + "." + p.key); changed = true; }
+        else r.unhandled.push_back(p.raw);
+    } else if (storedKey(p.key)) {
         if (applyPropLocked(p)) { r.applied.push_back(p.target + "." + p.key); changed = true; }
         else r.unhandled.push_back(p.raw);
     } else if (p.key == "macro") {
@@ -393,8 +415,11 @@ WinsetResult LiveSkin::winsetLocked(const std::string& control, const std::strin
     // send type, size and pos before parent). So the parent pairs are applied first.
     std::vector<WinsetPair> pairs = splitWinset(control, props, urlEncoded);
     auto isParent = [](const WinsetPair& p) { return p.ok && p.key == "parent"; };
-    for (const WinsetPair& p : pairs) if (isParent(p)) applyPairLocked(p, r);
-    for (const WinsetPair& p : pairs) if (!isParent(p)) applyPairLocked(p, r);
+    std::vector<bool> consumed(pairs.size());
+    for (size_t i = 0; i < pairs.size(); i++)
+        if (isParent(pairs[i]) && !createMacroLocked(pairs, i, consumed, r)) applyPairLocked(pairs[i], r);
+    for (size_t i = 0; i < pairs.size(); i++)
+        if (!isParent(pairs[i]) && !consumed[i]) applyPairLocked(pairs[i], r);
     accountLocked(control, r);
     return r;
 }
@@ -488,6 +513,11 @@ bool LiveSkin::wingetLocked(const std::string& id, const std::string& param, std
                     }
             return false;
         }
+        size_t mi;
+        if (const MacroSet* ms = macroElemLocked(id, mi)) {
+            if (param == "type") { out = "MACRO"; return true; }
+            return macroParam(ms->entries[mi], param, out);
+        }
         // (E2) a skin window.
         if (const Block* w = windowLocked(id)) {
             bool isMain = file_ && findMainWindow(*file_) == w;
@@ -563,7 +593,9 @@ bool LiveSkin::winget(const std::string& control, const std::string& param, std:
 std::string LiveSkin::wingetParams(const std::string& control, const std::string& params) const {
     std::lock_guard<std::mutex> g(mu_);
     nameBlockWriteControlLocked(params);
-    std::string out = file_ ? wingetAnswer(params, [&](const std::string& k, std::string& v) { return wingetLocked(control, k, v); }) : "";
+    std::string out = file_ ? wingetAnswer(params, [&](const std::string& k, std::string& v) {
+        return controlFocusLocked(control, k, v) || wingetLocked(control, k, v) || buttonUncheckedLocked(control, k, v);
+    }) : "";
     // A lone property's answer is written into the name block (nameBlockWrite); a multi-property answer is not.
     if (wingetParamNames(params).size() == 1) nameBlockWrite(nameBlock_, out);
     return out;
@@ -582,8 +614,11 @@ std::string LiveSkin::defaultMapStyle() const {
     std::string pick = maps.front(), v;
     for (const std::string& id : maps)
         if (wingetLocked(id, "is-default", v) && v == "true") { pick = id; break; }
-    std::string out;
+    std::string out, color;
     wingetLocked(pick, "style", out);
+    // The control's text-color is maptext's default colour; a `body` rule in its style still beats it.
+    if (wingetLocked(pick, "text-color", color) && !color.empty() && lowerAscii(color) != "none")
+        out = "body{color:" + color + "}" + out;
     return out;
 }
 
@@ -597,6 +632,8 @@ std::string LiveSkin::wingetType(const std::string& control) const {
         if (const Elem* e = declaresLocked(control)) return e->type();
         if (windowLocked(control)) return "MAIN";
         if (const RuntimeCtl* rc = runtimeLocked(control)) return rc->type;   // winexists("rtlab") -> "LABEL"
+        size_t mi;
+        if (macroElemLocked(control, mi) || builtMacroSetLocked(control)) return "MACRO";
     }
     if (knownPopupLocked(control)) return "MAIN";
     return "";
@@ -685,10 +722,125 @@ void LiveSkin::setPaneShown(const std::string& window) {
     notify();
 }
 
+// A control's focus answers whether it has the keyboard: where the GUI last reported it, else the world's last winset.
+bool LiveSkin::controlFocusLocked(const std::string& id, const std::string& param, std::string& out) const {
+    const Control* c = param == "focus" ? tree_.byName(id) : nullptr;
+    if (!c) return false;
+    const std::string& f = guiFocusSet_ ? guiFocus_ : focus_;
+    out = boolParam(!f.empty() && tree_.byName(f) == c);
+    return true;
+}
+
+// A BUTTON nobody has checked answers is-checked=false.
+bool LiveSkin::buttonUncheckedLocked(const std::string& id, const std::string& param, std::string& out) const {
+    const Control* c = param == "is-checked" ? tree_.byName(id) : nullptr;
+    if (!c || c->type != "BUTTON") return false;
+    out = "false";
+    return true;
+}
+
+void LiveSkin::setInputText(const std::string& id, const std::string& text) {
+    std::lock_guard<std::mutex> g(mu_);
+    if (const Control* c = tree_.byName(id); c && c->type == "INPUT") props_.set(c->window + "." + c->name, "text", text);
+}
+
 void LiveSkin::setGuiFocus(const std::string& id) {
     std::lock_guard<std::mutex> g(mu_);
     guiFocus_ = id;
     guiFocusSet_ = true;
+}
+
+const MacroSet* LiveSkin::builtMacroSetLocked(const std::string& name) const {
+    for (const std::string& u : usedMacros_) {
+        auto it = macros_.sets.find(u);
+        if (ieq(u, name) && it != macros_.sets.end()) return &it->second;
+    }
+    return nullptr;
+}
+
+// `id` or `set.id`, in a built set.
+const MacroSet* LiveSkin::macroElemLocked(const std::string& name, size_t& index) const {
+    size_t dot = name.find('.');
+    std::string set = dot == std::string::npos ? "" : name.substr(0, dot), id = dot == std::string::npos ? name : name.substr(dot + 1);
+    if (id.empty()) return nullptr;
+    for (const std::string& u : usedMacros_) {
+        const MacroSet* ms = set.empty() || ieq(set, u) ? builtMacroSetLocked(u) : nullptr;
+        if (!ms) continue;
+        for (size_t i = 0; i < ms->entries.size(); i++)
+            if (ieq(ms->entries[i].id, id)) { index = i; return ms; }
+    }
+    return nullptr;
+}
+
+bool LiveSkin::applyMacroPairLocked(const WinsetPair& p) {
+    size_t i;
+    MacroSet& set = const_cast<MacroSet&>(*macroElemLocked(p.target, i));
+    MacroEntry& e = set.entries[i];
+    if (p.key == "command") e.command = p.value;
+    else if (p.key == "is-disabled") e.disabled = winsetBool(p.value);
+    else if (p.key == "name") {
+        MacroKey k;
+        bool rep;
+        if (!parseMacroName(p.value, k, rep)) return false;
+        e.key = k;
+        e.rep = rep;
+        e.spec = e.runtime ? macroSpecName(k, rep) : p.value;
+        set.reindex();
+    } else {
+        std::string v = lowerAscii(trimSpace(p.value));
+        if (v.empty() || v == "none" || v == "null") {
+            if (!e.runtime) return false;
+            set.entries.erase(set.entries.begin() + long(i));
+            set.reindex();
+        } else if (!ieq(v, set.name)) {
+            return false;
+        }
+    }
+    macroGen_++;
+    return true;
+}
+
+// A winset's `parent=<macro set>` for a name nothing holds yet, with that name's name / command / is-disabled pairs.
+bool LiveSkin::createMacroLocked(const std::vector<WinsetPair>& pairs, size_t parent, std::vector<bool>& consumed, WinsetResult& r) {
+    const WinsetPair& p = pairs[parent];
+    if (p.target.find_first_of("*?") != std::string::npos || resolveLocked(p.target) != Kind::Unknown) return false;
+    MacroSet* set = const_cast<MacroSet*>(builtMacroSetLocked(trimSpace(p.value)));
+    if (!set) return false;
+    MacroEntry ent;
+    ent.id = p.target.substr(p.target.rfind('.') + 1);
+    ent.runtime = true;
+    bool keyed = false, command = false, disabled = false;
+    r.applied.push_back(p.target + ".parent");
+    for (size_t j = 0; j < pairs.size(); j++) {
+        const WinsetPair& q = pairs[j];
+        if (j == parent || !q.ok || !ieq(q.target, p.target)) continue;
+        if (q.key == "name") {
+            keyed = parseMacroName(q.value, ent.key, ent.rep);
+            ent.spec = keyed ? macroSpecName(ent.key, ent.rep) : q.value;
+        } else if (q.key == "command") {
+            ent.command = q.value;
+            command = true;
+        } else if (q.key == "is-disabled") {
+            ent.disabled = winsetBool(q.value);
+            disabled = true;
+        } else {
+            continue;
+        }
+        consumed[j] = true;
+        r.applied.push_back(q.target + "." + q.key);
+    }
+    auto it = keyed ? set->byKey.find({ent.key, ent.rep}) : set->byKey.end();
+    if (it != set->byKey.end()) {
+        MacroEntry& old = set->entries[it->second];
+        if (command) old.command = ent.command;
+        if (disabled) old.disabled = ent.disabled;
+    } else {
+        set->entries.push_back(ent);
+        set->reindex();
+    }
+    macroGen_++;
+    relayoutLocked();
+    return true;
 }
 
 void LiveSkin::useMacroLocked(const std::string& set) {
@@ -844,6 +996,19 @@ std::string LiveSkin::wingetWildcard(const std::string& control, const std::stri
                 if (std::find(used.begin(), used.end(), b.name) == used.end()) continue;
                 bool menu = b.kind == "menu";
                 items.clear();   // a re-declared datum: the last one wins (File::macro)
+                if (!menu) {
+                    const MacroSet& ms = macros_.sets.at(b.name);
+                    std::vector<size_t> order(ms.entries.size());
+                    for (size_t i = 0; i < order.size(); i++) order[i] = i;
+                    std::stable_sort(order.begin(), order.end(), [&ms](size_t x, size_t y) { return listedBefore(ms.entries[x], ms.entries[y]); });
+                    for (size_t i : order) {
+                        if (ms.entries[i].id.empty()) continue;   // an unnamed macro is not enumerated
+                        items.push_back({b.name + "." + ms.entries[i].id, [&ms, i](const std::string& k, std::string& v) {
+                            return macroParam(ms.entries[i], k, v);
+                        }});
+                    }
+                    continue;
+                }
                 if (menu) {
                     // The menu itself, with the defaults stock answered for it (menu.is-checked=false, menu.command=, ...).
                     std::string mn = b.name;
@@ -1028,6 +1193,7 @@ SkinSnapshot LiveSkin::snapshot() const {
     s.tree = tree_;
     s.props = props_;
     s.macros = macros_;
+    s.macroGen = macroGen_;
     s.macro = macro_;
     s.focus = focus_;
     s.focusSeq = focusSeq_;

@@ -1,4 +1,5 @@
 #include "net/input.h"
+#include "net/textmacro.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -11,9 +12,9 @@ using proto::enc::VerbArg;
 namespace {
 constexpr uint32_t kArgNum = 8, kArgText = 0x04, kArgNull = 0x80, kArgMessage = 0x800, kArgAnything = 0x1000;
 constexpr uint32_t kArgAtoms = 0x01 | 0x02 | 0x20;   // mob | obj | turf: a typed name, never a string
+constexpr uint32_t kArgCommandText = 0x10000;
 constexpr uint8_t kFilterContents = 0x08, kFilterWorld = 0x10;   // `in usr`, `in world` (FilterKind on the 0x0011)
 constexpr uint8_t kFilterList = 0x40;   // VerbArgSpec.filterKind for an `in <list>` clause
-constexpr uint8_t kFlagInstant = 0x80;
 
 std::string lower(std::string s) { for (auto& c : s) c = char(std::tolower((unsigned char)c)); return s; }
 bool ieq(const std::string& a, const std::string& b) { return a.size() == b.size() && lower(a) == lower(b); }
@@ -99,17 +100,6 @@ std::string argTypeName(uint32_t m) {
     if (m & 0x100) return "area";
     return "arg";
 }
-bool looksMoveNamed(const std::string& n) {
-    std::string l = lower(n);
-    for (const char* w : {"move", "walk", "step", "dir"}) if (l.find(w) != std::string::npos) return true;
-    return false;
-}
-bool moveShaped(const VerbEntry& e) {
-    if (!(e.flags & kFlagInstant)) return false;
-    if (e.args.empty() || e.args.size() > 2) return false;
-    for (auto& a : e.args) if (a.typeMask != kArgNum) return false;
-    return true;
-}
 }  // namespace
 
 int parseDir(const std::string& s) {
@@ -151,6 +141,10 @@ void InputModel::onFrame(uint16_t type, ByteSpan b) {
     VerbEntry e;
     e.id = le16(&b[0]); p = 2;
     if (!cstr(e.name) || !cstr(e.desc) || !cstr(e.category)) return;
+    // Without text-macro markers, as stock shows and matches a typed name; the verb itself is sent by id.
+    e.name = plainText(e.name);
+    e.desc = plainText(e.desc);
+    e.category = plainText(e.category);
     if (p + 3 > b.size()) return;
     e.head = b[p++]; e.src = b[p++]; e.flags = b[p++];
     if (e.flags & 0x80) { if (p + 5 > b.size()) return; p += 5; }
@@ -161,7 +155,6 @@ void InputModel::onFrame(uint16_t type, ByteSpan b) {
         VerbArgSpec a; a.typeMask = le32(&b[p]); a.filter = b[p + 4]; a.filterKind = b[p + 5]; p += 6;
         e.args.push_back(a);
     }
-    if (!verbs_.count(e.id)) order_.push_back(e.id);
     verbs_[e.id] = std::move(e);
 }
 
@@ -177,43 +170,65 @@ const VerbEntry* InputModel::verbByName(const std::string& name) const {
     return nullptr;
 }
 
-const VerbEntry* InputModel::matchVerb(const std::string& line0, std::string& rest) const {
-    std::string line = trim(line0);
-    const VerbEntry* best = nullptr;
-    for (auto& [id, e] : verbs_) {
-        if (e.name.empty() || e.name.size() > line.size()) continue;
-        if (!ieq(line.substr(0, e.name.size()), e.name)) continue;
-        if (line.size() > e.name.size() && line[e.name.size()] != ' ' && line[e.name.size()] != '\t') continue;
-        if (!best || e.name.size() > best->name.size() || (e.name.size() == best->name.size() && e.id < best->id)) {
-            best = &e;
-            rest = trim(line.substr(e.name.size()));
-        }
+std::string verbCommandName(const std::string& name) {
+    std::string o = name;
+    std::replace(o.begin(), o.end(), ' ', '-');
+    return o;
+}
+
+// Stock DreamSeeker's verb lookup: the first word names the verb when it is the name with each space written `-`
+// (case-insensitive, no abbreviations). Failing that, a name typed with spaces still names the verb, but its arguments
+// begin after the first word (`Set Default Language` is that verb with the argument `Default`).
+static bool nameTyped(const std::string& name, const std::string& line) {   // `name` at the start of `line`
+    if (name.empty() || line.size() < name.size()) return false;
+    for (size_t i = 0; i < name.size(); i++) {
+        char n = name[i], c = line[i];
+        if (n == ' ' ? (c != ' ' && c != '-') : std::tolower((unsigned char)n) != std::tolower((unsigned char)c)) return false;
     }
+    return line.size() == name.size() || line[name.size()] == ' ' || line[name.size()] == '\t';
+}
+
+const VerbEntry* InputModel::matchVerb(const std::string& line0, std::string& rest, bool* firstWord) const {
+    std::string line = trim(line0);
+    size_t w = line.find_first_of(" \t");
+    std::string word = line.substr(0, w);
+    const VerbEntry* best = nullptr;
+    bool first = false;
+    for (auto& [id, e] : verbs_) {
+        bool f = e.name.size() == word.size() && nameTyped(e.name, word);
+        if (!f && !nameTyped(e.name, line)) continue;
+        if (!best || (f && !first) || (f == first && !f && e.name.size() > best->name.size())) { best = &e; first = f; }
+    }
+    if (best) rest = w == std::string::npos ? "" : trim(line.substr(w));
+    if (firstWord) *firstWord = first;
     return best;
 }
 
 // Space completion, as in the stock command bar: a space typed at the end of the bar becomes ` "` when the verb's next
 // unfilled argument is text or message (`say` -> `say "`, `numtext 5` -> `numtext 5 "`), and a plain space for num,
-// anything, or no arguments. A unique prefix completes to the verb's own spelling. Inside an open quote, after
-// whitespace, or for an ambiguous prefix, a plain space is typed. An escaped `\"` neither opens nor closes a quote.
+// anything, or no arguments. A unique prefix completes to the verb's command name (`Set` -> `Set-Default-Language `).
+// Inside an open quote, after whitespace, or for an ambiguous prefix, a plain space is typed. An escaped `\"` neither
+// opens nor closes a quote.
 bool InputModel::spaceCompletion(const std::string& line, std::string& out) const {
     size_t quotes = 0;
     for (size_t q = unescapedQuote(line, 0); q != std::string::npos; q = unescapedQuote(line, q + 1)) quotes++;
     if (quotes % 2 == 1 || trim(line) != line) return false;
     std::string rest;
-    const VerbEntry* e = matchVerb(line, rest);
+    bool firstWord = false;
+    const VerbEntry* e = matchVerb(line, rest, &firstWord);
     std::string head;
     if (e) {
-        head = e->name + line.substr(e->name.size());
+        if (!firstWord) return false;
+        head = verbCommandName(e->name) + line.substr(e->name.size());
     } else {
         if (line.find_first_of(" \t") != std::string::npos) return false;
         int n = 0;
         for (auto& [id, v] : verbs_) {
-            if (v.name.empty() || v.name.find_first_of(" \t") != std::string::npos || v.name.size() <= line.size()) continue;
-            if (ieq(v.name.substr(0, line.size()), line)) { e = &v; n++; }
+            if (v.name.empty() || v.name.size() <= line.size()) continue;
+            if (ieq(verbCommandName(v.name).substr(0, line.size()), line)) { e = &v; n++; }
         }
         if (n != 1) return false;
-        head = e->name;
+        head = verbCommandName(e->name);
     }
     size_t filled = 0;
     for (std::string r = rest, nr; !r.empty(); filled++) { nextToken(r, nr); r = nr; }
@@ -222,23 +237,12 @@ bool InputModel::spaceCompletion(const std::string& line, std::string& out) cons
     return true;
 }
 
-const VerbEntry* InputModel::moveVerb() const {
-    const VerbEntry* best = nullptr; bool bestNamed = false;
-    for (uint16_t id : order_) {
-        auto it = verbs_.find(id);
-        if (it == verbs_.end() || !moveShaped(it->second)) continue;
-        bool named = looksMoveNamed(it->second.name);
-        if (!best || (named && !bestNamed) || (named == bestNamed && it->second.id < best->id)) { best = &it->second; bestNamed = named; }
-    }
-    return best;
-}
-
 // An `in <list>` argument whose value the server resolves (ListResolve, input.h).
 static bool resolvesThroughServer(const VerbArgSpec& a) {
     return a.filterKind == kFilterList && !(a.typeMask & (kArgText | kArgMessage | kArgNum));
 }
-// A nullable argument the line ran out before goes out as null (tag 0, kind 0, ref 0xffff) without a dialog. A required
-// argument after it still prompts.
+// A nullable argument the line ran out before goes out as null (tag 0, kind 0, ref 0xffff), unless the verb was started
+// from the stat panel (promptNull), which opens a dialog with a None button. A required argument after it still prompts.
 static VerbArg nullArg() { VerbArg a; a.tag = 0; a.kind = 0; a.ref = 0xffff; return a; }
 
 static VerbArg atomArg(const SrcCandidate& c) { VerbArg a; a.tag = 0; a.kind = c.src.kind; a.ref = c.src.ref; return a; }
@@ -300,9 +304,11 @@ const SrcCandidate* atomTyped(const std::vector<SrcCandidate>& cands, const std:
     }
 }
 
-// A dialog value naming one of an atom argument's candidates: the name as listed, or with its spaces written `-`,
-// case-insensitive. The dialog is a text box here, a listbox in DreamSeeker.
+// A dialog value naming one of an atom argument's candidates: the name as listed, else case-insensitively or with its
+// spaces written `-`.
 static const SrcCandidate* atomNamed(const std::vector<SrcCandidate>& cands, const std::string& tok) {
+    for (const SrcCandidate& c : cands)
+        if (c.name == tok) return &c;
     for (const SrcCandidate& c : cands) {
         std::string dashed = c.name;
         std::replace(dashed.begin(), dashed.end(), ' ', '-');
@@ -318,7 +324,8 @@ static std::string usageToken(const VerbArgSpec& a) {
     if (a.filterKind == kFilterList) m &= ~kArgAnything;
     if ((m & kArgMessage) && (m & kArgText)) m &= ~kArgMessage;
     static const std::pair<uint32_t, const char*> names[] = {{0x01, "mob"}, {0x02, "obj"}, {kArgText, "\"text\""}, {kArgNum, "number"},
-                                                            {0x20, "turf"}, {0x100, "area"}, {kArgMessage, "\"text\""}, {kArgAnything, "anything"}};
+                                                            {0x20, "turf"}, {0x100, "area"}, {kArgMessage, "\"text\""}, {kArgAnything, "anything"},
+                                                            {kArgCommandText, "command"}};
     std::string t;
     for (const auto& [bit, name] : names)
         if (m & bit) t += (t.empty() ? "" : "|") + std::string(name);
@@ -329,7 +336,7 @@ static std::string usageToken(const VerbArgSpec& a) {
     return t;
 }
 static std::string usageLine(const VerbEntry& e) {
-    std::string u = "usage: " + e.name;
+    std::string u = "usage: " + verbCommandName(e.name);
     for (const VerbArgSpec& a : e.args) u += " " + usageToken(a);
     return u;
 }
@@ -355,21 +362,67 @@ static std::string refusedAtom(const std::vector<SrcCandidate>& cands, const Tok
     return tok.raw;
 }
 
-// Parses arguments [start..] of e from `rest` onto args. Returns the local error ("" = complete). *missing is the first
-// required argument the line ran out before. *listAt is the first argument that needs a server resolve, with its token
-// in *listText and the rest of the line in *listRest; parsing stops there.
-static std::string verbArgsFor(const VerbEntry& e, size_t start, std::string rest, std::vector<VerbArg>& args, size_t* missing,
-                               const InputModel::ArgResolver& atoms, size_t* listAt = nullptr, std::string* listText = nullptr,
-                               std::string* listRest = nullptr) {
+struct ArgParse {
+    std::vector<VerbArg> args;
+    std::string line;            // the display line (MissingArg::line), with the atoms DreamSeeker fills in itself
+    bool promptNull = false;     // MissingArg::promptNull
+    size_t missing = SIZE_MAX;   // the first argument the line ran out before that needs a dialog
+    std::optional<std::vector<SrcCandidate>> listed;   // its listbox, when DreamSeeker lists the atoms itself
+    size_t listAt = SIZE_MAX;    // the first argument that needs a server resolve, its token and the rest of the line
+    std::string listText, listRest;
+    bool quiet = false;          // the refusal prints nothing
+};
+
+// An atom argument's listbox when DreamSeeker lists the atoms itself (mob / obj / turf / `anything`, no text or num bit):
+// one candidate per name, the first kept.
+static std::optional<std::vector<SrcCandidate>> listedAtoms(const VerbArgSpec& spec, const InputModel::ArgResolver& atoms) {
+    if (!atoms || (spec.typeMask & (kArgText | kArgMessage | kArgNum))) return std::nullopt;
+    std::optional<std::vector<SrcCandidate>> cands = atoms(spec);
+    if (!cands) return cands;
+    std::vector<SrcCandidate> out;
+    for (const SrcCandidate& c : *cands)
+        if (std::none_of(out.begin(), out.end(), [&](const SrcCandidate& o) { return o.name == c.name; })) out.push_back(c);
+    return out;
+}
+
+// Parses arguments [start..] of e from `rest` onto p.args. Returns the local error ("" = complete). Parsing stops at
+// p.missing or p.listAt.
+static std::string verbArgsFor(const VerbEntry& e, size_t start, std::string rest, ArgParse& p, const InputModel::ArgResolver& atoms) {
+    auto& args = p.args;
     for (size_t i = start; i < e.args.size(); i++) {
         const auto& spec = e.args[i];
-        rest = ltrim(rest);
+        bool command = spec.typeMask & kArgCommandText;
+        if (!command || ltrim(rest).empty()) rest = ltrim(rest);
         if (rest.empty()) {
-            if (spec.typeMask & kArgNull) { args.push_back(nullArg()); continue; }
-            if (missing) *missing = i;
+            bool nullable = spec.typeMask & kArgNull;
+            if (nullable && !p.promptNull) { args.push_back(nullArg()); continue; }
+            if (command) return usageLine(e);   // no dialog
+            // A listbox of atoms: a lone choice is taken without a dialog unless None is offered; none sends nothing.
+            if (std::optional<std::vector<SrcCandidate>> cands = listedAtoms(spec, atoms)) {
+                if (cands->empty()) {
+                    p.quiet = true;
+                    return e.name + ": argument " + std::to_string(i + 1) + " has nothing to choose from \xe2\x80\x94 nothing sent";
+                }
+                if (cands->size() == 1 && !nullable) {
+                    args.push_back(atomArg(cands->front()));
+                    p.line += " " + verbCommandName(cands->front().name);
+                    p.promptNull = true;
+                    continue;
+                }
+                p.listed = std::move(cands);
+            }
+            p.missing = i;
             return e.name + ": missing argument " + std::to_string(i + 1) + " \xe2\x80\x94 " + usageLine(e);
         }
         bool last = i + 1 == e.args.size();
+        if (command) {
+            // The rest of the line verbatim, quotes and backslashes included; only a "..." followed by more is refused.
+            std::string after, r2;
+            if (nextToken(ltrim(rest), after).kind == Token::Quoted && !after.empty()) return notValid(e, nextToken(after, r2).raw);
+            VerbArg a; a.tag = 2; a.str = escapeVerbText(rest); args.push_back(a);   // DreamDaemon parses escapes back out
+            rest.clear();
+            continue;
+        }
         bool textLike = (spec.typeMask == 0 && spec.filterKind != kFilterList) || (spec.typeMask & kArgText);
         std::string after;
         Token tok = nextToken(rest, after);
@@ -406,10 +459,10 @@ static std::string verbArgsFor(const VerbEntry& e, size_t start, std::string res
                 continue;
             }
         }
-        if (listAt && resolvesThroughServer(spec)) {
+        if (resolvesThroughServer(spec)) {
             // A typed list argument goes out as typed: the server matches it, escapes and all, and the answer arrives
             // as s2c 0x0039.
-            *listAt = i; *listText = tok.raw; *listRest = rest;
+            p.listAt = i; p.listText = tok.raw; p.listRest = rest;
             return "";
         }
         if (spec.typeMask & kArgNum) {
@@ -429,27 +482,31 @@ static std::string verbArgsFor(const VerbEntry& e, size_t start, std::string res
 
 // The rest of a verb from argument `start` on: frames, a missing argument (titled from `line`), or a list resolve.
 static CommandResult continueVerb(const VerbEntry& e, const VerbSrc& vs, const std::string& line, std::vector<VerbArg> args, size_t start,
-                                  const std::string& rest, const InputModel::ArgResolver& atoms) {
+                                  const std::string& rest, const InputModel::ArgResolver& atoms, bool promptNull = false) {
     CommandResult r;
-    size_t missing = SIZE_MAX, listAt = SIZE_MAX;
-    std::string listText, listRest;
-    r.error = verbArgsFor(e, start, rest, args, &missing, atoms, &listAt, &listText, &listRest);
-    if (listAt != SIZE_MAX) {
-        r.resolve = ListResolve{MissingArg{e, listAt, line, args, vs}, listText, listRest};
-        r.error = "verb " + e.name + ": argument " + std::to_string(listAt + 1) + " resolves through the server (0x0039)";
+    ArgParse p;
+    p.args = std::move(args);
+    p.line = line;
+    p.promptNull = promptNull;
+    r.error = verbArgsFor(e, start, rest, p, atoms);
+    r.quiet = p.quiet;
+    if (p.listAt != SIZE_MAX) {
+        r.resolve = ListResolve{MissingArg{e, p.listAt, p.line, p.args, vs, p.promptNull, std::nullopt}, p.listText, p.listRest};
+        r.error = "verb " + e.name + ": argument " + std::to_string(p.listAt + 1) + " resolves through the server (0x0039)";
         return r;
     }
-    if (missing != SIZE_MAX) r.missing = MissingArg{e, missing, line, args, vs};
+    if (p.missing != SIZE_MAX) r.missing = MissingArg{e, p.missing, p.line, p.args, vs, p.promptNull, std::move(p.listed)};
     if (!r.error.empty()) return r;
-    r.frames.push_back({0x0002, proto::enc::encodeVerb(e.id, vs.kind, vs.ref, args)});
+    r.frames.push_back({0x0002, proto::enc::encodeVerb(e.id, vs.kind, vs.ref, p.args)});
     return r;
 }
 
-CommandResult InputModel::verbCommand(const std::string& line, bool haveSelf, const SrcResolver& src, const ArgResolver& atoms) const {
+CommandResult InputModel::verbCommand(const std::string& line, bool haveSelf, const SrcResolver& src, const ArgResolver& atoms,
+                                      bool promptNull) const {
     CommandResult r;
     std::string rest;
     const VerbEntry* e = matchVerb(line, rest);
-    if (!e) { r.error = "Unrecognized or inaccessible verb: " + trim(line); return r; }
+    if (!e) { r.error = "Unrecognized or inaccessible verb: " + trim(line).substr(0, trim(line).find_first_of(" \t")); return r; }
     if (!haveSelf) { r.error = "verb " + e->name + ": no own-mob ref yet (no 0x0071 seen) \xe2\x80\x94 the server would drop this"; return r; }
     // Exactly one frame, with the verb's real src: a /client verb goes out as [08][0], an own /mob verb as [02][mob ref],
     // an /obj verb as [01][obj ref], a /turf verb as [03][(x-1) | (y-1) << 16]. An unresolvable src is a local refusal,
@@ -458,11 +515,20 @@ CommandResult InputModel::verbCommand(const std::string& line, bool haveSelf, co
     std::vector<SrcCandidate> cands = src ? src(e->id) : std::vector<SrcCandidate>{};
     if (cands.empty()) { r.error = "verb " + e->name + ": no atom the client knows carries it \xe2\x80\x94 not sent"; return r; }
     if (cands.size() > 1) {
-        r.srcChoice = SrcChoice{e->name + " word", line, std::move(cands)};
+        r.srcChoice = SrcChoice{verbCommandName(e->name) + " word", line, std::move(cands), promptNull};
         r.error = "verb " + e->name + ": " + std::to_string(r.srcChoice->candidates.size()) + " atoms carry it \xe2\x80\x94 asking which";
         return r;
     }
-    return continueVerb(*e, cands[0].src, line, {}, 0, rest, atoms);
+    std::string shown = verbCommandName(e->name);
+    if (cands[0].named) { shown += " " + verbCommandName(cands[0].name); promptNull = true; }
+    if (!rest.empty()) shown += " " + rest;
+    // A leading command_text argument starts one character after the first word and keeps the spacing after that.
+    if (!e->args.empty() && (e->args[0].typeMask & kArgCommandText)) {
+        rest = line.substr(std::min(line.size(), line.find_first_not_of(" \t")));
+        size_t w = rest.find_first_of(" \t");
+        rest = w == std::string::npos ? "" : rest.substr(w + 1);
+    }
+    return continueVerb(*e, cands[0].src, shown, {}, 0, rest, atoms, promptNull);
 }
 
 // ================================================================================================================
@@ -471,8 +537,8 @@ CommandResult InputModel::verbCommand(const std::string& line, bool haveSelf, co
 // When a typed line runs out before a required argument, DreamSeeker opens a dialog for it. The control comes from the
 // argument's type mask, not its `in` clause: a text or message mask gets a text box (multi-line for message), a num
 // mask a number box, and a list filter (FilterKind 0x40) a listbox of the list's choices, except that `as text in list`
-// stays a text box. The title is the line so far plus the argument's token. The text above the field is the verb's
-// `set desc`.
+// stays a text box. An atom argument DreamSeeker resolves itself gets a listbox built on the client with no 0x003f. The
+// title is the verb's command name, the line so far and the argument's token. The text above the field is the verb's `set desc`.
 // OK sends the value verbatim as that argument; an empty box sends "", not null. Cancel or Escape sends nothing. A
 // non-number in a number box is refused in place.
 //
@@ -480,23 +546,28 @@ CommandResult InputModel::verbCommand(const std::string& line, bool haveSelf, co
 // a "..." token closes only before whitespace) fit typed text, not dialog text. completeArg() builds the argument
 // directly and encodes the verb with the arguments already parsed.
 //
-// A nullable argument (0x80) gets no dialog: it goes out as null. A single-candidate `as anything` or `mob in world`
-// argument is auto-filled by DreamSeeker with no dialog; that scope is server-side and is not modelled here.
+// A nullable argument (0x80) the line ran out before goes out as null, or gets a dialog (verbCommand says when;
+// MissingArg::promptNull): its token in square brackets, with a None button that sends null.
+// A `mob in world` argument with a single candidate is auto-filled by DreamSeeker with no dialog; that scope is
+// server-side and is not modelled here.
 // A List prompt's choice resolves through the server (ListResolve, input.h).
 namespace {
-std::string argToken(const VerbArgSpec& a) {
-    uint32_t m = a.typeMask & ~kArgNull;
+std::string argTokenBare(uint32_t m) {
     if (m & (kArgText | kArgMessage)) return "\"text\"";
     if (m & kArgNum) return "number";
     if (m & kArgAnything) return "anything";
     if (m == 0) return "word";
     return argTypeName(m);   // mob / obj / turf / area: the usage-line tokens
 }
+std::string argToken(const VerbArgSpec& a) {
+    std::string t = argTokenBare(a.typeMask & ~kArgNull);
+    return a.typeMask & kArgNull ? "[" + t + "]" : t;
+}
 // A prompted value as the next dialog's title shows it (display only, never parsed). Both quote characters are
-// backslash-escaped, and the value is double-quoted.
-std::string quoteArg(const std::string& v) {
+// backslash-escaped, and the value is double-quoted; text always is, other values only when they need it.
+std::string quoteArg(const std::string& v, bool text) {
     if (v.empty()) return "\"\"";
-    if (v.find_first_of(" \t\"'") == std::string::npos && v[0] != '#' && v.rfind("num:", 0) != 0 && v.rfind("ref:", 0) != 0) return v;
+    if (!text && v.find_first_of(" \t\"'") == std::string::npos && v[0] != '#' && v.rfind("num:", 0) != 0 && v.rfind("ref:", 0) != 0) return v;
     std::string q = "\"";
     for (char c : v) { if (c == '"' || c == '\'') q += '\\'; q += c; }
     return q + "\"";
@@ -511,12 +582,15 @@ ArgPrompt argPrompt(const MissingArg& m) {
         std::string line = trim(m.line);
         rest = line.size() > m.verb.name.size() ? trim(line.substr(m.verb.name.size())) : "";
     }
-    p.title = m.verb.name + (rest.empty() ? "" : " " + rest);
+    p.title = verbCommandName(m.verb.name) + (rest.empty() ? "" : " " + rest);
     if (m.index >= m.verb.args.size()) return p;
     const VerbArgSpec& a = m.verb.args[m.index];
     p.title += " " + argToken(a);
     p.allowNull = a.typeMask & kArgNull;
-    if (a.typeMask & kArgMessage) p.kind = ArgPrompt::Message;
+    if (m.atoms) {
+        p.kind = ArgPrompt::List;
+        for (const SrcCandidate& c : *m.atoms) p.choices.push_back(c.name);
+    } else if (a.typeMask & kArgMessage) p.kind = ArgPrompt::Message;
     else if (a.typeMask & kArgText) p.kind = ArgPrompt::Text;   // `as text in list` is a text box, not a list
     else if (a.typeMask & kArgNum) p.kind = ArgPrompt::Num;
     else if (a.filterKind == kFilterList) { p.kind = ArgPrompt::List; p.ordinal = a.filter; }
@@ -537,10 +611,12 @@ std::string escapeVerbText(const std::string& v) {
     return o;
 }
 
-static std::string argDisplayLine(const MissingArg& m, const std::string& value) {   // the title's "line so far" for the next argument
+static std::string argDisplayLine(const MissingArg& m, const std::string& value, bool text) {
     size_t end = m.line.find_last_not_of(" \t");
-    return (end == std::string::npos ? "" : m.line.substr(0, end + 1)) + " " + quoteArg(value);
+    return (end == std::string::npos ? "" : m.line.substr(0, end + 1)) + " " + quoteArg(value, text);
 }
+
+std::string listPickText(const std::string& choice) { return verbCommandName(escapeVerbText(choice)); }
 
 CommandResult InputModel::completeArg(const MissingArg& m, const std::string& value, bool haveSelf, const ArgResolver& atoms) {
     CommandResult r;
@@ -553,13 +629,22 @@ CommandResult InputModel::completeArg(const MissingArg& m, const std::string& va
         // A listbox choice is sent back verbatim in a 0x0039, and the 0x0002 carries the server's answer. `#1` and
         // `num:5` are the choice's own text here, never the typed path's ref or number.
         r.resolve = ListResolve{m, value, ""};
-        r.resolve->at.line = argDisplayLine(m, value);
+        r.resolve->at.line = argDisplayLine(m, value, false);
+        r.resolve->at.promptNull = true;
         r.error = m.verb.name + ": argument " + std::to_string(m.index + 1) + " resolves through the server (0x0039)";
         return r;
     }
-    if (spec.filterKind == kFilterList || (spec.typeMask & (kArgText | kArgMessage))) {
+    std::string shown = value;
+    bool text = false;
+    if (m.atoms) {
+        const SrcCandidate* c = atomNamed(*m.atoms, value);
+        if (!c) { r.error = "Sorry, the following is not valid: " + value; return r; }
+        a = atomArg(*c);
+        shown = verbCommandName(c->name);
+    } else if (spec.filterKind == kFilterList || (spec.typeMask & (kArgText | kArgMessage))) {
         // A text or message box, or `as text in list`: the string as given, escaped (escapeVerbText).
         a.tag = 2; a.str = escapeVerbText(value);
+        text = true;
     } else if (spec.typeMask & kArgNum) {
         std::string t = trim(value);
         char* end = nullptr;
@@ -577,13 +662,27 @@ CommandResult InputModel::completeArg(const MissingArg& m, const std::string& va
             const SrcCandidate* c = atomNamed(*cands, t);
             if (!c) { r.error = "Sorry, the following is not valid: " + t; return r; }
             a = atomArg(*c);
+            shown = verbCommandName(c->name);
         } else if (parseRefArg(t, ref)) { a.tag = 0; a.kind = proto::enc::RefObj; a.ref = ref; }
         else if (parseNumArg(t, n)) { a.tag = 1; a.num = n; }
         else { a.tag = 2; a.str = escapeVerbText(value); }
     }
     args.push_back(a);
-    // The next argument may still be missing: a second dialog, titled with the value so far. A nullable one goes out null.
-    return continueVerb(m.verb, m.src, argDisplayLine(m, value), std::move(args), m.index + 1, "", atoms);
+    // The next argument may still be missing: a second dialog, titled with the value so far. Once a dialog has been
+    // answered, a nullable argument gets one too.
+    return continueVerb(m.verb, m.src, argDisplayLine(m, shown, text), std::move(args), m.index + 1, "", atoms, true);
+}
+
+CommandResult InputModel::completeNull(const MissingArg& m, bool haveSelf, const ArgResolver& atoms) {
+    CommandResult r;
+    if (m.index >= m.verb.args.size() || m.args.size() != m.index || !(m.verb.args[m.index].typeMask & kArgNull)) {
+        r.error = m.verb.name + ": stale argument dialog";
+        return r;
+    }
+    if (!haveSelf) { r.error = "verb " + m.verb.name + ": no own-mob ref yet (no 0x0071 seen) \xe2\x80\x94 the server would drop this"; return r; }
+    std::vector<VerbArg> args = m.args;
+    args.push_back(nullArg());
+    return continueVerb(m.verb, m.src, m.line, std::move(args), m.index + 1, "", atoms, true);
 }
 
 CommandResult InputModel::completeResolve(const ListResolve& rs, uint8_t kind, uint32_t value, bool haveSelf, const ArgResolver& atoms) {
@@ -598,23 +697,29 @@ CommandResult InputModel::completeResolve(const ListResolve& rs, uint8_t kind, u
     a.tag = 0; a.kind = kind; a.ref = value;
     args.push_back(a);
     // Stock DreamSeeker re-sends the 0x0039 for a typed list argument when a dialog follows; this keeps the first answer.
-    return continueVerb(m.verb, m.src, m.line, std::move(args), m.index + 1, rs.rest, atoms);
+    return continueVerb(m.verb, m.src, m.line, std::move(args), m.index + 1, rs.rest, atoms, m.promptNull);
 }
 
-CommandResult InputModel::atomArgument(const VerbEntry& e, const VerbSrc& src, uint8_t kind, uint32_t ref, const std::string& text, bool haveSelf) {
+CommandResult InputModel::atomArgument(const VerbEntry& e, const VerbSrc& src, uint8_t kind, uint32_t ref, const std::string& text, bool haveSelf,
+                                       const std::string& atomName, const ArgResolver& atoms) {
     CommandResult r;
     if (e.args.empty()) { r.error = "verb " + e.name + ": takes no argument"; return r; }
     if (!haveSelf) { r.error = "verb " + e.name + ": no own-mob ref yet (no 0x0071 seen) \xe2\x80\x94 the server would drop this"; return r; }
-    std::string line = e.name + " " + text;
+    std::string line = verbCommandName(e.name) + " " + verbCommandName(atomName.empty() ? text : atomName);
     if (resolvesThroughServer(e.args[0])) {
-        r.resolve = ListResolve{MissingArg{e, 0, line, {}, src}, text, ""};
+        r.resolve = ListResolve{MissingArg{e, 0, line, {}, src, true, std::nullopt}, text, ""};
         r.error = "verb " + e.name + ": argument 1 resolves through the server (0x0039)";
         return r;
     }
     VerbArg a;
     a.tag = 0; a.kind = kind; a.ref = ref;
-    // Later arguments follow the typed-line path.
-    return continueVerb(e, src, line, {a}, 1, "", {});
+    return continueVerb(e, src, line, {a}, 1, "", atoms, true);
+}
+
+CommandResult InputModel::atomVerb(const VerbEntry& e, const VerbSrc& src, const std::string& atomName, bool haveSelf, const ArgResolver& atoms) {
+    CommandResult r;
+    if (!haveSelf) { r.error = "verb " + e.name + ": no own-mob ref yet (no 0x0071 seen) \xe2\x80\x94 the server would drop this"; return r; }
+    return continueVerb(e, src, verbCommandName(e.name) + " " + verbCommandName(atomName), {}, 0, "", atoms, true);
 }
 
 std::string atomArgumentText(const std::string& name, uint32_t dmRef) {
@@ -667,18 +772,6 @@ Bytes encodeVerbExpansionRequest(const MissingArg& m, const std::string& text) {
     return b;
 }
 
-bool InputModel::moveFrame(int dir, bool down, bool haveSelf, uint32_t selfRef, FrameOut& out) const {
-    const VerbEntry* mv = moveVerb();
-    if (mv && haveSelf) {
-        out = {0x0002, proto::enc::encodeMoveVerb(mv->id, selfRef, dir, down, mv->args.size() >= 2)};
-        return true;
-    }
-    if (!down) return false;
-    out = {0x0002, proto::enc::encodeMove(uint8_t(dir))};
-    return true;
-}
-
-// Stock DreamSeeker's `.northwest` macro runs client.Northwest() even in a world with an instant MoveKey verb.
-FrameOut InputModel::stockMoveFrame(int dir) const { return {0x0002, proto::enc::encodeMove(uint8_t(dir))}; }
+FrameOut stockMoveFrame(int dir) { return {0x0002, proto::enc::encodeMove(uint8_t(dir))}; }
 
 }  // namespace fugue::net

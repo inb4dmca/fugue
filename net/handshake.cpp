@@ -8,6 +8,10 @@ Bytes encodeHandshake(const Handshake& h) {
     putLe32(o, h.proto);
     putLe32(o, h.field2);
     putLe32(o, h.field3);
+    if (h.extended) {
+        putLe32(o, h.extra1);
+        putLe32(o, h.extra2);
+    }
     putLe16(o, h.tail);
     return o;
 }

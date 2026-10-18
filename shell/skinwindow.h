@@ -12,10 +12,13 @@
 // `.winset` both mutate it. This widget never mutates it directly: syncFromLive() takes a consistent snapshot and
 // brings the widgets to it. A widget is created the first time its control is visible and placed, since a
 // BrowserPane is a whole Chromium view. After that it is only hidden.
+// Fonts: a BUTTON, LABEL, INPUT or INFO takes its font-family, font-size and font-style (file or winset) as stock does,
+// at a pixel size (shell/skinfont.h), so it never depends on the platform's default font or dpi; a BUTTON's and a
+// LABEL's text is laid out at stock's advance widths. The menu bar and status bar use shell/skinfont.h's menu font.
 // Splitters: each CHILD divider the layout places (skin::Tree::splitters) gets a SplitterHandle. A drag goes into the
 // LiveSkin (setSplitter) and the tree re-lays out, so the layout stays the only source of truth.
-// Not implemented: tab panes, runtime-created maps outside a browse() popup, separate top-level skin windows (pane windows hosted in splitters are laid out),
-// per-control fonts, pos and size of the main window itself, a CHILD's `lock`, and saved-params persistence of a
+// Not implemented: TAB controls (tab panes), runtime-created maps outside a browse() popup, separate top-level skin windows (pane windows hosted in splitters are laid out),
+// an OUTPUT's font, a LABEL's text-wrap, pos and size of the main window itself, a CHILD's `lock`, and saved-params persistence of a
 // dragged splitter.
 #pragma once
 #include <functional>
@@ -90,6 +93,7 @@ public:
     // chat page) is done by the BrowseHost (shell/browsehost.h).
     void showBrowse(const QString& name, const QString& params, const QString& html);
     void closeBrowse(const QString& name);
+    void showOutputFile(const QString& control, const QString& html);
     void pageCall(const QString& window, const QString& fn, const QStringList& args);   // output(v, "win.ctl:fn")
     BrowseHost* browseHost() const { return host_; }
     std::shared_ptr<BrowseRscStore> rscStore() const { return host_->store(); }
@@ -120,10 +124,11 @@ signals:
     void commandEntered(const QString& text);   // INPUT Enter: the app routes it (shell/inputrouter.h) to the session
     void buttonCommand(const QString& command); // a skin BUTTON's `command`: routed exactly like a macro's
     void menuCommand(const QString& command);   // a menu item's `command`: ditto
-    void macroChanged(const QString& name);     // the active macro set differs from the last sync's
+    void macroChanged(const QString& name);     // the active macro set, or a set's bindings, differs from the last sync's
     void mapReady(fugue::shell::MapWidget* map);// the map widget was (re)created: connect its pointer signals
     void clientResized(const QSize& client);    // the skin's client area changed size (the app fires the skin's on-size)
     void byondLink(const QUrl& url);
+    void worldLink(const QString& url);         // a page link to another world
     void worldCommand(const QString& command);  // a command the world registered, such as a popup's on-close (routeWorldCommand)
     void statTabRequested(int index);       // INFO: a tab was clicked; the session sends 0x006b
     void statRowClicked(int row, const QString& control, const QString& button, int mods, bool dbl, bool icon, int iconX, int iconY);   // INFO: the session clicks that atom
@@ -165,6 +170,7 @@ private:
     skin::SkinSnapshot snap_;
     uint64_t builtFileId_ = 0, lastGen_ = ~0ull, lastFocusSeq_ = 0;
     std::string lastMacro_;
+    uint64_t lastMacroGen_ = 0;
     std::map<std::string, QWidget*> widgets_;   // "window.name" -> widget (created lazily)
     std::map<std::string, std::string> types_;
     std::map<std::string, QWidget*> handles_;   // CHILD "window.elem" -> its SplitterHandle

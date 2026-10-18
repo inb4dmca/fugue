@@ -231,6 +231,7 @@ void addClientMenuItems(QMenu* client, const std::function<void(const QString&)>
         QObject::connect(a, &QAction::triggered, client, [run, c = QString(cmd)] { run(c); });
     };
     item("&Screenshot...", ".screenshot");
+    item("&Reconnect", ".reconnect");
     client->addSeparator();
     item("&Macros...", ".macros");
     client->addSeparator();

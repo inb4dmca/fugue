@@ -55,26 +55,19 @@ private:
 };
 
 // Appearance features the assembler does NOT model. Non-zero means the scene is outside what the renderer reproduces.
-// Modelled, so their counters stay 0: render_source relays, colour matrices, blend modes, PLANE_MASTER screen objects and
-// map glides. `masters` and `unappliedFilters` are information, not gaps: the unbuilt filter types (alpha, color,
+// render_source relays, colour matrices, blend modes, PLANE_MASTER screen objects and map glides are modelled and have
+// no counter. `masters` and `unappliedFilters` are information, not gaps: the unbuilt filter types (alpha, color,
 // displacement, ripple, wave, motion_blur, bloom, angular_blur, greyscale, layer, rays) are counted in `unappliedFilters`.
 struct SceneStats {
     int maptext = 0;   // atom.maptext: drawn on the map (render/maptextpaint.h) with a stand-in face, but still counted
-    int renderSource = 0;     // not incremented: render_source relays are modelled
-    int transform = 0;        // atom.transform on a HUD (client.screen) object (the map path is modelled)
-    int colorMatrix = 0;      // not incremented: colour matrices are modelled
-    int blendMode = 0;        // not incremented: blend modes are modelled
-    int planeMasters = 0;     // not incremented: plane masters are modelled (see `masters`)
     int animatedAtoms = 0;   // HUD refs that are animating movables (drawn untweened here)
-    int glidingAtoms = 0;     // not incremented: map glides are modelled
     int images = 0;           // client.images: drawn, but still counted
     int layers = 0;           // placed world layers (informational)
     int masters = 0;          // informational: plane masters collected from client.screen
     int unappliedFilters = 0;   // informational: master filters that are not built (counted, never invented)
     bool eyeScroll = false;   // an eye scroll is in flight at the render clock (modelled)
     bool anyUnmodeled() const {
-        return maptext || renderSource || transform || colorMatrix || blendMode || planeMasters || animatedAtoms ||
-               glidingAtoms || images;
+        return maptext || animatedAtoms || images;
     }
     std::string summary() const;
 };
@@ -108,20 +101,22 @@ bool assembleSecondaryMap(const model::Session& session, ResStore& res, int64_t 
 // draws every one of them. Overlays are drawn over the atom's sprite, with their own pixel_x/y ignored too. An atom with
 // icon = null still shows its overlays, and a carried client.screen item gets its icon. DreamSeeker shows it at 16x16, as
 // Qt's QMenu does here. The facing is the map's, and blend_mode is kept.
-// clockNs picks an animated state's frame (0 = its first, the menu's use).
+// clockNs picks an animated state's frame (0 = its first, the menu's use); a finite-loop state plays from startNs when set.
 bool appearanceIcon(const model::Session& session, ResStore& res, uint32_t appid, int dir, int& w, int& h, std::vector<uint8_t>& rgba,
-                    int64_t clockNs = 0);
+                    int64_t clockNs = 0, int64_t startNs = 0);
 
 // The INFO control's (stat panel's) icon for an atom row (a 0x006a value naming an appearance): straight RGBA, cell x cell.
 // Stock DreamSeeker 516.1684 draws a statpanel row with the same raw sprite as the menu icon (appearanceIcon): atom.color
 // and alpha are ignored, pixel_x is ignored, overlays are drawn, and icon = null with an overlay draws the overlay alone in
 // the cell. The appearance's dir is used (dir = EAST draws the east frame). An atom in NULLSPACE draws the same way, though
-// it is never on the map. The row animates: a two-frame icon_state cycles (clockNs).
+// it is never on the map. The row animates: a two-frame icon_state cycles (clockNs), a finite loop plays once from
+// startNs (model::World::StatLine::icon).
 // The cell is the world's icon size (a world with icon_size 16 shrinks a 32x32 icon to 16x16). An icon no bigger than the
 // cell sits at its top-left at native size; a bigger one is shrunk to the cell by averaging (64x64 to 32x32). A non-square
 // icon, or one larger on one axis only, is scaled uniformly by the larger side here.
 // false = nothing to draw (no icon and no overlay, or not loaded yet): stock draws the name alone, in the cell's place.
-bool statRowIcon(const model::Session& session, ResStore& res, uint32_t appid, int cell, int64_t clockNs, std::vector<uint8_t>& rgba);
+bool statRowIcon(const model::Session& session, ResStore& res, uint32_t appid, int cell, int64_t clockNs, std::vector<uint8_t>& rgba,
+                 int64_t startNs = 0);
 
 // assembleMapControl + execute.
 bool renderMapControl(const model::Session& session, ResStore& res, int64_t clockNs, L3Frame& out, std::string* err);

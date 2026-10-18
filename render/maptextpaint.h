@@ -6,15 +6,18 @@
 // PLACEMENT (matches stock DreamSeeker): the box is
 // maptext_width x maptext_height, anchored at the atom's bottom-left like a sprite and moved +maptext_x right,
 // +maptext_y up; the text block's LAST line sits flush with the box's bottom, the block grows upward and is clipped at
-// the box's top. Text wraps at the box width. Lines stack exactly as dsMeasureText adds heights.
-// PAINT: colour defaults to white, `text-align` is per line (center = floor((box - line) / 2)), and
-// `-dm-text-outline` is a 1 px 8-way dilation
+// the box's top. Text wraps at the box width. Lines stack exactly as dsMeasureText adds heights. A left-aligned line
+// the box cannot hold whole is not drawn at all; a centred or right-aligned one is clipped.
+// PAINT: colour defaults to the sheet's `body` colour (skin/liveskin.h folds in the map's text-color), else white.
+// `text-align` is per line (center = floor((box - w) / 2), right = box - w), w being the line's advances plus its last
+// glyph's overhang. Bitmap italic never inks the box's first column. `-dm-text-outline` is a 1 px 8-way dilation
 // of the glyph coverage in the outline colour, drawn under every fill.
 //
 // Glyphs come from a rasterizer the host installs (setGlyphRasterizer; the app's is shell/ttmetrics.h, on Qt's font stack),
 // the same split as dsmaptext's TrueType metrics, so no Qt Gui dependency reaches render/. DreamSeeker's faces are GDI
-// bitmap fonts ('Small Fonts', 'MS Sans Serif') that this client does not ship, so glyph shapes are a stand-in face at the
-// measured em. Positions and line breaks follow DreamSeeker's layout. Without a rasterizer
+// bitmap fonts ('Small Fonts', 'MS Sans Serif') that this client does not ship; the rasterizer draws them from the
+// host's font file when it has one (render/gdifon.h), else from a stand-in face at the measured em. Positions and line
+// breaks follow DreamSeeker's layout. Without a rasterizer
 // nothing is drawn (and nothing fails).
 #pragma once
 #include <cstdint>

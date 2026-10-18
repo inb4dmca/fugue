@@ -64,10 +64,11 @@ struct Prompt {
     std::string typeName() const;
 };
 
-// Request decoders (false = malformed; the caller then does NOT answer, as the decoder does on error).
+// Request decoders (false = malformed; the caller then does NOT answer, as the decoder does on error). The title,
+// message, buttons and choices come back without text-macro markers (net::plainText), as stock shows and answers them.
 bool parseAlertRequest(ByteSpan body, Prompt& out);
 bool parseInputRequest(ByteSpan body, Prompt& out);
-// 0x003f reply -> choices.
+// 0x003f reply -> choices (marker-free).
 bool parseExpansionReply(ByteSpan body, std::vector<std::string>& out);
 
 // Reply encoders: the BODY of the c2s frame (type is kAlertMsg / kInputMsg).

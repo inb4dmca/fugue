@@ -1,5 +1,4 @@
 #include "model/browsing.h"
-#include <set>
 #include "model/htmltext.h"
 
 namespace fugue::model {
@@ -104,6 +103,26 @@ bool browseFileOptions(const std::string& offerParams, std::string& opts) {
     return true;
 }
 
+bool outputFileControl(const std::string& offerParams, std::string& control) {
+    if (offerParams.rfind("##", 0) != 0) return false;
+    bool isOF = false;
+    std::string raw;
+    std::string rest = offerParams.substr(2);
+    size_t st = 0;
+    while (st <= rest.size()) {
+        size_t e = rest.find(';', st);
+        if (e == std::string::npos) e = rest.size();
+        std::string kv = rest.substr(st, e - st);
+        size_t eq = kv.find('=');
+        std::string k = trim(eq == std::string::npos ? kv : kv.substr(0, eq)), v = eq == std::string::npos ? "" : kv.substr(eq + 1);
+        if (k == "action") isOF = v == "output_file";
+        else if (k == "window") raw = v;
+        st = e + 1;
+    }
+    control = decodeChatHTML(raw);
+    return isOF && !control.empty();
+}
+
 std::string browseFileAlias(const std::string& opts) {
     size_t st = 0;
     while (st <= opts.size()) {
@@ -140,6 +159,20 @@ bool parseOutputFrame(ByteSpan body, OutputFrame& out) {
     return true;
 }
 
+bool parseLinkFrame(ByteSpan body, LinkFrame& out) {
+    size_t p = 0;
+    if (!cstr(body, p, out.url) || p != body.size()) return false;
+    std::string scheme;
+    size_t colon = out.url.find(':');
+    if (colon != std::string::npos && out.url.find_first_of("/?#") > colon)
+        for (char c : out.url.substr(0, colon)) scheme += char(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+    if (out.url.rfind("?", 0) == 0 || (scheme == "byond" && out.url.compare(colon, 4, "://?") == 0)) out.kind = LinkFrame::Topic;
+    else if (scheme == "byond") out.kind = LinkFrame::World;
+    else if (scheme == "http" || scheme == "https" || scheme == "ftp" || scheme == "mailto") out.kind = LinkFrame::External;
+    else out.kind = LinkFrame::Refused;
+    return true;
+}
+
 std::vector<RscRecord> parseBrowseRscFrame(ByteSpan body) {
     std::vector<RscRecord> v;
     size_t p = 0;
@@ -154,14 +187,12 @@ std::vector<RscRecord> parseBrowseRscFrame(ByteSpan body) {
 }
 
 bool parsePageCall(const std::string& control, const std::string& rawValue, PageCall& out) {
-    // The page-JS entry points a world exports. The FUNCTION filters, not the colon: vg's
-    // chat is "browseroutput:output", a colon-bearing browser control too, and must stay chat.
-    static const std::set<std::string> funcs = {"update", "replaceHtml", "receiveUpdateData", "eval", "setTitle",
-                                                "updateLayout", "updateContent", "SetMusic", "ehjaxCallback"};
+    // Any "control:function" calls into the page, whatever the function; stock DreamSeeker never shows it as text.
+    // The one exception is chat: vg's "browseroutput:output" is the chat page's own output() and stays chat.
     size_t colon = control.find(':');
     if (colon == std::string::npos) return false;
     std::string ctrl = control.substr(0, colon), fn = control.substr(colon + 1);
-    if (fn.empty() || !funcs.count(fn)) return false;
+    if (fn.empty() || fn == "output") return false;
     size_t dot = ctrl.rfind('.');
     std::string win = dot == std::string::npos ? ctrl : ctrl.substr(0, dot);
     if (win.empty()) return false;

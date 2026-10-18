@@ -1,5 +1,5 @@
 #include "net/guest.h"
-#include <sys/stat.h>
+#include "platform/file.h"
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -40,13 +40,17 @@ Bytes mintGuestCredential(const Digest16& digest, const uint8_t window[4]) {
 }
 
 std::string defaultStateDir() {
-    const char* h = std::getenv("HOME");
-    return std::string(h && *h ? h : ".") + "/.fugue";
+    auto h = platform::homeDir();
+    return (h.empty() ? "." : h) + "/.fugue";
 }
 
 std::string loadOrCreateSid(const std::string& dir, std::string* err) {
     namespace fs = std::filesystem;
+#ifdef _WIN32
+    const fs::path p = fs::u8path(dir) / "sid";
+#else
     fs::path p = fs::path(dir) / "sid";
+#endif
     auto valid = [](const std::string& s) {
         if (s.size() != 24) return false;
         for (char c : s) if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
@@ -62,6 +66,12 @@ std::string loadOrCreateSid(const std::string& dir, std::string* err) {
     Bytes raw(12);
     for (auto& x : raw) x = uint8_t(rd());
     std::string sid = hexEncode(raw);
+#ifdef _WIN32
+    fs::create_directories(fs::u8path(dir).parent_path(), ec);
+    platform::mkdir(dir.c_str(), 0700);
+    platform::privateWrite(dir + "/sid", sid + "\n", err);
+    return sid;
+#else
     fs::create_directories(dir, ec);
     if (!ec) fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace, ec);
     std::ofstream f(p, std::ios::trunc);
@@ -73,5 +83,6 @@ std::string loadOrCreateSid(const std::string& dir, std::string* err) {
     f.close();
     fs::permissions(p, fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::replace, ec);
     return sid;
+#endif
 }
 }  // namespace fugue::net

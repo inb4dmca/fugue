@@ -22,6 +22,7 @@
 #include <string>
 #include <variant>
 #include "net/input.h"
+#include "net/reconnect.h"
 #include "net/session.h"
 #include "shell/browsestore.h"
 #include "shell/mapwidget.h"
@@ -57,6 +58,8 @@ class SessionWorker : public QThread {
 public:
     SessionWorker(fugue::net::SessionConfig cfg, RenderThread* rt) : cfg_(std::move(cfg)), rt_(rt) {}
     void requestStop() { stop_ = true; }
+    // Ends the current session and connects again (DreamSeeker's .reconnect, Client > Reconnect). Thread-safe.
+    void requestReconnect() { reconnect_ = true; }
     // The live skin the wire's skin / winset / winget traffic drives (shared with the GUI's SkinWindow). Call before
     // start(); without one the worker keeps a private skin and answers wingets from it.
     void setLiveSkin(std::shared_ptr<fugue::skin::LiveSkin> live) { live_ = std::move(live); }
@@ -67,8 +70,8 @@ public:
 
     // ---- thread-safe: callable from the GUI thread; each only appends to the inbox ----
     void postMouse(const fugue::shell::MapPointer& p, bool rightClickToWire, const std::string& control = "mapwindow.map");
-    void postCommand(const QString& line);          // a command-bar line / macro command: verb or `say hi`
-    void postMove(int dir, bool down);              // BYOND dir bits; held-key semantics (release matters)
+    void postCommand(const QString& line, bool promptNull = false);   // a command-bar line / macro command: verb or `say hi`;
+                                                                      // promptNull: a stat-panel verb click (InputModel::verbCommand)
     void postStockMove(int dir);                    // a skin's `.north`...`.southwest`: always the stock move (client.North()...)
     void postTopic(const QString& href);            // byond://?... link click
     // Right click on the map (no right-click=true): ask the session thread which verbs the atom under the cursor offers.
@@ -83,9 +86,10 @@ public:
     void postPromptAnswer(quint32 id, bool alert, const QString& text);
     void postPromptCancel(quint32 id, bool alert);
     // A missing verb argument's dialog (PromptRequest::verbArg): OK sends the verb with the value as that argument,
-    // verbatim; Cancel sends nothing, as stock DreamSeeker does.
+    // verbatim; Cancel sends nothing, as stock DreamSeeker does; None (a nullable argument) sends it null.
     void postArgAnswer(quint32 id, const QString& text);
     void postArgCancel(quint32 id);
+    void postArgNone(quint32 id);                   // None: the nullable argument goes out null
     // The INFO control: select tab `index` of the strip (0x006b), click the atom row at `row`, run a verb-category entry.
     void postStatTab(int index);
     // an atom row's value was clicked: control = the INFO control's id, button "left"/"middle", mods = StatPanelWidget::RowMods,
@@ -105,26 +109,31 @@ signals:
     void promptRequested(const fugue::shell::PromptRequest& r);   // an alert()/input() the player must answer, or a missing verb argument
     void statView(const fugue::shell::StatView& v);               // the INFO control's tab strip + rows (changed)
     void browseHtml(const QString& name, const QString& params, const QString& html);   // a page to show (every 0x0084, every browse_file offer)
+    void outputFile(const QString& control, const QString& html);   // output(file, "win.ctl"): the page for that browser control
     void pageCall(const QString& target, const QString& fn, const QStringList& args);   // output(v, "win.ctl:fn") into a page's JS; target = "win.ctl"
     void browseClosed(const QString& name);
+    void externalLink(const QString& url);      // link(url) to a web or mail address, for the desktop to open
+    void worldLink(const QString& url);         // link(url) to another world: this client leaves for it
     void worldName(const QString& name);
+    void frameTiming(qint64 tickNs, qint64 frameNs);   // the world tick and the client frame (0x0037), when they change
     // The main window's icon file (skin/winicon.h): its bytes as the world sent them, or empty for "no icon / not here yet".
     void windowIcon(const QString& name, const QByteArray& bytes);
-    void status(const QString& line);
     void localOutput(const QString& line);      // a client-side refusal DreamSeeker prints itself (unknown verb, bad argument)
 protected:
     void run() override;
 private:
+    fugue::net::SessionEnding runSession(fugue::net::Session& s, bool first, bool afterReboot);
+    void noteSessionEnd(const std::string& line);   // stderr and <state dir>/session.log
     struct MouseJob { fugue::shell::MapPointer p; bool rightClick; std::string control; };
-    struct CmdJob { std::string line; };
-    struct MoveJob { int dir; bool down; bool stock = false; };
+    struct CmdJob { std::string line; bool promptNull = false; };
+    struct MoveJob { int dir; };
     struct TopicJob { std::string href; };
     struct MenuJob { fugue::shell::MapPointer p; QPoint global; };
     struct AtomVerbJob { quint16 verbId; quint8 kind; quint32 ref; bool viaArgument; std::string atom; };
     struct PromptJob { quint32 id; bool alert; bool cancel; std::string text; };
     struct StatTabJob { int index; };
     struct StatRowJob { int row; std::string control, button; int mods; bool dbl; bool icon; int iconX, iconY; };
-    struct ArgJob { quint32 id; bool cancel; std::string text; };
+    struct ArgJob { quint32 id; bool cancel; std::string text; bool none = false; };
     using Job = std::variant<MouseJob, CmdJob, MoveJob, TopicJob, MenuJob, AtomVerbJob, PromptJob, StatTabJob, StatRowJob, ArgJob>;
     void post(Job j);
     mutable std::mutex verbsMu_;
@@ -137,4 +146,6 @@ private:
     std::shared_ptr<fugue::shell::BrowseRscStore> rsc_;
     std::string audioSpec_;
     std::atomic<bool> stop_{false};
+    std::atomic<bool> reconnect_{false};
+    std::string sessionLog_;
 };

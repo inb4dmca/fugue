@@ -9,6 +9,7 @@
 // Asserted: the bubble on the NPC's tile; the maptext box moved -32 / +30 px, its text in the box's bottom line, centred, gold with a
 // black halo; the fade-in; and the bubble leaving with its 0x0034.
 #include <QtTest>
+#include <algorithm>
 #include <fstream>
 #include "model/world.h"
 #include "net/bytes.h"
@@ -201,6 +202,26 @@ private slots:
         mt = onPlane(mid.dl, 25, 96, 16);
         QVERIFY(mt);
         QVERIFY2(mt->alpha > 100 && mt->alpha < 160, std::to_string(mt->alpha).c_str());
+    }
+
+    // A text-macro marker in the maptext is not drawn: the box paints as the same text without it.
+    void maptextMarkerIsNotDrawn() {
+        model::Session plain, marked;
+        ingestUpTo(plain, 46);
+        auto keep = frames_;
+        const std::string hello = "Hello there 1";
+        for (auto& [type, body] : frames_) {
+            if (type != 0x0026) continue;
+            auto at = std::search(body.begin(), body.end(), hello.begin(), hello.end());
+            if (at != body.end()) body.insert(at, {0xff, 0x16});
+        }
+        ingestUpTo(marked, 46);
+        frames_ = keep;
+        Scene a = assemble(plain, kT0 + 10 * 1'000'000'000LL), b = assemble(marked, kT0 + 10 * 1'000'000'000LL);
+        const render::DrawLayer* ma = onPlane(a.dl, 25, 96, 16);
+        const render::DrawLayer* mb = onPlane(b.dl, 25, 96, 16);
+        QVERIFY(ma && mb);
+        QVERIFY(ma->sprite->px == mb->sprite->px);
     }
 
     // client.images -= bubble (0x0034 [0]) takes the bubble away and leaves the runechat.

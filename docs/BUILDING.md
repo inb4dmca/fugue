@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-A C++20 compiler (g++ 12 or newer), CMake 3.20 or newer, Ninja, pkg-config, and:
+For Linux and macOS: a C++20 compiler (g++ 12 or newer, or a recent Xcode/Apple Clang), CMake 3.20 or newer, Ninja, pkg-config, and:
 
 * Qt 6.4 or newer: Base (Core, Gui, Widgets, Network, Test), WebEngine (Widgets) and WebChannel
 * libjpeg (libjpeg-turbo)
@@ -16,9 +16,60 @@ A C++20 compiler (g++ 12 or newer), CMake 3.20 or newer, Ninja, pkg-config, and:
 | Fedora | `sudo dnf install gcc-c++ cmake ninja-build pkgconf-pkg-config qt6-qtbase-devel qt6-qtwebengine-devel qt6-qtwebchannel-devel libjpeg-turbo-devel zlib-devel libopenmpt-devel mesa-libGL-devel` |
 | Arch | `sudo pacman -S base-devel cmake ninja pkgconf qt6-base qt6-webengine qt6-webchannel libjpeg-turbo zlib libopenmpt` |
 
-For audio at run time one of `pw-play` (PipeWire), `paplay` (PulseAudio) or `aplay` (ALSA) must be on the `PATH`.
+On Linux, audio at run time requires one of `pw-play` (PipeWire), `paplay` (PulseAudio) or `aplay` (ALSA) on the `PATH`.
+macOS uses the system Core Audio framework; no external audio player is needed.
 
-## Build
+## Windows (x64)
+
+Requires Windows 10 version 1903 or newer (or Windows 11), Visual Studio 2022 with **Desktop development with C++**,
+CMake, Git, and the **MSVC 2022 64-bit** Qt SDK. Qt 6.8.3 or newer is recommended; select Qt WebEngine, WebChannel,
+and Positioning in the Qt installer. Do not use the MinGW Qt kit: WebEngine requires MSVC.
+
+Install [vcpkg](https://github.com/microsoft/vcpkg) and bootstrap it. Qt comes from the Qt installer, while the
+repository's `vcpkg.json` installs libjpeg-turbo, zlib and libopenmpt. In PowerShell, from the repository root
+(adjust the two SDK paths):
+
+```powershell
+$qt = "C:/Qt/6.8.3/msvc2022_64"
+$vcpkg = "C:/dev/vcpkg"
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+  "-DCMAKE_PREFIX_PATH=$qt" `
+  "-DCMAKE_TOOLCHAIN_FILE=$vcpkg/scripts/buildsystems/vcpkg.cmake" `
+  -DVCPKG_TARGET_TRIPLET=x64-windows -DFUGUE_RELEASE=ON -DFUGUE_OPENMPT=ON
+cmake --build build --config Release --parallel 4
+$env:PATH = "$qt/bin;$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
+./build/app/Release/fugue-qt.exe
+```
+
+Native Windows audio uses the default Windows playback device (waveOut); no external PCM player is required.
+`--audio=none` and `--audio=wav:<path>` also work. Linux `cmd:` audio sinks are not supported on Windows.
+
+Run tests:
+
+```powershell
+$env:QT_QPA_PLATFORM = "offscreen"
+$env:FUGUE_AUDIO = "none"
+$env:QTWEBENGINE_CHROMIUM_FLAGS = "--no-sandbox --disable-gpu"
+ctest --test-dir build -C Release --output-on-failure --timeout 120
+Remove-Item Env:QT_QPA_PLATFORM, Env:FUGUE_AUDIO, Env:QTWEBENGINE_CHROMIUM_FLAGS
+```
+
+Those WebEngine flags are for tests only; do not disable the sandbox for normal use.
+The Git attributes preserve captured resource bytes on Windows; do not apply newline conversion to `tests/data`.
+
+Create a portable directory (including Qt plugins, WebEngine helper/resources, MSVC runtime and dependency DLLs):
+
+```powershell
+./packaging/windows/package.ps1 -QtDir $qt
+./dist/bin/fugue-qt.exe --version
+```
+
+Distribute the **whole `dist` directory**, not just the executable. Windows CI also uploads this directory as
+`fugue-windows-x64`. The application retains console output for command-line modes.
+`fugue-qt.exe pager -install-desktop` registers `byond://` for the current Windows user without administrator access;
+it does not create a Start menu shortcut. Re-run it if you move the installation.
+
+## Linux build
 
 From the repository root:
 
@@ -29,7 +80,7 @@ ninja -C build install        # installs fugue-qt to bin/ under the install pref
 ```
 
 `-DFUGUE_RELEASE=ON` builds the player-facing binary: it starts as the launcher, the developer test hooks are compiled
-out, and the client refuses ptrace. Without it, `fugue-qt` with no subcommand is the game client.
+out, and on Linux/macOS the client disables core dumps (and refuses ptrace on Linux). Without it, `fugue-qt` with no subcommand is the game client.
 
 | Option | Meaning |
 |---|---|
@@ -37,6 +88,52 @@ out, and the client refuses ptrace. Without it, `fugue-qt` with no subcommand is
 | `-DFUGUE_RELEASE=ON` | the release build described above |
 | `-DFUGUE_HEADLESS_ONLY=ON` | only the Qt-light modules, tools and tests; no window binary and no WebEngine |
 | `-DFUGUE_COMPILE_JOBS=N` | cap on concurrent compile jobs (default 6). A Qt-heavy translation unit can use about 300 MB, so lower this on small machines. |
+
+## macOS
+
+Install Xcode Command Line Tools (`xcode-select --install`) and [Homebrew](https://brew.sh), then:
+
+```bash
+brew install cmake ninja pkgconf qtbase qtwebengine qtwebchannel qtsvg jpeg-turbo libopenmpt
+cmake -G Ninja -S . -B build -DFUGUE_RELEASE=ON -DFUGUE_OPENMPT=ON \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+  -DPKG_CONFIG_EXECUTABLE="$(brew --prefix)/bin/pkg-config"
+cmake --build build
+open build/app/Fugue.app
+```
+
+Use a native Homebrew installation for your architecture (Apple Silicon or Intel); do not mix arm64 and x86_64
+libraries. The minimum supported macOS version is determined by your Qt distribution. The bundle's
+`LSMinimumSystemVersion` is `CMAKE_OSX_DEPLOYMENT_TARGET` when set, else the building Mac's version; CI builds for 15.0,
+the macOS its Homebrew libraries are built for. Official Qt installations
+also work (include the Qt SVG module for bundle deployment): set `CMAKE_PREFIX_PATH` to the Qt macOS kit and the prefixes containing libjpeg/libopenmpt.
+
+The build-tree app uses your installed libraries. To make a self-contained app, including Qt WebEngine's helper,
+resources, plugins, and third-party libraries:
+
+```bash
+cmake --install build --prefix "$PWD/build/macos"
+open build/macos/Fugue.app
+# Optional: copy build/macos/Fugue.app to /Applications or ~/Applications.
+```
+
+Installation runs the selected Qt's `macdeployqt` and ad-hoc signs/verifies the complete bundle. No Homebrew packages
+are needed on the destination Mac. This is **not** Developer ID signing or notarization; public distribution requires
+those additional Apple signing steps. CI builds and tests both architectures and uploads ad-hoc-signed app archives.
+
+Command-line options are unchanged; the executable is inside the bundle:
+
+```bash
+build/app/Fugue.app/Contents/MacOS/Fugue --version
+build/app/Fugue.app/Contents/MacOS/Fugue client --connect host:port
+```
+
+Finder launch opens the launcher in release builds. Opening the app registers its `byond://` scheme with Launch
+Services; clicked links are handled both at startup and while the launcher is running. The launcher joins a link as
+its Join button does, so not while its game runs; a link opened while a game window runs is followed as a clicked page
+link (at most one second game window). `pager -install-desktop`
+is not used on macOS. Settings and credentials remain under `~/.fugue`, as on Linux. BYOND CTRL macros use the physical
+Control key on macOS, not Command; paste and the browser find bar also take Command+V and Command+F.
 
 ## Tests
 
@@ -48,7 +145,11 @@ QT_QPA_PLATFORM=offscreen ctest --test-dir build -R rscstore -V      # one test,
 ```
 
 `QT_QPA_PLATFORM=offscreen` lets the widget and WebEngine tests run without a display. Some tests skip with a message
-when optional input is absent.
+when optional input is absent. The Core Audio device smoke test is opt-in (it writes silence):
+
+```bash
+FUGUE_TEST_COREAUDIO=1 ctest --test-dir build -R '^audio_sink$' --output-on-failure
+```
 
 ## Flatpak
 

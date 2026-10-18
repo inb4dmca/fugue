@@ -8,6 +8,7 @@
 
 #include "model/json.h"
 #include "model/statpanel.h"
+#include "net/textmacro.h"
 
 namespace fugue::model {
 namespace {
@@ -30,9 +31,9 @@ bool parseVerbDef(const std::string& json, VerbDef& e) {
     if (v.kind != JVal::Obj) return false;
     e = VerbDef{};
     e.id = v["id"].u16();
-    e.name = v["name"].bytesOrStr();
-    e.desc = v["desc"].bytesOrStr();
-    e.category = v["category"].bytesOrStr();
+    e.name = net::plainText(v["name"].bytesOrStr());
+    e.desc = net::plainText(v["desc"].bytesOrStr());
+    e.category = net::plainText(v["category"].bytesOrStr());
     e.head = uint8_t(v["head"].n);
     e.src = uint8_t(v["src"].n);
     e.flags = uint8_t(v["flags"].n);

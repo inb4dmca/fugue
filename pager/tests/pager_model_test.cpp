@@ -4,7 +4,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
-#include <sys/stat.h>
+#include "platform/file.h"
 #include "account/store.h"
 #include "pager/model.h"
 
@@ -72,6 +72,10 @@ private slots:
         auto cs = scanRscCache(rscDir());
         QCOMPARE(cs.files, 1LL);
         QCOMPARE(cs.bytes, 2048LL);
+        // -list prints what the scan knows and the client's own cap; per-session counters are not on disk.
+        account::Config cfg;
+        const QString list = QString::fromStdString(renderList(cfg, check(cfg)));
+        QVERIFY2(list.endsWith("rsc cache: 1 file, 0.0 MiB of 1024 MiB cap\n"), qPrintable(list));
     }
     // The warm-up output, as app/prefetchmode.cpp and net/prefetch.cpp print it.
     void warmLinesParse() {

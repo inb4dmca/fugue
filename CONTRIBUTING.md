@@ -47,3 +47,13 @@ Please run the whole suite before sending a change, and do not report a test as 
 
 Describe what changed and why in the first line, then what you tested and how. Keep unrelated changes in separate
 pull requests.
+
+## How changes reach `main`
+
+Fugue is developed in a separate tree and published here. A merged pull request is carried into that tree with your
+authorship and message intact, so the next published update keeps your change and its credit. Base pull requests on
+the current `main`; history on `main` is never rewritten. Pull requests from new contributors need a maintainer's
+approval before CI runs, and are reviewed for security before anything in them is built.
+
+Releases are tags (`vX.Y.Z`): patch versions for fixes, minor versions for new features. An issue fixed on `main` is
+labelled `fixed-in-main` and closed once the fix is confirmed in a real game.

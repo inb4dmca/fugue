@@ -39,9 +39,10 @@ std::string statText(const World& w, const World::StatLine& l);
 bool verbScope(const World& w, std::vector<uint16_t>& ids);
 std::vector<std::string> verbCategories(const World& w);              // ASCII-sorted, distinct
 std::vector<VerbDef> verbsInCategory(const World& w, const std::string& label);   // by name, byte order
-// The strip: Stat() tab names in wire order, then the verb categories.
+// The strip: Stat() tab names in wire order, then the verb categories, as shown (without text-macro markers).
 std::vector<std::string> statTabs(const World& w);
-std::string statTabWireName(const World& w, int index);               // "" = out of range
+// The name a tab select sends: a Stat() tab's name as the server sent it, markers and all. "" = out of range.
+std::string statTabWireName(const World& w, int index);
 // The strip index -> verb category; false for a Stat() tab or an out-of-range index.
 bool verbTabCategory(const World& w, int index, std::string& label);
 

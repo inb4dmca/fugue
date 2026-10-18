@@ -8,6 +8,7 @@
 #include "model/htmltext.h"
 #include "model/resync.h"
 #include "model/world.h"
+#include "net/textmacro.h"
 #include "proto/g2_mapview.h"
 
 namespace fugue::model {
@@ -70,8 +71,6 @@ std::string browserWindowName(const std::string& params) {
 
 // Splits an output control into its window and page function.
 bool splitBrowserOutput(const std::string& control, std::string& window, std::string& fn) {
-    static const std::set<std::string> funcs = {"update", "replaceHtml", "receiveUpdateData", "eval", "setTitle",
-                                                "updateLayout", "updateContent", "SetMusic", "ehjaxCallback"};
     window.clear(); fn.clear();
     size_t colon = control.find(':');
     std::string ctrl = colon == std::string::npos ? control : control.substr(0, colon);
@@ -81,7 +80,7 @@ bool splitBrowserOutput(const std::string& control, std::string& window, std::st
         return !window.empty();
     }
     fn = control.substr(colon + 1);
-    if (fn.empty() || !funcs.count(fn)) { fn.clear(); return false; }
+    if (fn.empty() || fn == "output") { fn.clear(); return false; }   // ":output" is chat (model/browsing.h)
     size_t dot = ctrl.rfind('.');
     window = dot == std::string::npos ? ctrl : ctrl.substr(0, dot);
     if (window.empty()) { fn.clear(); return false; }
@@ -220,6 +219,7 @@ Atom* Session::record(uint32_t id, uint16_t key, bool fresh) {
     a.touchTick = w.resync.tick;
     if (w.resync.freed.erase(id)) {   // freed by the GC: rebuilt here, with no teardown
         a.bindOther = a.backlink = 0xffff;
+        a.iconStartNs = 0;
         a.key = key; a.haveKey = true;
         created();
         return &a;
@@ -234,6 +234,29 @@ Atom* Session::record(uint32_t id, uint16_t key, bool fresh) {
     }
     a.key = key; a.haveKey = true;
     return &a;
+}
+
+// Stock DreamSeeker plays a non-looping icon state from its first frame when an atom, turf, image, screen object or stat
+// row first shows it and again whenever the icon or icon_state changes; any other appearance change (dir, name, a moved
+// screen_loc, an added overlay) keeps the running sequence, as do leaving and re-entering the view or the screen.
+void Session::stampIcon(int64_t& startNs, uint32_t from, uint32_t to) const {
+    bool changed = startNs == 0;
+    if (!changed && from != to) {
+        auto f = w_.appearances.find(from), t = w_.appearances.find(to);
+        changed = f == w_.appearances.end() || t == w_.appearances.end() ||
+                  f->second.iconResID != t->second.iconResID || f->second.iconState != t->second.iconState;
+    }
+    if (changed) startNs = ingestNs_;
+}
+
+void Session::bindAppearance(Atom& a, uint32_t appid) {
+    stampIcon(a.iconStartNs, a.appid, appid);
+    a.appid = appid;
+}
+
+void Session::setTile(const std::array<uint16_t, 3>& key, uint32_t appid) {
+    w_.tiles[key] = appid;
+    stampIcon(w_.tileIconStart[key], appid);
 }
 
 void Session::applyObjectArrays(const JVal& m, uint32_t reg) {
@@ -283,7 +306,7 @@ void Session::applyObjectArrays(const JVal& m, uint32_t reg) {
     for (const JVal& a : m["appearance"].a) {
         Atom* e = rec(a["inViewRec"], false);
         if (!e) continue;
-        e->appid = a["appearance"].u32();
+        bindAppearance(*e, a["appearance"].u32());
         // The obj binder clears the poll mark; the mob binder does not. So an obj that arrives with its appearance is
         // never polled, and one that arrives without is polled at once.
         if (reg != kRegistryA) w.resync.newObjs.erase(reg | a["inViewRec"]["id"].u32());
@@ -329,8 +352,8 @@ void Session::applyObjectArrays(const JVal& m, uint32_t reg) {
 void Session::addChat(const std::string& plain, const std::string& markup) {
     World& w = w_;
     if (plain.empty() && markup.empty()) return;
-    w.chat.push_back(plain);
-    w.chatHtml.push_back(markup);
+    w.chat.push_back(net::plainText(plain));
+    w.chatHtml.push_back(net::plainText(markup));
     w.chatTotal++;
     if (w.chat.size() > kChatCap) {
         size_t over = w.chat.size() - kChatCap;
@@ -378,7 +401,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         try {
             JVal r = parseJson(proto::g2::decodeMapRefresh(st_, 0x61, body));
             uint16_t z = r["z"].u16();
-            for (const JVal& c : r["cells"].a) w.tiles[{c["x"].u16(), c["y"].u16(), z}] = c["appid"].u32();
+            for (const JVal& c : r["cells"].a) setTile({c["x"].u16(), c["y"].u16(), z}, c["appid"].u32());
         } catch (const std::exception&) { w.mapViewErrs++; }
         return;
     }
@@ -391,7 +414,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
             w.resync.relinkObjs = w.resync.relinkMobs = true;
         w.resync.haveOrigin = true; w.resync.originX = ox; w.resync.originY = oy;
         uint16_t z = r["z"].u16();
-        for (const JVal& c : r["cells"].a) w.tiles[{c["x"].u16(), c["y"].u16(), z}] = c["appid"].u32();
+        for (const JVal& c : r["cells"].a) setTile({c["x"].u16(), c["y"].u16(), z}, c["appid"].u32());
         return;
     }
     case 0x00f1: {
@@ -440,7 +463,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         for (uint32_t i = 0; i < n; i++) {
             uint32_t c = cells[i];
             std::array<uint16_t, 3> key{uint16_t(c % uint32_t(mx)), uint16_t(c / uint32_t(mx) % uint32_t(my)), uint16_t(c / (uint32_t(mx) * uint32_t(my)))};
-            w.tiles[key] = looks[i];
+            setTile(key, looks[i]);
             w.areaCells[key] = regs[i];
         }
         for (auto& [idx, app] : binds) w.turfBinds[idx] = app;
@@ -460,16 +483,20 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         for (const JVal& r : v["records"].a) {
             if (r["tag"].i() != 1) continue;
             std::array<uint16_t, 3> key{r["x"].u16(), r["y"].u16(), r["z"].u16()};
-            if (r["appid"].i() == 0xffff && r["contents"].size() == 0) { w.tiles.erase(key); continue; }
-            w.tiles[key] = r["appid"].u32();
+            if (r["appid"].i() == 0xffff && r["contents"].size() == 0) { w.tiles.erase(key); w.tileIconStart.erase(key); continue; }
+            setTile(key, r["appid"].u32());
         }
         return;
     }
     case 0x0037:
-        // Frame 0x0037: only the first u32 is read, accepted in [10,1000] ms.
+        // Frame 0x0037: [tick ms u32][client frame ms u32], each accepted in [10,1000] ms.
         if (body.size() >= 4) {
             uint32_t ms = le32(&body[0]);
             if (ms >= 10 && ms <= 1000) w.tickNanos = int64_t(ms) * 1'000'000;
+        }
+        if (body.size() >= 8) {
+            uint32_t ms = le32(&body[4]);
+            if (ms >= 10 && ms <= 1000) w.frameNanos = int64_t(ms) * 1'000'000;
         }
         return;
     case 0x003e: {
@@ -504,6 +531,8 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
             ap.glideSizeBits = v["glideSize"].f32bits();
             ap.longGlide = ((v["appearanceFlags"].u32() >> 21) & 1) != 0;   // appearance_flags LONG_GLIDE
             ap.hasPixelOffsets = v["hasPixelOffsets"].b;
+            ap.iconResID = v["iconResID"].u32();
+            ap.iconState = v["iconState"].bytesOrStr();
             for (const JVal& id : v["verbs"].a) ap.verbs.push_back(id.u16());
             ap.haveVerbs = true;
             if (ap.layerBits == 0x40000000u) w.layer2Appids.insert(appid); else w.layer2Appids.erase(appid);   // World::layer2Appids
@@ -538,7 +567,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         if (w.resync.freed.erase(id)) w.atoms[id].bindOther = w.atoms[id].backlink = 0xffff;   // rebuilt, bound: no mark
         Atom& a = w.atoms[id];
         a.touchTick = w.resync.tick;   // a lookup marks the record for the GC (FUGUE_RESYNC_GC) for this tick
-        a.appid = appid;
+        bindAppearance(a, appid);
         a.pollAnswerDue = false;
         (typ == 0x0009 ? w.resync.newMobs : w.resync.newObjs).erase(ref);
         return;
@@ -568,9 +597,9 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         // entering it, so its appid goes on the mob's key, not the bare obj key. The cell-less record that array 2 leaves
         // in the atom table is kept: every verb path ignores a record with no cell, and a drop
         // re-sends the obj in full, with its array-1 before the 0x0008 that places it again.
-        for (const JVal& p : v["bindA"].a) w.atoms[p["id"].u32()].appid = p["appearance"].u32();
+        for (const JVal& p : v["bindA"].a) bindAppearance(w.atoms[p["id"].u32()], p["appearance"].u32());
         for (const JVal& p : v["bindB"].a)
-            if (auto it = w.atoms.find(p["id"].u32() | kRegistryA); it != w.atoms.end()) it->second.appid = p["appearance"].u32();
+            if (auto it = w.atoms.find(p["id"].u32() | kRegistryA); it != w.atoms.end()) bindAppearance(it->second, p["appearance"].u32());
         // usr.contents (World::usrContents): array 1 = an obj leaving it, 2 = an obj entering it, 3 = a mob leaving it,
         // 4 = a mob entering it.
         for (const JVal& id : v["addA"].a) w.usrContents.erase(id.u32());
@@ -664,7 +693,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         if (it == w.atoms.end()) return;
         uint32_t to = v["steps"].at(v["steps"].size() - 1)["to"].u32();
         if (to == 0) return;
-        if (it->second.appid == 0) it->second.appid = to;
+        if (it->second.appid == 0) bindAppearance(it->second, to);
         it->second.animating = true;   // Set while an animate() chain is held (never cleared by elapsed time)
         // The chain: start at ingest-now plus the delay in ticks, with its steps and tick duration. A movable's
         // chain is REPLACED by every frame (only client.images amend).
@@ -796,11 +825,13 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         if (!parsed(v)) return;
         uint32_t id = v["imageID"].u32();
         if (typ == 0x0034) {
-            w.images.erase(id); w.imageAnims.erase(id); w.imageChains.erase(id);
-            for (const JVal& m : v["moreIDs"].a) { w.images.erase(m.u32()); w.imageAnims.erase(m.u32()); w.imageChains.erase(m.u32()); }
+            auto drop = [&](uint32_t i) { w.images.erase(i); w.imageAnims.erase(i); w.imageChains.erase(i); w.imageIconStart.erase(i); };
+            drop(id);
+            for (const JVal& m : v["moreIDs"].a) drop(m.u32());
         } else {
             w.images[id] = js;
-            if (typ == 0x0033) { w.imageAnims.erase(id); w.imageChains.erase(id); }   // a recycled id is a new image
+            if (typ == 0x0033) { w.imageAnims.erase(id); w.imageChains.erase(id); w.imageIconStart.erase(id); }   // a recycled id is a new image
+            stampIcon(w.imageIconStart[id], v["appid"].u32());
         }
         return;
     }
@@ -822,6 +853,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
             if (!w.hud.count(index)) w.hudOrder.push_back(index);
             w.hud[index] = dumpCanon(s);
             w.hudAppid[index] = s["appid"].u32();
+            stampIcon(w.hudIconStart[index], s["appid"].u32());
         }
         return;
     }
@@ -850,9 +882,12 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
             st.selected = int(v["selected"].i());
         }
         for (const JVal& r : v["rows"].a) {
-            World::StatLine l{r["ordinal"].u16(), r["name"].bytesOrStr(), dumpCanon(r["value"])};
+            World::StatLine l{r["ordinal"].u16(), net::plainText(r["name"].bytesOrStr()), dumpCanon(r["value"]), {}};
             size_t i = l.ordinal;
-            if (i < st.lines.size() && st.lines[i].name == l.name) st.lines[i] = std::move(l);
+            bool same = i < st.lines.size() && st.lines[i].name == l.name;
+            if (same) l.icon = st.lines[i].icon;
+            if (r["value"]["hasAppid"].b) stampIcon(l.icon, r["value"]["appid"].u32());
+            if (same) st.lines[i] = std::move(l);
             else if (st.lines.size() >= kMaxStatLines) continue;
             else if (i < st.lines.size()) st.lines.insert(st.lines.begin() + long(i), std::move(l));
             else st.lines.push_back(std::move(l));

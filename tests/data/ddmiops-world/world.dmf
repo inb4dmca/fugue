@@ -1,0 +1,22 @@
+window "mainwindow"
+	elem "mainwindow"
+		type = MAIN
+		pos = 0,0
+		size = 820x820
+		anchor1 = -1,-1
+		anchor2 = -1,-1
+		is-default = true
+		is-maximized = false
+		saved-params = ""
+	elem "map"
+		type = MAP
+		pos = 8,8
+		size = 800x800
+		anchor1 = -1,-1
+		anchor2 = -1,-1
+		background-color = #ff00ff
+		zoom = 1
+		zoom-mode = distort
+		letterbox = false
+		is-default = true
+		saved-params = ""

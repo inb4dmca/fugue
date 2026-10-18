@@ -4,14 +4,17 @@
 
 namespace fugue::net {
 
-// The type-0x01 fields that feed the key derivation: three u32 LE + one u16 LE (14 bytes encoded). The stock 516
-// client sends proto=516, field2=276, field3=<client nonce>. Session's real body is 22 bytes: two more u32 sit between
-// field3 and tail.
+// The type-0x01 handshake body, little-endian: proto, field2, field3 (u32 each), then, when extended, extra1 and extra2
+// (u32 each), then tail (u16). 14 bytes, or 22 extended. The stock 516 client sends the extended form with proto=516,
+// field2=276, field3=<client nonce>, extra1=(build << 16) | <first seq>, extra2=0.
 struct Handshake {
     uint32_t proto = 0;
     uint32_t field2 = 0;
     uint32_t field3 = 0;
     uint16_t tail = 0;
+    bool extended = false;
+    uint32_t extra1 = 0;
+    uint32_t extra2 = 0;
 };
 
 Bytes encodeHandshake(const Handshake& h);

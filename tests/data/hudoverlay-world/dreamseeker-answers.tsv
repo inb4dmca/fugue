@@ -1,0 +1,18 @@
+# Stock DreamSeeker 516 (wine) x stock DreamDaemon 516.1684, world.dme and world-nopm.dme (identical answers), one left-click
+# per row. x,y: the map pixel clicked, 0-based from the 480x480 viewport's bottom-left. obj: what Click() ran on; turf rows
+# name the turf's cell.
+# label	x	y	obj	icon-x	icon-y	screen-loc
+k1	97	353	c9	2	2	4:2,12:2
+k2	391	367	c13	40	16	13:8,12:16
+k3	303	303	c19	16	16	10:16,10:16
+k4	290	290	turf 17,17	3	3	10:3,10:3
+k5	353	417	c6	2	2	12:2,14:2
+k6	317	381	c12	30	30	10:30,12:30
+k7	97	417	turf 11,21	2	2	4:2,14:2
+k8	33	353	turf 9,19	2	2	2:2,12:2
+k9	417	417	c7	2	2	14:2,14:2
+k10	175	303	c17	16	16	6:16,10:16
+k11	239	367	c11	16	16	8:16,12:16
+k12	367	367	c13	16	16	12:16,12:16
+k13	47	175	turf 9,13	16	16	2:16,6:16
+k15	175	175	c23	16	16	6:16,6:16

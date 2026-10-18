@@ -13,23 +13,34 @@ std::string lower(std::string s) { for (char& c : s) c = char(std::tolower((unsi
 }  // namespace
 
 Route routeCommand(const std::string& command, const std::string& keyName, bool up) {
-    std::string cmd = command;
-    for (size_t p; (p = cmd.find("[[*]]")) != std::string::npos;) cmd.replace(p, 5, keyName);   // the Any macro's [[*]] is the key that fired
+    std::string cmd = command, name;
+    for (char c : keyName) {
+        if (c == '\\' || c == '"' || c == '[' || c == ']') name += '\\';
+        name += c;
+    }
+    for (size_t p = 0; (p = cmd.find("[[*]]", p)) != std::string::npos;) {
+        bool bare = keyName.empty() || (p > 0 && cmd[p - 1] == '"' && p + 5 < cmd.size() && cmd[p + 5] == '"');
+        std::string v = bare ? name : '"' + name + '"';
+        cmd.replace(p, 5, v);
+        p += v.size();
+    }
+    std::string line = cmd.substr(std::min(cmd.size(), cmd.find_first_not_of(" \t\r\n")));
     cmd = trim(cmd);
     Route r;
     if (cmd.empty()) return r;
-    if (cmd[0] != '.') { r.kind = Route::Command; r.text = cmd; return r; }
+    if (cmd[0] != '.') { r.kind = Route::Command; r.text = line; return r; }   // trailing spaces belong to a command_text argument
     size_t sp = cmd.find(' ');
     std::string verb = lower(cmd.substr(0, sp));
     static const struct { const char* name; int dir; } dirs[] = {
         {".north", 1}, {".south", 2}, {".east", 4}, {".west", 8},
-        {".northeast", 5}, {".northwest", 9}, {".southeast", 6}, {".southwest", 10}};
+        {".northeast", 5}, {".northwest", 9}, {".southeast", 6}, {".southwest", 10}, {".center", 0}};
     // A `.northwest` macro is the stock move command, not a walk. The server answers it by calling client.Northwest(),
     // which SS13 forks override: vg's Northwest() treats the hotkey as a drop. Stock DreamSeeker never routes it to
     // the held-key MoveKey verb, so it is sent as the sub-0 move.
     for (auto& d : dirs)
         if (verb == d.name) { r.kind = Route::Move; r.dir = d.dir; r.down = !up; return r; }
     if (verb == ".quit") { r.kind = Route::Quit; return r; }
+    if (verb == ".reconnect") { r.kind = Route::Reconnect; return r; }
     if (verb == ".screenshot") {   // the Client menu and F2 / Shift+F2 (semantics in shell/screenshot.h)
         r.kind = Route::Screenshot;
         if (sp != std::string::npos && lower(trim(cmd.substr(sp))) == "auto") r.text = "auto";
@@ -59,6 +70,19 @@ Route routeCommand(const std::string& command, const std::string& keyName, bool 
     r.kind = Route::Unsupported;
     r.text = cmd;
     return r;
+}
+
+std::vector<std::string> macroCommandLines(const std::string& command) {
+    std::vector<std::string> out;
+    for (size_t a = 0; a <= command.size();) {
+        size_t b = command.find('\n', a);
+        if (b == std::string::npos) b = command.size();
+        std::string l = command.substr(a, b - a);
+        if (!l.empty() && l.back() == '\r') l.pop_back();
+        if (!l.empty() && l[0] != ' ' && l[0] != '\t') out.push_back(l);
+        a = b + 1;
+    }
+    return out;
 }
 
 Route routeWorldCommand(const std::string& command) {

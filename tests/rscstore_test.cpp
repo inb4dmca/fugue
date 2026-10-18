@@ -99,9 +99,11 @@ private slots:
         std::snprintf(want, sizeof want, "%s/%02x/%08x", d.c_str(), unsigned(id >> 24), unsigned(id));
         QCOMPARE(RscStore::pathFor(d, id), std::string(want));
         QCOMPARE(slurpS(want), std::string(f.begin(), f.end()));  // the file is the raw bytes and nothing else
+#ifndef _WIN32 // Cache files inherit the profile ACL on Windows; CRT mode bits are not Unix permissions.
         QCOMPARE(modeOf(want), 0600u);
         QCOMPARE(modeOf(std::string(want).substr(0, std::string(want).rfind('/'))), 0700u);
         QCOMPARE(modeOf(d + "/names"), 0600u);
+#endif
         char nl[256];
         std::snprintf(nl, sizeof nl, "%08x\ticons/a.dmi\n", unsigned(id));
         QCOMPARE(slurpS(d + "/names"), std::string(nl));

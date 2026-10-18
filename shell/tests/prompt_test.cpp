@@ -147,6 +147,18 @@ private slots:
         h.current()->findChild<QPushButton*>("promptOk")->click();
         QCOMPARE(aacc.at(2).at(1).toString(), QString("beta"));
         QCOMPARE(acc.count(), 0); QCOMPARE(can.count(), 0);
+        QTRY_VERIFY(!h.busy());
+        r.id = 6; h.present(r);
+        QVERIFY(!h.current()->findChild<QPushButton*>("promptNone"));   // no None for a required argument
+        h.current()->findChild<QPushButton*>("promptCancel")->click();
+        QTRY_VERIFY(!h.busy());
+        // a nullable argument (a stat-panel click): OK, Cancel and None; None reports argNone only
+        QSignalSpy anone(&h, &PromptHost::argNone);
+        r.id = 7; r.title = "Set Default Language [anything]"; r.allowNull = true; h.present(r);
+        QVERIFY(h.current()->findChild<QPushButton*>("promptCancel"));
+        h.current()->findChild<QPushButton*>("promptNone")->click();
+        QCOMPARE(anone.count(), 1); QCOMPARE(anone.at(0).at(0).toUInt(), 7u);
+        QCOMPARE(aacc.count(), 3); QCOMPARE(acan.count(), 3); QCOMPARE(acc.count(), 0); QCOMPARE(can.count(), 0);
     }
     void queuedOneAtATimeInArrivalOrder() {
         QWidget anchor; PromptHost h(&anchor);
@@ -247,6 +259,20 @@ private slots:
         le.setReadOnly(true); le.clear();
         key(&le, Qt::Key_V, Qt::ControlModifier);
         QCOMPARE(le.text(), QString());  // never into a read-only field
+    }
+    // The platform's own Paste shortcuts paste too (Cmd+V on macOS, where Ctrl stays the physical Control key).
+    void platformPasteShortcutsPaste() {
+        QLineEdit le; wirePaste(&le); le.show(); QVERIFY(QTest::qWaitForWindowExposed(&le)); le.setFocus();
+        QGuiApplication::clipboard()->setText("clip");
+        const auto bindings = QKeySequence::keyBindings(QKeySequence::Paste);
+        QVERIFY(!bindings.isEmpty());
+        for (const QKeySequence& ks : bindings) {
+            le.clear();
+            QTest::keySequence(&le, ks);
+            QCOMPARE(le.text(), QString("clip"));
+        }
+        QKeyEvent plainV(QEvent::KeyPress, Qt::Key_V, Qt::NoModifier, "v");
+        QVERIFY(!isPasteChord(&plainV));
     }
     void unwiredWidgetsAreNotFiltered() {
         QLineEdit le; QVERIFY(!isPasteWired(&le));

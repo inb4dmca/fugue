@@ -53,6 +53,7 @@ private:
 
 bool isPasteChord(const QKeyEvent* e) {
     if (e->type() != QEvent::KeyPress) return false;
+    if (e->matches(QKeySequence::Paste)) return true;
     const auto mods = e->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier | Qt::AltModifier | Qt::MetaModifier);
     if (e->key() == Qt::Key_V && (mods == Qt::ControlModifier || mods == (Qt::ControlModifier | Qt::ShiftModifier))) return true;
     if (e->key() == Qt::Key_Insert && mods == Qt::ShiftModifier) return true;

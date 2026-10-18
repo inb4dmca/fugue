@@ -48,6 +48,12 @@
     <content_attribute id="social-chat">intense</content_attribute>
   </content_rating>
   <releases>
+    <release version="0.5.1" date="2026-10-18">
+      <description>
+        <p>Stays connected when idle, reconnects as DreamSeeker does, matches DreamSeeker's key handling and
+        verb prompts more closely, and fixes many /vg/station display issues. Native macOS and Windows builds.</p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-10-17">
       <description>
         <p>First public release.</p>

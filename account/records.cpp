@@ -23,7 +23,8 @@ std::optional<Bytes> mintAccountLoginRecord(ByteSpan identity, uint32_t cauthKey
     std::copy(identity.begin(), identity.end(), rec.begin() + 2);
     for (int i = 0; i < 4; i++) rec[2 + n + i] = uint8_t(cauthKey >> (8 * i));
     std::copy(installBlock.begin(), installBlock.end(), rec.begin() + 6 + n);
-    // Client capabilities byte. Bit 0x02 must be set, or stock DreamDaemon ends the session on an image request.
+    // Client capabilities byte, in installBlock[0]'s slot (that install byte is not sent). Bit 0x02 must be set, or
+    // stock DreamDaemon ends the session on an image request.
     rec[6 + n] = 0x7f;
     rec[23 + n] = marker;
     return rec;

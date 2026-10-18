@@ -48,6 +48,7 @@ protected:
     void accept() override { if (!accepts || accepts()) finish(true); }    // Enter on the default button
 public:
     std::function<bool()> accepts;   // a value the field refuses keeps the dialog open
+    bool none = false;               // finished by the None button
 private:
     bool cancellable_ = true;
     bool finished_ = false;
@@ -98,9 +99,10 @@ QDialog* PromptHost::build(const PromptRequest& r) {
     auto report = [this, id, alert, verbArg, dlg = QPointer<PromptDialog>(d)](bool ok, const QString& text) {
         if (curDone_ || id != curId_) return;
         curDone_ = true;
-        std::fprintf(stderr, "[prompt] %s id=%u %s%s\n", verbArg ? "verb-argument" : alert ? "alert" : "input", id, ok ? "answered " : "cancelled",
-                     ok ? ("\"" + text.left(80) + "\"").toUtf8().constData() : "");
-        if (verbArg) { if (ok) emit argAccepted(id, text); else emit argCancelled(id); }
+        bool none = dlg && dlg->none;
+        std::fprintf(stderr, "[prompt] %s id=%u %s%s\n", verbArg ? "verb-argument" : alert ? "alert" : "input", id,
+                     none ? "none" : ok ? "answered " : "cancelled", ok && !none ? ("\"" + text.left(80) + "\"").toUtf8().constData() : "");
+        if (verbArg) { if (none) emit argNone(id); else if (ok) emit argAccepted(id, text); else emit argCancelled(id); }
         else if (ok) emit accepted(id, alert, text); else emit cancelled(id, alert);
         // open the next one once this one is fully retired
         QMetaObject::invokeMethod(this, [this] { cur_.clear(); showNext(); }, Qt::QueuedConnection);
@@ -133,6 +135,12 @@ QDialog* PromptHost::build(const PromptRequest& r) {
         QObject::connect(cancel, &QPushButton::clicked, d, [d] { d->finish(false); });
     }
     QObject::connect(ok, &QPushButton::clicked, d, [d] { if (!d->accepts || d->accepts()) d->finish(true); });
+    QPushButton* none = nullptr;
+    if (r.verbArg && r.allowNull) {   // stock DreamSeeker: OK, Cancel, None
+        none = new QPushButton("None", d);
+        none->setObjectName("promptNone");
+        QObject::connect(none, &QPushButton::clicked, d, [d] { d->none = true; d->finish(true); });
+    }
 
     QWidget* focus = nullptr;
     if (r.inList) {
@@ -209,6 +217,7 @@ QDialog* PromptHost::build(const PromptRequest& r) {
     row->addStretch();
     row->addWidget(ok);
     if (cancel) row->addWidget(cancel);
+    if (none) row->addWidget(none);
     lay->addLayout(row);
     if (focus) { focus->setFocus(); if (auto* le = qobject_cast<QLineEdit*>(focus)) le->selectAll(); }
     return d;
