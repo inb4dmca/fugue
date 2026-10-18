@@ -1,6 +1,7 @@
 // PromptHost (alert plus every input() form, one outcome per request, queued one at a time), the INFO control as Qt widgets (tabs, rows,
 // tab/row/verb clicks), and paste (Ctrl+V, Shift+Insert, middle-click primary selection) in every key-taking widget this client builds.
 // Reply bytes are checked in tests/prompt_stat_test.cpp.
+#include <QAccessible>
 #include <QApplication>
 #include <QClipboard>
 #include <QColor>
@@ -235,6 +236,16 @@ private slots:
         h.current()->findChild<QLineEdit*>("promptField")->setText("typed");
         h.current()->findChild<QPushButton*>("promptOk")->click();
         QCOMPARE(acc.at(1).at(2).toString(), QString("typed"));
+    }
+    void hostTeardownLeavesNoStaleAccessibleInterface() {
+        QAccessible::Id id = 0;
+        {
+            QWidget anchor; PromptHost h(&anchor);
+            h.present(inputReq(3, 0, "x"));
+            id = QAccessible::uniqueId(QAccessible::queryAccessibleInterface(h.current()));
+            QVERIFY(id);
+        }
+        QVERIFY(!QAccessible::accessibleInterface(id));
     }
     // ---------------------------------------------------------------- paste
     void pasteChordsIntoALineEdit() {

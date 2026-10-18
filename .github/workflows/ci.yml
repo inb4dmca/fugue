@@ -88,6 +88,23 @@ jobs:
         run: |
           $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
           ctest --test-dir build -C Release --output-on-failure --timeout 120
+      - name: Diagnose a crashing test
+        if: failure()
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          FUGUE_AUDIO: none
+        run: |
+          # A fail-fast exit loses buffered stdout, so run each function on its own and report its exit code.
+          $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
+          Get-ChildItem build -Recurse -Filter jpeg_test.exe | ForEach-Object {
+            $exe = $_.FullName
+            foreach ($f in (& $exe -functions)) {
+              $out = & $exe $f -v2 2>&1 | Out-String
+              "== $f exit=$LASTEXITCODE"
+              if ($LASTEXITCODE -ne 0) { $out }
+            }
+          }
       - name: Package
         shell: pwsh
         run: ./packaging/windows/package.ps1 -QtDir "$env:QT_ROOT_DIR"

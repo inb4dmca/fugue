@@ -56,7 +56,9 @@ private:
 }  // namespace
 
 PromptHost::PromptHost(QWidget* anchor, QObject* parent) : QObject(parent), anchor_(anchor) {}
-PromptHost::~PromptHost() { if (cur_) { cur_->disconnect(); cur_->deleteLater(); } }
+PromptHost::~PromptHost() {
+    if (cur_) { static_cast<PromptDialog*>(cur_.data())->done = nullptr; cur_->deleteLater(); }
+}
 
 void PromptHost::present(const PromptRequest& r) {
     queue_.push_back(r);

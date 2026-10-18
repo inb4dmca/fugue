@@ -1,5 +1,6 @@
 // See maptext.h.
 #include "render/maptext.h"
+#include "render/parsedouble.h"
 
 #include <charconv>
 #include <cmath>
@@ -137,7 +138,7 @@ bool goParseFloat(string_view s, double& out) {
     if (body.back() == '.') body.pop_back();          // "5." is legal
     if (body.front() == '.') body.insert(body.begin(), '0');
     double v = 0;
-    auto r = std::from_chars(body.data(), body.data() + body.size(), v);
+    auto r = parseDouble(body.data(), body.data() + body.size(), v);
     if (r.ec == std::errc::result_out_of_range) {
         // overflow (a nonzero integer part) is a range error; underflow reads as a tiny positive.
         bool bigInt = false;

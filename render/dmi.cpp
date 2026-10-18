@@ -1,6 +1,7 @@
 // Parsing of .dmi icon files (PNG metadata, the legacy container) and plain PNG/GIF icons. Where the format is
 // silent, the integer and float parsers use the usual decimal-parsing rules.
 #include "render/dmi.h"
+#include "render/parsedouble.h"
 
 #include <algorithm>
 #include <array>
@@ -86,7 +87,7 @@ bool goParseFloat(const std::string& s, double& out) {
     if (i != s.size()) return false;
     const char* b = s.data();
     if (*b == '+') b++;
-    auto r = std::from_chars(b, s.data() + s.size(), out);
+    auto r = parseDouble(b, s.data() + s.size(), out);
     if (r.ec == std::errc::result_out_of_range) return false;   // ±Inf with an error -> skipped
     return r.ec == std::errc() && r.ptr == s.data() + s.size();
 }
