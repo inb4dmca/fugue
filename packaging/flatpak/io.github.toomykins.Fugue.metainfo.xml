@@ -48,6 +48,13 @@
     <content_attribute id="social-chat">intense</content_attribute>
   </content_rating>
   <releases>
+    <release version="0.5.3" date="2026-10-18">
+      <description>
+        <p>Draws BYOND particles (/vg/station's airflow dust, steam, smoke) and turf vis_contents (ZAS gas), moves the
+        view with client pixel offsets and animate(client), sends mouse-wheel events, carries glides into the next step
+        as DreamSeeker does, starts a step from rest without delay, and adds text macros and a pager tray icon.</p>
+      </description>
+    </release>
     <release version="0.5.2" date="2026-10-18">
       <description>
         <p>Native macOS and Windows builds now compile and pass their tests. Fixes a prompt-dialog crash on Windows and
