@@ -143,10 +143,7 @@ private slots:
         QCOMPARE(get(host->origin()->base() + "titlescreen.png").body, QByteArray("GIF"));
         // announced for a blind type (a sound): nothing is held for it
         st->declare("song.ogg", 5);
-#ifdef Q_OS_MACOS
-        QEXPECT_FAIL("", "macOS: local-origin timing runs long (issue #13)", Continue);
-#endif
-        QVERIFY(get(host->origin()->base() + "song.ogg").ms < 150);
+        QVERIFY(get(host->origin()->base() + "song.ogg").ms < 500);   // no hold (holds are >= 1400 ms)
     }
 
     // A held request takes one of Chromium's 6 connections to the origin. Unnamed records are common (most names a page asks for are unannounced), so
