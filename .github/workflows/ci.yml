@@ -45,6 +45,9 @@ jobs:
           -DPKG_CONFIG_EXECUTABLE="$(brew --prefix)/bin/pkg-config"
       - name: Build
         run: cmake --build build --parallel 2
+      - name: Keep test timers unthrottled
+        # App Nap throttles the timers of a windowless background process, which the timing tests measure.
+        run: defaults write NSGlobalDomain NSAppSleepDisabled -bool YES
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
