@@ -143,6 +143,9 @@ public:
     // after the buffered frames are handled. Owner-side timers such as the resync sweep (model/resync.h) run here.
     // It may call sendInput().
     void setPumpHook(std::function<void()> h) { pumpHook_ = std::move(h); }
+    // Makes the run() in progress return once the frames already read are handled, instead of at the end of its
+    // budget. Session thread only: an observer or the pump hook may call it.
+    void wake() { wake_ = true; }
 
 private:
     bool sendFrame(uint16_t type, ByteSpan plain);
@@ -185,6 +188,7 @@ private:
     size_t recentNext_ = 0;
     void noteFrame(bool c2s, uint16_t type, size_t len);
     std::function<void()> pumpHook_;
+    bool wake_ = false;
     bool prodDue_ = false;       // the first s2c 0x000e was handled: send 0xb7 once the buffered frames are drained
     bool sentProd_ = false;      // the 0xb7 that answers the first s2c 0x000e went out
     bool sentRefresh_ = false;   // the 0x0d + 0x19 that answer the first s2c 0x0071 went out

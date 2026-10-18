@@ -85,6 +85,7 @@ struct Ap {
     // MouseOpacity: a 2-bit field at bits 12-13, rotated so the default (1) encodes as 0.
     int mouseOpacity() const { return int(((flags >> 12) + 1) & 3); }
     bool opaque() const { return flags & 1; }                       // Opaque
+    bool mouseWheel() const { return flags & 0x100000; }            // declares MouseWheel or MouseMove
     bool dirValid() const { return flags & 0x200; }                 // DirValid (ApprDirValid)
     bool resetColor() const { return (flags >> 21) & 2; }           // DM appearance flag: reset colour
     bool resetAlpha() const { return (flags >> 21) & 4; }           // DM appearance flag: reset alpha
@@ -116,6 +117,8 @@ struct RApp {
     std::string maptext;                                 // drawn by placeApp in a box of mtW x mtH at offset mtX, mtY
     int mtW = 0, mtH = 0, mtX = 0, mtY = 0;
     int hitAtom = -1;   // HitScene::atoms index of the TOP-LEVEL atom this appearance belongs to (hit collection only)
+    bool hasParticles = false;   // the atom carries a particle set (model::World::particles), drawn over its own icon
+    uint32_t particleKey = 0;
     bool borrowsHit = false;   // a client.image: hitAtom is its PARENT's, whose position/facing it must not overwrite
 };
 
@@ -172,6 +175,9 @@ private:
     ResStore& res_;
     int64_t clockNs_;
     int scrollX_ = 0, scrollY_ = 0;   // eye scroll offset at clockNs_, set by buildGrid
+    // What the map layers are moved by (the eye scroll plus the client.pixel_* view offset, image pixels: +x right,
+    // +y down), and the ring of tiles beyond the view drawn so the move reveals no gutter. Set by buildGrid / run.
+    int shiftX_ = 0, shiftY_ = 0, ring_ = 0;
     SceneStats& st_;
     std::string mapStyle_;            // the default map control's `style`: maptext's sheet (render/maptextpaint.h)
     std::string err_;
@@ -240,11 +246,15 @@ private:
     void tileSize(int& tw, int& th) const;
     void placeApp(const RApp& a, int baseX, int baseY, int tileH, double parentPlane, double parentLayer, bool hasParent, std::vector<Placed>& out,
                   const std::array<float, 6>* inheritedXf = nullptr);
+    void markParticles(RApp& a, uint32_t key) const;
+    void placeParticles(const RApp& a, int iconX, int iconY, int iconW, int iconH, double plane, double layer, std::vector<Placed>& out);
     bool animatedApp(uint32_t id, const model::Atom& m, RApp& out);
     void flickOverride(uint32_t id, RApp& out);
     bool tweenChain(const model::Atom::Chain& ch, uint32_t settled, RApp& out);
     void glideOffset(const model::Atom& m, int tileW, int tileH, int& px, int& py) const;
     bool animEndpointCarriesPixels(const model::Atom& m) const;
+    void clientViewOffset(int& x, int& y);
+    int ringFor(int tw, int th) const;
     void placeHud(int cols, int rows, int tw, int th, std::vector<Placed>& placed);
     void collectMasters(uint32_t appid, std::set<uint32_t>& seen);
     void appendBlackness(std::vector<Placed>& placed, int originX, int originY, int extentW, int extentH, int tw, int th);
@@ -362,7 +372,7 @@ void Assembler::countUnmodeled(const Ap& a) {
 int Assembler::newHitAtom(uint32_t appid, uint8_t kind, uint32_t ref, bool screen) {
     if (!hit_) return -1;
     HitAtom h;
-    if (const Ap* a = ap(appid)) { h.name = a->name; h.mouseOpacity = a->mouseOpacity(); }
+    if (const Ap* a = ap(appid)) { h.name = a->name; h.mouseOpacity = a->mouseOpacity(); h.wheel = a->mouseWheel(); }
     h.appid = appid;
     h.kind = kind; h.ref = ref; h.screen = screen;
     hit_->atoms.push_back(std::move(h));
@@ -526,6 +536,115 @@ SpritePtr Assembler::sprite(const RApp& a, bool& drawable) {
     return sp;
 }
 
+// ---- particles -------------------------------------------------------------------------------------
+
+void Assembler::markParticles(RApp& a, uint32_t key) const {
+    if (!w_.particles.count(key)) return;
+    a.hasParticles = true;
+    a.particleKey = key;
+}
+
+// Stock DreamSeeker 516 draws a set about the centre of the width x height box it centres on
+// its holder's icon, clipped to that box. An icon particle is its icon_state's frame centred on (round-half-even(x),
+// -round-half-even(y)) from there, through the particle's rotation and scale (point sampled) and the set's transform, its
+// colour multiplied by the particle's; a set whose first particle has no icon draws every particle as a one-pixel dot, at
+// ceil(centre + x - 0.5), ceil(centre - y - 0.5). A set with depth draws its far particles first. The placement, the
+// clip, the sampling and the dot rule are measured on stock DreamSeeker (tests/particles_test.cpp).
+void Assembler::placeParticles(const RApp& a, int iconX, int iconY, int iconW, int iconH, double plane, double layer,
+                               std::vector<Placed>& out) {
+    auto it = w_.particles.find(a.particleKey);
+    if (it == w_.particles.end()) return;
+    model::ParticleSet& s = it->second;
+    int64_t frameNs = w_.frameNanos > 0 ? w_.frameNanos : (w_.tickNanos > 0 ? w_.tickNanos : model::kDefaultTickNanos);
+    model::advanceParticles(s, clockNs_, frameNs, a.particleKey * 2654435761u ^ s.pid);
+    s.drawnNs = clockNs_;
+    if (s.live.empty()) return;
+    int bx = (iconW - int(s.width)) / 2, by = (iconH - int(s.height)) / 2;
+    int cx = iconX + (2 * bx + int(s.width)) / 2, cy = iconY + (2 * by + int(s.height)) / 2;
+    const int clipL = iconX + bx, clipT = iconY + by, clipR = clipL + int(s.width), clipB = clipT + int(s.height);
+    const bool dots = s.live.front().icon == 0xffff;
+    std::vector<size_t> order(s.live.size());
+    for (size_t i = 0; i < order.size(); i++) order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [&](size_t x, size_t y) { return s.live[x].pos[2] > s.live[y].pos[2]; });
+    static const SpritePtr kDot = [] { auto d = std::make_shared<Sprite>(); d->w = d->h = 1; d->px = {255, 255, 255, 255}; return SpritePtr(d); }();
+    const auto& M = s.transform;
+    for (size_t i : order) {
+        const model::Particle& p = s.live[i];
+        uint32_t c = p.drawColor;
+        DrawLayer l;
+        l.alpha = int(c >> 24);
+        if (l.alpha == 0) continue;
+        l.hasTint = (c & 0xffffff) != 0xffffff;
+        l.tintR = uint8_t(c); l.tintG = uint8_t(c >> 8); l.tintB = uint8_t(c >> 16);
+        double x = p.pos[0], y = p.pos[1], z = p.pos[2];
+        if (!dots) { x = std::nearbyint(x); y = std::nearbyint(y); }
+        // the set's transform, row-vector in DM space (+y up), then the w divide
+        double ox = x, oy = y;
+        Mat t;
+        if (s.hasTransform) {
+            double w = x * M[3] + y * M[7] + z * M[11] + M[15];
+            if (w <= 0) continue;
+            ox = (x * M[0] + y * M[4] + z * M[8] + M[12]) / w;
+            oy = (x * M[1] + y * M[5] + z * M[9] + M[13]) / w;
+            t = Mat{M[0] / w, -M[4] / w, 0, -M[1] / w, M[5] / w, 0};
+        }
+        if (dots) {
+            l.sprite = kDot;
+            l.x = int(std::ceil(cx + ox - 0.5));
+            l.y = int(std::ceil(cy - oy - 0.5));
+        } else {
+            RApp pa;
+            if (p.icon < w_.resources.size()) pa.icon = res_.iconResolved(w_.resources[p.icon].first, w_.resources);
+            if (!pa.icon) continue;
+            pa.state = pa.icon->stateIndex(p.iconState) >= 0 ? p.iconState : std::string();
+            pa.dir = 2;
+            pa.frame = frameFor(pa.icon, pa.state);
+            bool drawable;
+            SpritePtr sp = sprite(pa, drawable);
+            if (failed_) return;
+            if (!drawable) continue;
+            Mat q{p.m[0], p.m[1], 0, p.m[2], p.m[3], 0};
+            Mat m = matMul(t, q);
+            int ux = cx + int(ox) - (sp->w + 1) / 2, uy = cy - int(oy) - (sp->h + 1) / 2;
+            if (s.hasTransform) {
+                ux = int(std::floor(cx + ox - sp->w / 2.0 + 0.5));
+                uy = int(std::floor(cy - oy - sp->h / 2.0 + 0.5));
+            }
+            if (m.a == 1 && m.b == 0 && m.d == 0 && m.e == 1) {
+                l.sprite = sp;
+                l.x = ux;
+                l.y = uy;
+            } else {
+                SpritePtr img = applyTransform(*sp, m, Sampling::Nearest);
+                l.sprite = img;
+                l.x = ux + int(gomath::round(double(sp->w - img->w) / 2));
+                l.y = uy + int(gomath::round(double(sp->h - img->h) / 2));
+            }
+        }
+        int x0 = std::max(l.x, clipL), y0 = std::max(l.y, clipT);
+        int x1 = std::min(l.x + l.sprite->w, clipR), y1 = std::min(l.y + l.sprite->h, clipB);
+        if (x0 >= x1 || y0 >= y1) continue;
+        if (x0 != l.x || y0 != l.y || x1 != l.x + l.sprite->w || y1 != l.y + l.sprite->h) {
+            auto cut = std::make_shared<Sprite>();
+            cut->w = x1 - x0; cut->h = y1 - y0;
+            cut->px.resize(size_t(cut->w) * size_t(cut->h) * 4);
+            for (int yy = 0; yy < cut->h; yy++)
+                std::memcpy(&cut->px[size_t(yy) * size_t(cut->w) * 4],
+                            &l.sprite->px[(size_t(y0 - l.y + yy) * size_t(l.sprite->w) + size_t(x0 - l.x)) * 4], size_t(cut->w) * 4);
+            l.sprite = std::move(cut);
+            l.x = x0; l.y = y0;
+        }
+        Placed pl;
+        pl.layer = std::move(l);
+        pl.plane = plane;
+        pl.sortLayer = layer;
+        pl.seq = int(out.size());
+        pl.atom = curAtom_;
+        pl.hitVisible = false;
+        out.push_back(std::move(pl));
+    }
+}
+
 // ---- vis_contents ------------------------------------------------------------------------------
 
 // The holder's atom.transform reaches its vis_contents. Stock DreamSeeker 516 draws a child of a scale(1.5)
@@ -547,10 +666,15 @@ void Assembler::visChildren(const std::vector<uint32_t>& children, std::set<uint
         std::set<uint32_t> v2;
         RApp ca;
         if (!buildApp(cs->second.appid, v2, ca)) continue;
+        // Stock DreamSeeker 516 animates a vis_contents item on the child's own icon start: a looping state on the shared
+        // clock, a finite one from when the child was first sent or changed its icon_state; neither its holder's icon
+        // change nor its addition to a second holder restarts it.
+        applyIconAnimation(ca, cs->second.iconStartNs);
         if (cs->second.dir != 0) ca.dir = cs->second.dir;
         if (hit_) ca.hitAtom = newHitAtom(cs->second.appid, (child & kRegistryA) ? kAtomMob : kAtomObj, child & ~kRegistryA, false);
         ca.px += cs->second.pixelX;
         ca.py += cs->second.pixelY;
+        markParticles(ca, child);
         if (holder && holder->hasXform && g_sceneMutation != 21) {
             ca.xf = ca.hasXform ? composeDm(holder->xf, ca.xf) : holder->xf;
             ca.hasXform = true;
@@ -799,28 +923,20 @@ void Assembler::flickOverride(uint32_t id, RApp& out) {
     out.frame = frame;
 }
 
-// Glide progress and offset: (from - to) * iconSize scaled by the remaining fraction, rounded; 0 once played out.
+// Glide offset: the armed offset (tiles) * tile size scaled by the fraction left, rounded; 0 once played out.
 void Assembler::glideOffset(const model::Atom& m, int tileW, int tileH, int& px, int& py) const {
     px = py = 0;
     if (!m.gliding) return;
     const model::Atom::Glide& g = m.glide;
-    double progress;
-    if (g.durNs <= 0) progress = 1;
-    else {
-        int64_t el = clockNs_ - g.startNs;
-        if (el <= 0) progress = 0;
-        else if (el >= g.durNs) progress = 1;
-        else progress = double(el) / double(g.durNs);
-    }
-    double rem = 1 - progress;
+    double rem = model::glideLeft(g, clockNs_);
     if (rem <= 0) return;
     if (g_sceneMutation == 6) {   // test-only: truncate instead of round
-        px = int(double((g.fromX - m.x) * tileW) * rem);
-        py = int(double((g.fromY - m.y) * tileH) * rem);
+        px = int(g.sx * tileW * rem);
+        py = int(g.sy * tileH * rem);
         return;
     }
-    px = int(gomath::round(double((g.fromX - m.x) * tileW) * rem));
-    py = int(gomath::round(double((g.fromY - m.y) * tileH) * rem));
+    px = int(gomath::round(g.sx * tileW * rem));
+    py = int(gomath::round(g.sy * tileH * rem));
 }
 
 // A chain's From/To appearances carry pixel_x/y as ABSOLUTE values, while the atom's own pixel offsets repeat the settled
@@ -839,6 +955,113 @@ bool Assembler::animEndpointCarriesPixels(const model::Atom& m) const {
     }
     const auto& last = m.chain.steps.back();
     return m.appid == last.to && has(last.to);
+}
+
+// client.pixel_x + pixel_w and pixel_y + pixel_z at the render clock, in world pixels: the last 0x0007 value plus
+// what the animate(client) chain adds, as the stock chain evaluator computes it. The chain is pruned of finished
+// sequences, then the sequences are composed in order into one pixel offset `out`: the first is eased absolutely
+// From -> To; a parallel one adds its own To - From; a head eases from what the sequences before it give (snapping
+// to its From when that differs from the previous sequence's end). A sequence stops advancing when a later head
+// starts. The chain adds out minus the last step's To, so a direct set during a tween shifts the tween instead of
+// ending it.
+void Assembler::clientViewOffset(int& x, int& y) {
+    x = int(w_.viewPixelX) + int(w_.viewPixelW);
+    y = int(w_.viewPixelY) + int(w_.viewPixelZ);
+    const model::Atom::Chain& ch = w_.clientChain;
+    if (ch.steps.empty()) return;
+    struct Px { int v[4] = {0, 0, 0, 0}; };
+    auto pix = [&](uint32_t appid) {
+        Px p;
+        if (const Ap* a = ap(appid)) { p.v[0] = a->pixelX; p.v[1] = a->pixelY; p.v[2] = a->pixelW; p.v[3] = a->pixelZ; }
+        return p;
+    };
+    auto stepNs = [&](size_t i) { return stepDurNs(ch.steps[i], ch.tickNs); };
+    const int64_t now = clockNs_;
+    const int64_t eps = ch.tickNs / 1000;   // the evaluator's 0.001-tick tolerance
+    std::vector<model::AnimSeq> seqs = model::animSequences(ch);
+    std::vector<bool> alive(seqs.size(), true);
+    auto nextAlive = [&](size_t i) { for (size_t j = i + 1; j < seqs.size(); j++) if (alive[j]) return j; return seqs.size(); };
+    auto nextHead = [&](size_t i) { for (size_t j = i + 1; j < seqs.size(); j++) if (alive[j] && seqs[j].head) return j; return seqs.size(); };
+    // The first later head that has started decides; without one, the sequence's own end does.
+    auto finished = [&](size_t i) {
+        const model::AnimSeq& q = seqs[i];
+        for (size_t j = nextHead(i); j < seqs.size(); j = nextHead(j)) {
+            const model::AnimSeq& h = seqs[j];
+            if (h.startNs > now) continue;
+            if (q.endNs >= 0 && q.endNs <= h.startNs) return true;
+            if (h.startNs - eps <= q.startNs) return true;
+            if (j == nextAlive(i) && q.first == q.last && ch.steps[q.first].from == ch.steps[q.first].to) return true;
+            return now >= h.startNs + stepNs(h.first);
+        }
+        return q.endNs >= 0 && now >= q.endNs;
+    };
+    // A finished sequence goes when nothing or a head follows it; one followed by a parallel stays, held
+    // at its end, until that one goes.
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (size_t i = 0; i < seqs.size(); i++) {
+            if (!alive[i] || !finished(i)) continue;
+            size_t n = nextAlive(i);
+            if (n < seqs.size() && seqs[n].parallel) continue;
+            alive[i] = false;
+            changed = true;
+        }
+    }
+    auto lerp = [](int from, int to, double f) { return from == to ? to : int(float(to - from) * float(f)) + from; };
+    Px out;
+    bool first = true;
+    uint32_t prevEnd = 0;
+    for (size_t i = 0; i < seqs.size(); i++) {
+        if (!alive[i]) continue;
+        const model::AnimSeq& q = seqs[i];
+        const model::Atom::AnimStep& head = ch.steps[q.first];
+        if (!first && prevEnd != head.from && (q.head || q.parallel)) {
+            Px a = pix(prevEnd), b = pix(head.from);
+            for (int k = 0; k < 4; k++) out.v[k] = q.parallel ? out.v[k] + b.v[k] - a.v[k] : b.v[k];
+        }
+        // The step in flight and its fraction, the sequence held where the next head started.
+        int64_t t = now;
+        size_t nh = nextHead(i);
+        if (nh < seqs.size() && seqs[nh].startNs < t) t = seqs[nh].startNs;
+        size_t cur = q.first;
+        double f = 0;
+        if (q.startNs <= now) {
+            // Past its end with no later head the sequence rests on its last To; otherwise the clock wraps by its length.
+            if (q.durNs <= 0 || (nh == seqs.size() && q.endNs >= 0 && t >= q.endNs)) { cur = q.last; f = 1; }
+            else {
+                int64_t e = (t - q.startNs) % q.durNs;
+                while (cur < q.last && stepNs(cur) <= e) { e -= stepNs(cur); cur++; }
+                int64_t d = stepNs(cur);
+                f = d > 0 ? std::min(1.0, double(e) / double(d)) : 1.0;
+            }
+        }
+        const model::Atom::AnimStep& st = ch.steps[cur];
+        if (st.easing) f = ease(f, st.easing);
+        // The head step eases from the sequence's last To once the whole sequence has played out by the next head
+        // (or now), else from its own From (the first sequence, a parallel) or from `out` (a later head).
+        const int64_t tref = nh < seqs.size() ? seqs[nh].startNs : now;
+        const bool done = cur == q.first && q.startNs + q.durNs < tref;
+        Px to = pix(st.to);
+        if (q.parallel && !first) {
+            Px base = pix(head.from), from = done ? pix(ch.steps[q.last].to) : cur == q.first ? base : pix(st.from);
+            for (int k = 0; k < 4; k++) out.v[k] += lerp(from.v[k], to.v[k], f) - base.v[k];
+        } else {
+            Px from = done ? pix(ch.steps[q.last].to) : (cur == q.first && !first) ? out : pix(st.from);
+            for (int k = 0; k < 4; k++) out.v[k] = lerp(from.v[k], to.v[k], f);
+        }
+        first = false;
+        prevEnd = ch.steps[q.last].to;
+    }
+    if (first) return;
+    Px end = pix(prevEnd);
+    x += out.v[0] - end.v[0] + out.v[2] - end.v[2];
+    y += out.v[1] - end.v[1] + out.v[3] - end.v[3];
+}
+
+// Tiles beyond the view, on every side, that the current shift brings into the map control.
+int Assembler::ringFor(int tw, int th) const {
+    if (tw <= 0 || th <= 0) return 0;
+    return std::max((std::abs(shiftX_) + tw - 1) / tw, (std::abs(shiftY_) + th - 1) / th);
 }
 
 // ---- grid --------------------------------------------------------------------------------------
@@ -879,10 +1102,14 @@ bool Assembler::buildGrid(int& originX, int& originY, int& winW, int& winH, int&
     bool skipLOS = w_.haveSight && (w_.sight & all) == all;
     bool turfsAlwaysVisible = skipLOS || (w_.haveSight && (w_.sight & kSightTurfs) != 0);
 
-    // A frame inside an eye scroll keeps one extra LOS ring alive, the
-    // tile the scroll partially reveals beyond the strict view edge.
+    // A shifted frame (eye scroll, client.pixel_*) keeps extra LOS rings alive: the tiles the shift reveals beyond
+    // the strict view edge.
     model::eyeScrollOffset(w_, clockNs_, scrollX_, scrollY_);
-    const int losMargin = (scrollX_ != 0 || scrollY_ != 0) ? 1 : 0;
+    int viewX, viewY;
+    clientViewOffset(viewX, viewY);
+    shiftX_ = scrollX_ - viewX;   // the camera moves by the offset, so the map moves the other way (y flips)
+    shiftY_ = scrollY_ + viewY;
+    const int losMargin = ringFor(model::iconSizeOf(w_), model::iconSizeOf(w_));
     bool haveVisible = false;
     CellSet visible;
     if (!skipLOS && w_.haveEye && winW > 0 && winH > 0) {
@@ -928,7 +1155,16 @@ bool Assembler::buildGrid(int& originX, int& originY, int& winW, int& winH, int&
             // A turf's multi-frame icon animates in stock DreamSeeker 516, including an animated GIF on a turf.
             if (g_sceneMutation != 22) applyIconAnimation(ra, tileIconStart(originX + lx - 1, originY + ly - 1, cg.viewZ - 1));
             ra.hitAtom = newHitAtom(appid, kAtomTurf, 0, false);
-            if (Tile* t = tileAt(originX + lx, originY + ly)) *t = Tile{std::move(ra)};
+            Tile* t = tileAt(originX + lx, originY + ly);
+            if (!t) continue;
+            *t = Tile{std::move(ra)};
+            // The turf's vis_contents (vg's gas overlays) draw at its cell, each on its own plane and layer.
+            auto tv = w_.turfVis.find({uint16_t(originX + lx - 1), uint16_t(originY + ly - 1), uint16_t(cg.viewZ - 1)});
+            if (tv == w_.turfVis.end()) continue;
+            std::vector<RApp> kids;
+            std::set<uint32_t> visitedV;
+            visChildren(tv->second, visitedV, kids, nullptr);
+            for (auto& k : kids) t->push_back(std::move(k));
         }
     if (haveVisible && !turfsAlwaysVisible) {
         for (int ly = 0; ly < winH; ly++)
@@ -955,6 +1191,7 @@ bool Assembler::buildGrid(int& originX, int& originY, int& winW, int& winH, int&
         ra.hitAtom = newHitAtom(m.appid, (id & kRegistryA) ? kAtomMob : kAtomObj, id & ~kRegistryA, false);
         ra.dir = m.dir;
         for (auto& o : ra.overlays) applyOverlayDir(o, m.dir);
+        markParticles(ra, id);
         // gx,gy = glide offset + the atom's own A6 pixel offsets; folded in so vis_contents children
         // drawn at this atom's tile travel with it. An animate() endpoint already carries the pixel offset
         // absolutely, so the A6 copy is taken back out of the atom's own sprite (not of its children).
@@ -1124,6 +1361,12 @@ void Assembler::placeApp(const RApp& a, int baseX, int baseY, int tileH, double 
         p.frame = curFrame_;
         p.own = !hasParent;
         out.push_back(std::move(p));
+    }
+    // An atom's particles draw right after its own icon, in its slot of the plane/layer sort.
+    if (!hasParent && a.hasParticles && g_sceneMutation != 40) {
+        int iw = drawable ? sp->w : tileH, ih = drawable ? sp->h : tileH;
+        placeParticles(a, baseX + a.px, baseY + (tileH - ih) - a.py, iw, ih, plane, layer, out);
+        if (failed_) return;
     }
     // MAPTEXT: in front of this appearance's own icon at the same plane and layer (it sorts with the atom,
     // and its higher seq puts it on top). The box is anchored bottom-left like a sprite, moved +maptext_x right and +maptext_y
@@ -1323,6 +1566,7 @@ void Assembler::placeHud(int cols, int rows, int tw, int th, std::vector<Placed>
             ra.relay.clear();
         }
         for (RApp& a : attached) ra.overlays.push_back(std::move(a));
+        markParticles(ra, id);
 
         static const std::array<float, 6> kIdentity{1, 0, 0, 0, 1, 0};
         const bool warp = ra.hasXform && ra.xf != kIdentity;   // placeWarpedScreenObj below
@@ -1620,10 +1864,10 @@ void Assembler::appendBlackness(std::vector<Placed>& placed, int originX, int or
     black->w = tw; black->h = th;
     black->px.assign(size_t(tw) * size_t(th) * 4, 0);
     for (size_t i = 3; i < black->px.size(); i += 4) black->px[i] = 255;
-    // The margin ring matches run()'s scrolled placement: a scrolled frame reveals a tile beyond the region, and
-    // blackness has to cover it too or the glide exposes a bright gutter.
-    int x0 = originX, y0 = originY, ew = extentW, eh = extentH, dx = 0, dy = 0;
-    if (scrollX_ != 0 || scrollY_ != 0) { x0 = originX - 1; y0 = originY - 1; ew = extentW + 2; eh = extentH + 2; dx = scrollX_ - tw; dy = scrollY_ - th; }
+    // The margin ring matches run()'s shifted placement: a shifted frame reveals tiles beyond the region, and
+    // blackness has to cover them too or the glide exposes a bright gutter.
+    const int x0 = originX - ring_, y0 = originY - ring_, ew = extentW + 2 * ring_, eh = extentH + 2 * ring_;
+    const int dx = ring_ ? shiftX_ - ring_ * tw : 0, dy = ring_ ? shiftY_ - ring_ * th : 0;
     for (int vr = 0; vr < eh; vr++)
         for (int vc = 0; vc < ew; vc++) {
             if (!hidden_.count({x0 + vc, y0 + vr})) continue;
@@ -1648,12 +1892,13 @@ bool Assembler::run(DrawList& dl, std::string* err) {
     dl.outH = extentH * th;
     dl.groundBlack = true;
 
-    // Row-major over the view, y flipped (top of image = highest world y). Inside an eye scroll the region is one tile
-    // wider on every side, and everything placed is moved back by that tile and on by the scroll.
+    // Row-major over the view, y flipped (top of image = highest world y). While the map is shifted (an eye scroll, a
+    // client.pixel_* offset) the region is ring_ tiles wider on every side, and everything placed is moved back by the
+    // ring and on by the shift.
     std::vector<Placed> placed;
-    const bool scrolled = scrollX_ != 0 || scrollY_ != 0;
-    const int rx0 = scrolled ? originX - 1 : originX, ry0 = scrolled ? originY - 1 : originY;
-    const int rw = scrolled ? extentW + 2 : extentW, rh = scrolled ? extentH + 2 : extentH;
+    ring_ = ringFor(tw, th);
+    const int rx0 = originX - ring_, ry0 = originY - ring_;
+    const int rw = extentW + 2 * ring_, rh = extentH + 2 * ring_;
     for (int vr = 0; vr < rh; vr++)
         for (int vc = 0; vc < rw; vc++) {
             int x = rx0 + vc, y = ry0 + vr;
@@ -1672,9 +1917,9 @@ bool Assembler::run(DrawList& dl, std::string* err) {
                 if (failed_) { if (err) *err = err_; return false; }
             }
         }
-    st_.eyeScroll = scrolled;
-    if (scrolled) {
-        const int dx = scrollX_ - tw, dy = scrollY_ - th;
+    st_.eyeScroll = scrollX_ != 0 || scrollY_ != 0;
+    if (ring_ > 0) {
+        const int dx = shiftX_ - ring_ * tw, dy = shiftY_ - ring_ * th;
         for (Placed& p : placed) { p.layer.x += dx; p.layer.y += dy; p.layer.relayBottomY += dy; p.frame.x += dx; p.frame.y += dy; }
     }
     st_.layers = int(placed.size());

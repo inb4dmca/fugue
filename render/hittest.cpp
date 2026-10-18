@@ -80,7 +80,7 @@ bool covers(const HitLayer& l, int px, int py, bool whole) {
 
 void fill(Hit& h, const HitAtom& a, int sx, int sy, const Sprite& sp) {
     h.name = a.name; h.kind = a.kind; h.ref = a.ref; h.worldX = a.worldX; h.worldY = a.worldY; h.screen = a.screen;
-    h.appid = a.appid; h.dir = a.dir;
+    h.appid = a.appid; h.dir = a.dir; h.wheel = a.wheel;
     h.spriteX = sx; h.spriteY = sy; h.spriteW = sp.w; h.spriteH = sp.h;
 }
 

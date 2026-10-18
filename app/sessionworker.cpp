@@ -13,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "app/mapcadence.h"
 #include "app/renderthread.h"
 #include "audio/player.h"
 #include "audio/note.h"
@@ -35,10 +36,13 @@ using namespace fugue;
 
 namespace {
 // True while anything on the map is moving at `now` (ns, the map's assembly clock): the eye or an atom gliding, an
-// animate() chain, or a flick() still playing. Only then does the map need the fast cadence.
+// animate() chain (an atom's or the client's), a flick() still playing, or a particle set on screen still active. Only
+// then does the map need the fast cadence.
 bool mapInMotion(const model::World& w, int64_t now) {
     auto live = [&](int64_t start, int64_t dur) { return start > 0 && dur > 0 && now < start + dur; };
-    if ((w.eyeGlideX.live && live(w.eyeGlideX.startNs, w.eyeGlideX.durNs)) || (w.eyeGlideY.live && live(w.eyeGlideY.startNs, w.eyeGlideY.durNs))) return true;
+    if (w.eyeGliding && live(w.eyeGlide.startNs, w.eyeGlide.durNs)) return true;
+    for (const model::AnimSeq& q : model::animSequences(w.clientChain))
+        if (q.endNs < 0 || now < q.endNs + 1) return true;
     for (const auto& [id, a] : w.atoms) {
         if (a.gliding && live(a.glide.startNs, a.glide.durNs)) return true;
         if (a.animating && !a.chain.steps.empty()) {
@@ -49,12 +53,13 @@ bool mapInMotion(const model::World& w, int64_t now) {
     }
     for (const auto& [id, f] : w.flicks)
         if (f.startNs > 0 && now - f.startNs < int64_t(5e9)) return true;   // 5 s bounds a flick's length
+    // A particle set drawn within the last second that still spawns or has particles alive.
+    for (const auto& [key, ps] : w.particles)
+        if (ps.drawnNs > 0 && now - ps.drawnNs < int64_t(1e9) && model::particlesActive(ps)) return true;
     return false;
 }
 
 constexpr int kTickMs = 90;     // the UI tick: chat, stat panel, browse windows
-constexpr int kMapMs = 16;      // map hand-off while the map is in motion or new frames arrived (~60 fps)
-constexpr int kIdleMapMs = 50;  // otherwise: icon_state steps in deciseconds, so 20 fps is frame-exact
 
 // The INFO control's data: the tab strip, and the selected tab's rows. An atom row carries its icon cell
 // (render::statRowIcon, animated at clockNs).
@@ -264,6 +269,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
             return true;
         },
     });
+    MapCadence mapPace;
     s.setObserver([&](uint16_t type, ByteSpan body) {
         if (type == 0x009f) return;   // resource-pump frames are not model input
         if (type == model::kAlertMsg || type == model::kInputMsg || type == model::kExpansionReplyMsg) {
@@ -354,6 +360,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
             rscWanted.clear();
         }
         framesIngested++;
+        if (mapPace.ingested()) s.wake();   // a still map: draw this frame now, not at the end of the idle wait
     });
     // Main window icon (skin/winicon.h): this world's files by name, and its 0x000e list by ordinal.
     skin::IconResolver icon(skin::IconResolver::Env{
@@ -555,8 +562,13 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 env.hooks = im.haveMouseSubs() ? im.hooks() : proto::enc::allMouseHooks();
                 env.rightClickToWire = mj->rightClick;
                 env.control = mj->control;
+                env.clientWheel = !im.haveMouseSubs() || im.clientWheel();
                 std::vector<Bytes> fr;
                 using K = fugue::shell::MapPointer;
+                if (mj->p.kind == K::Wheel) {
+                    sendBodies("mouse-wheel", render::wheelFrames(mj->p.ev, env, mj->p.wheelX, mj->p.wheelY));
+                    continue;
+                }
                 if (mj->p.kind == K::Press) fr = chain.press(mj->p.ev, env);
                 else if (mj->p.kind == K::Move) fr = chain.move(mj->p.ev, env);
                 else fr = chain.release(mj->p.ev, env);
@@ -710,7 +722,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
     };
 
     auto nextTick = std::chrono::steady_clock::now();
-    auto nextMap = nextTick;
+    mapPace.next = nextTick;
     size_t refusedLogged = 0;
     uint64_t framesAtLastMap = ~0ull;
     std::set<uint32_t> refusedSeen;
@@ -742,19 +754,19 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
         s.resources().prioritize(sounds.takeWanted());
         feed.pump(nowMs(), winReply);   // held winget queries: answered the moment the layout is measured, or empty at 3 s
         {   // wake for the next map frame, never later than 30 ms (the socket is serviced in between)
-            auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(nextMap - std::chrono::steady_clock::now()).count();
+            auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(mapPace.next - std::chrono::steady_clock::now()).count();
             s.run(std::chrono::milliseconds(std::clamp<long long>(wait, 1, 30)));
         }
         feed.pump(nowMs(), winReply);
         auto now = std::chrono::steady_clock::now();
-        if (now >= nextMap) {
-            // The map runs at its own cadence (kMapMs), not the UI tick: a glide or animate() step is drawn at the
+        if (now >= mapPace.next) {
+            // The map runs at its own cadence (MapCadence), not the UI tick: a glide or animate() step is drawn at the
             // instant it is assembled, so the hand-off rate is the motion's frame rate.
             {
                 int64_t wall = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
                 bool fresh = framesIngested.load() != framesAtLastMap;
                 framesAtLastMap = framesIngested.load();
-                nextMap = now + std::chrono::milliseconds(fresh || mapInMotion(m.world(), wall) ? kMapMs : kIdleMapMs);
+                mapPace.assembled(now, fresh || mapInMotion(m.world(), wall));
             }
             // Map: assemble on this thread (the model's only thread), execute on RenderThread.
             render::DrawList dl;

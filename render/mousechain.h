@@ -16,6 +16,9 @@
 //   buttons  left/middle always; the RIGHT button reaches the wire only if the map control declares
 //            `right-click = true`, otherwise DreamSeeker answers it locally (verb popup) and sends nothing.
 //   nothing under the pointer (hitAt fails): no frame (DreamSeeker sends none).
+//   wheel    one MouseWheel frame per notch (wheelFrames), iff the world declares client/MouseWheel (anywhere over the
+//            map, the letterbox included, naming a null object when nothing is hit) or the atom under the pointer
+//            carries the wheel flag (HitAtom::wheel). Not gated by the button hooks.
 // Deviation from DreamSeeker's drop path: the MouseUp that ends a drag is gated on hooks.up like every other MouseUp.
 #pragma once
 #include <cstdint>
@@ -41,12 +44,17 @@ struct ChainEnv {
     proto::enc::MouseHooks hooks = proto::enc::allMouseHooks();
     bool rightClickToWire = false;
     std::string control = "mapwindow.map";
+    bool clientWheel = true;   // the 0x003b second flags word's client/MouseWheel bit (true until 0x003b arrives)
 };
 
 // "left" / "middle" / "right", or "" for the wheel and unknown buttons.
 const char* buttonName(int x11Button);
 // Naming -> the encoder's command (button/mods/control filled in).
 proto::enc::ClickCmd clickCmdFrom(const Naming& n, int x11Button, const proto::enc::Mods& mods, const std::string& control);
+
+// A wheel notch at e (imgX/imgY may lie outside the image: over the letterbox the cell is extrapolated, as stock does).
+// e.button is the button held during the notch (0 none); deltaY > 0 is away from the user (stock: +120 per notch).
+std::vector<Bytes> wheelFrames(const PointerEvent& e, const ChainEnv& env, int deltaX, int deltaY);
 
 class MouseChain {
 public:

@@ -682,8 +682,11 @@ private slots:
         QTRY_COMPARE(got, QStringList({"byond://127.0.0.1:53321", ""}));
         QVERIFY(!forwardToRunning(dir.path() + "/nobody", "", 500));
     }
-#ifndef _WIN32
+    // Declared on every platform: AUTOMOC does not see MSVC's predefined _WIN32, so a guarded slot breaks the moc file.
     void aDeadPagersSocketIsReplaced() {
+#ifdef _WIN32
+        QSKIP("Unix-domain sockets only");
+#else
         QTemporaryDir dir;
         const QString name = dir.path() + "/pager";
         int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -701,8 +704,8 @@ private slots:
         while (f.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) QCoreApplication::processEvents();
         QVERIFY(f.get());
         QTRY_COMPARE(got, QStringList({"byond://127.0.0.1:53322"}));
-    }
 #endif
+    }
     // last: a quit event leaves QCoreApplication's quit flag set for any later event loop
     void aQuitFromThePlatform() {
         for (bool tray : {true, false}) {

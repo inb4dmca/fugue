@@ -160,4 +160,32 @@ void MapWidget::mouseReleaseEvent(QMouseEvent* e) {
     emitPointer(MapPointer::Release, e, b);
 }
 
+// One frame per wheel event, as stock DreamSeeker sends one per WM_MOUSEWHEEL. Over the letterbox the image position
+// is extrapolated (unclamped). Horizontal scrolling sends nothing (stock sent nothing for buttons 6/7); Qt on X11 turns
+// Alt+wheel into a horizontal delta, which is turned back, since stock sends Alt+wheel as a vertical notch with alt=1.
+void MapWidget::wheelEvent(QWheelEvent* e) {
+    e->accept();
+    QPoint d = e->angleDelta();
+    if ((e->modifiers() & Qt::AltModifier) && d.y() == 0) d = d.transposed();
+    if (d.y() == 0 || img_.isNull()) return;
+    QRect r = imageRect();
+    if (r.width() <= 0 || r.height() <= 0) return;
+    QPoint pos = e->position().toPoint();
+    MapPointer mp;
+    mp.kind = MapPointer::Wheel;
+    mp.scene = hit_;
+    mp.ev.imgX = int(std::floor(double(pos.x() - r.x()) * img_.width() / r.width()));
+    mp.ev.imgY = int(std::floor(double(pos.y() - r.y()) * img_.height() / r.height()));
+    mp.ev.winX = pos.x();
+    mp.ev.winY = pos.y();
+    Qt::MouseButtons b = e->buttons();
+    mp.ev.button = (b & Qt::LeftButton) ? 1 : (b & Qt::MiddleButton) ? 2 : (b & Qt::RightButton) ? 3 : 0;
+    mp.ev.mods.ctrl = e->modifiers() & Qt::ControlModifier;
+    mp.ev.mods.shift = e->modifiers() & Qt::ShiftModifier;
+    mp.ev.mods.alt = e->modifiers() & Qt::AltModifier;
+    mp.ev.tMs = qint64(e->timestamp());
+    mp.wheelY = d.y();
+    emit pointer(mp);
+}
+
 }  // namespace fugue::shell

@@ -18,6 +18,7 @@ tests/headlessacks_test.cpp
 tests/mousechain_test.cpp
 tests/prompt_stat_test.cpp
 tests/reconnect_test.cpp
+tests/mapcadence_test.cpp
 tests/rscstore_test.cpp
 tests/usermacros_test.cpp
 tests/winicon_test.cpp
@@ -26,8 +27,15 @@ tests/winicon_test.cpp
 tests/atomname_test.cpp
 tests/data/atomname-world/
 # (atomname reads the shared sheet from menuicons-world, listed below)
+tests/clientanim_test.cpp
+tests/data/clientanim-world/
+tests/clientpixel_test.cpp
+tests/data/clientpixel-world/
 tests/gif_anim_test.cpp
 tests/data/gifanim/
+tests/glidecarry_test.cpp
+tests/data/glide-world/
+tests/data/glidenpc-world/
 tests/ddmiops_test.cpp
 tests/data/ddmiops-world/
 tests/holomap_test.cpp
@@ -40,12 +48,20 @@ tests/jpeg_test.cpp
 tests/data/jpeg/
 tests/menuicon_test.cpp
 tests/data/menuicons-world/
+tests/mousewheel_test.cpp
+tests/data/mousewheel-world/
 tests/progbar_test.cpp
 tests/data/progbar-world/
 tests/runechat_test.cpp
 tests/data/runechat-world/
 tests/staticon_test.cpp
 tests/data/staticons-world/
+tests/visanim_test.cpp
+tests/data/visanim-world/
+tests/zas_test.cpp
+tests/data/zas-world/
+tests/particles_test.cpp
+tests/data/particles-world/
 
 # --- shell (Qt Widgets / WebEngine)
 shell/tests/browse_pages.h

@@ -5,6 +5,7 @@
 #include <QImage>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QWheelEvent>
 #include <QMetaType>
 #include <QWidget>
 #include <memory>
@@ -19,9 +20,10 @@ using HitPtr = std::shared_ptr<const fugue::render::HitScene>;
 // answers for the picture the player saw. It crosses to the session thread through a mutex-guarded queue
 // (app/sessionworker.h).
 struct MapPointer {
-    enum Kind { Press, Move, Release } kind = Press;
-    fugue::render::PointerEvent ev;
+    enum Kind { Press, Move, Release, Wheel } kind = Press;
+    fugue::render::PointerEvent ev;   // Wheel: ev.button is the button held (0 none), imgX/imgY unclamped
     HitPtr scene;
+    int wheelX = 0, wheelY = 0;       // Wheel: the notch's angle delta (120 per notch, > 0 away from the user)
 };
 
 class MapWidget : public QWidget {
@@ -41,6 +43,9 @@ public:
     bool rightClickToWire() const { return rightClick_; }
     // Widget position to image pixel (top-left origin); false outside the letterboxed image.
     bool toImage(const QPoint& pos, int& ix, int& iy, bool clampToImage) const;
+    // The skin id of this map control ("mapwindow.map"); the wheel event names it.
+    void setControlId(const std::string& id) { controlId_ = id; }
+    const std::string& controlId() const { return controlId_; }
     void setIconSize(int px) { iconSize_ = px; zoom_ = 0; update(); }   // skin icon-size; 0 means fit
     // Scaling. zoom (relative to world.icon_size, fractional) and icon-size (absolute px) are one property: at most
     // one is nonzero, and 0 means auto-fit. The letterbox picks fit (min) or cover (max, centre-cropped). zoom-mode
@@ -58,7 +63,7 @@ public:
     // nothing, a nameless atom, the letterbox or off the control.
     QString hoverName() const { return hoverName_; }
 signals:
-    void pointer(const fugue::shell::MapPointer& p);               // press, drag motion or release on the image
+    void pointer(const fugue::shell::MapPointer& p);               // press, drag motion or release on the image; a wheel notch over the control
     void localMenuRequested(const QPoint& globalPos, const QString& atomName);   // right click kept off the wire
     // The same right click with the scene it hit-tested against, so the session thread can build the atom's verb
     // menu (model/verbmenu.h); only that thread may read the model. Emitted only when the click landed on the image.
@@ -70,6 +75,7 @@ protected:
     void mousePressEvent(QMouseEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
     void mouseReleaseEvent(QMouseEvent*) override;
+    void wheelEvent(QWheelEvent*) override;
     void leaveEvent(QEvent*) override;
     void keyPressEvent(QKeyEvent* e) override { e->ignore(); }   // the app-level focus filter routes keys
 private:
@@ -81,6 +87,7 @@ private:
     uint64_t shown_ = 0;
     HitPtr hit_;
     bool rightClick_ = false;
+    std::string controlId_ = "mapwindow.map";
     int heldButton_ = 0;
     bool hovering_ = false;   // the pointer is over this control; hoverPos_ is where it is
     QPoint hoverPos_;

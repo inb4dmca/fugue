@@ -81,8 +81,9 @@ bool ResyncPoller::gcFromEnv() {
 void ResyncPoller::gc(World& w) {
     if (!gc_) return;
     // The record half of the stock GC. A record is kept when placed, back-linked, named in the current tick, or reached
-    // from a kept root: the player's mob, usr.contents, and recursively the vis_contents of a kept record. A table frees
-    // its unkept records only when there are more than 32 of them. Each free is a teardown, which arms the sweep.
+    // from a kept root: the player's mob, usr.contents, a turf's vis_contents, and recursively the vis_contents of a kept
+    // record. A table frees its unkept records only when there are more than 32 of them. Each free is a teardown, which
+    // arms the sweep.
     gcAppearances_ = w.resync.appearances;
     std::set<uint32_t> kept;
     std::vector<uint32_t> work;
@@ -93,6 +94,8 @@ void ResyncPoller::gc(World& w) {
         if (a.hasPos || a.backlink != 0xffff || a.touchTick == w.resync.tick) keep(key);
     if (w.haveSelf) keep(w.selfRef | kRegistryA);
     for (const auto& [key, appid] : w.usrContents) keep(key);
+    for (const auto& [cell, kids] : w.turfVis)
+        for (uint32_t key : kids) keep(key);
     while (!work.empty()) {
         uint32_t key = work.back();
         work.pop_back();

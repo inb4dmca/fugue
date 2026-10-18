@@ -15,7 +15,7 @@ constexpr uint16_t kTopicMsg = 0x0081;
 
 // 0x0002 mouse subs
 constexpr uint8_t kMouseClick = 0x03, kMouseDblClick = 0x04, kMouseUp = 0x05, kMouseDown = 0x06, kMouseExt = 0x07;
-constexpr uint16_t kMouseEventDrop = 0x0092, kMouseEventDrag = 0x0093;
+constexpr uint16_t kMouseEventDrop = 0x0092, kMouseEventDrag = 0x0093, kMouseEventWheel = 0x010a;
 constexpr uint8_t kVerbSrcMob = 0x02, kVerbSrcClient = 0x08;
 
 enum RefKind : uint8_t { RefNull = 0, RefObj = 1, RefMob = 2, RefTurf = 3, RefTurfId = 7 };   // RefTurfId: [7][turf id u32] (encoded like obj/mob)
@@ -78,6 +78,18 @@ struct DragCmd {
     std::string srcControl = "mapwindow.map", overControl = "mapwindow.map", params;
 };
 Bytes encodeDragCmd(const DragCmd&);   // sub 0x07, event 0x93 (drag) / 0x92 (drop), 7 values
+
+// MouseWheel(object, delta_x, delta_y, location, control, params), as stock DreamSeeker 516 sends one per wheel notch:
+//   [07 00][event 0a 01][00 ff ff 00 00][06][00 over][01 delta_x f32][01 delta_y f32][02 location\0][02 control\0][02 params\0]
+// over is null (00 ffff0000) when nothing is under the pointer. location is the map control's own id (no window
+// prefix), control its full id. params: icon-x/icon-y (only when an atom is named), the held button
+// ("left=1;button=left"), the modifiers, then screen-loc prefixed with the map id ("screen-loc=map:8:16,7:16").
+struct WheelCmd {
+    AtomRef over = nullRef();
+    float dx = 0, dy = 0;
+    std::string location = "map", control = "mapwindow.map", params;
+};
+Bytes encodeWheelCmd(const WheelCmd&);
 
 Bytes encodeMove(uint8_t dir);         // sub 0: 00 00 dir 00 00 ff ff 00 00 00
 

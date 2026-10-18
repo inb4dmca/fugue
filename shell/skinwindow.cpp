@@ -259,6 +259,7 @@ QWidget* SkinWindow::makeWidget(const skin::Control& c) {
     if (c.type == "MAP") {
         if (map_) return nullptr;   // the first .dmf map only; winset-created maps are built by syncRuntimeMaps
         map_ = new MapWidget(this);
+        map_->setControlId(c.window + "." + c.name);
         connect(map_, &MapWidget::hoverChanged, this, [this](const QString& name) { if (status_) status_->setText(name); });
         w = map_;
     } else if (c.type == "INFO") {

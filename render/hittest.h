@@ -79,6 +79,7 @@ struct HitAtom {
     bool screen = false;
     uint32_t appid = 0;          // the appearance it is drawn from (the right-click menu's icon: render::appearanceIcon)
     int dir = -1;                // the facing it is drawn with; -1 = the appearance's own
+    bool wheel = false;          // appearance flag 0x100000: the atom declares MouseWheel or MouseMove (stock sends it wheel events)
 };
 
 // An atom's ICON FRAME in map-image pixels: its untransformed icon rectangle where the atom is anchored (pixel offsets
@@ -134,6 +135,7 @@ struct Hit {
     int atom = -1;               // index into HitScene::atoms when known (hitStack sets it), else -1
     uint32_t appid = 0;          // HitAtom::appid / dir of the named atom (map AND screen atoms)
     int dir = -1;
+    bool wheel = false;          // HitAtom::wheel
     HitFrame frame;              // the winning layer's frame (HitLayer::frame)
 };
 

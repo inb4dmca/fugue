@@ -197,6 +197,30 @@ private slots:
         f.fill(Qt::black);
         win->setMapFrame(f, oneAtomScene());
     }
+    // A vertical notch over the map is a Wheel pointer naming the map control; a horizontal one sends nothing, except
+    // Alt+wheel, which Qt on X11 delivers as horizontal and stock sends as a vertical notch.
+    void wheelNotchBecomesAWheelPointer() {
+        QCOMPARE(win->map()->controlId(), std::string("main.map"));
+        QSignalSpy spy(win->map(), &MapWidget::pointer);
+        auto wheel = [&](QPoint angle, Qt::KeyboardModifiers mods, Qt::MouseButtons buttons = Qt::NoButton) {
+            QWheelEvent e(QPointF(80, 400), win->map()->mapToGlobal(QPointF(80, 400)), QPoint(), angle, buttons, mods, Qt::NoScrollPhase,
+                          false);
+            QCoreApplication::sendEvent(win->map(), &e);
+        };
+        wheel(QPoint(0, 120), Qt::NoModifier, Qt::LeftButton);
+        QCOMPARE(spy.count(), 1);
+        auto p = spy.at(0).at(0).value<MapPointer>();
+        QCOMPARE(int(p.kind), int(MapPointer::Wheel));
+        QCOMPARE(p.wheelY, 120);
+        QCOMPARE(p.ev.imgX, 80); QCOMPARE(p.ev.imgY, 400); QCOMPARE(p.ev.button, 1);
+        wheel(QPoint(-120, 0), Qt::NoModifier);
+        QCOMPARE(spy.count(), 1);
+        wheel(QPoint(-120, 0), Qt::AltModifier);
+        QCOMPARE(spy.count(), 2);
+        p = spy.at(1).at(0).value<MapPointer>();
+        QCOMPARE(p.wheelY, -120);
+        QVERIFY(p.ev.mods.alt);
+    }
     // Stock DreamSeeker walks only through a binding: an arrow nothing binds sends nothing, and the release of one whose
     // press ran a binding sends nothing unless it has a +UP binding of its own.
     void arrowsRunOnlyTheirBindings() {

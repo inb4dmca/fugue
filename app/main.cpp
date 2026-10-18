@@ -464,7 +464,8 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     });
     std::function<void(fugue::shell::MapWidget*)> wireMapWidget = [&](fugue::shell::MapWidget* mw) {
         QObject::connect(mw, &fugue::shell::MapWidget::pointer, &win, [&, mw](const fugue::shell::MapPointer& p) {
-            worker.postMouse(p, mw->rightClickToWire());
+            if (p.kind == fugue::shell::MapPointer::Wheel) worker.postMouse(p, mw->rightClickToWire(), mw->controlId());
+            else worker.postMouse(p, mw->rightClickToWire());
         });
         QObject::connect(mw, &fugue::shell::MapWidget::localMenuPointer, &win, [&](const QPoint& g, const fugue::shell::MapPointer& p) {
             worker.postMenuQuery(p, g);

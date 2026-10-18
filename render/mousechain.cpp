@@ -30,7 +30,47 @@ bool commandAt(const PointerEvent& e, const ChainEnv& env, enc::ClickCmd& cmd) {
     cmd = clickCmdFrom(n, e.button, e.mods, env.control);
     return true;
 }
+int floorDiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 }  // namespace
+
+std::vector<Bytes> wheelFrames(const PointerEvent& e, const ChainEnv& env, int deltaX, int deltaY) {
+    std::vector<Bytes> out;
+    if (!env.scene || (deltaX == 0 && deltaY == 0)) return out;
+    const HitScene& s = *env.scene;
+    if (s.cols <= 0 || s.rows <= 0 || s.tileW <= 0 || s.tileH <= 0) return out;
+    Naming n;
+    bool named = nameMouse(s, e.imgX, e.imgY, n);
+    if (!env.clientWheel && !(named && n.hit.wheel)) return out;
+
+    enc::WheelCmd w;
+    w.dx = float(deltaX); w.dy = float(deltaY);
+    w.control = env.control;
+    size_t dot = env.control.rfind('.');
+    w.location = dot == std::string::npos ? env.control : env.control.substr(dot + 1);
+    std::string p;
+    int sx, spx, sy, spy;
+    if (named) {
+        enc::ClickCmd c = clickCmdFrom(n, 0, e.mods, env.control);
+        w.over = c.over;
+        p = "icon-x=" + std::to_string(n.iconX) + ";icon-y=" + std::to_string(n.iconY) + ";";
+        if (n.hasVis) p += "vis-x=" + std::to_string(n.visX) + ";vis-y=" + std::to_string(n.visY) + ";";
+        sx = n.screenX; spx = n.screenPX; sy = n.screenY; spy = n.screenPY;
+    } else {
+        int fromBottom = s.pixH() - 1 - e.imgY;
+        int tx = floorDiv(e.imgX, s.tileW), ty = floorDiv(fromBottom, s.tileH);
+        sx = tx + 1; spx = e.imgX - tx * s.tileW + 1; sy = ty + 1; spy = fromBottom - ty * s.tileH + 1;
+    }
+    std::string btn = buttonName(e.button);
+    if (!btn.empty()) p += btn + "=1;button=" + btn + ";";
+    if (e.mods.ctrl) p += "ctrl=1;";
+    if (e.mods.shift) p += "shift=1;";
+    if (e.mods.alt) p += "alt=1;";
+    p += "screen-loc=" + w.location + ":" + std::to_string(sx) + ":" + std::to_string(spx) + "," + std::to_string(sy) + ":" +
+         std::to_string(spy);
+    w.params = p;
+    out.push_back(enc::encodeWheelCmd(w));
+    return out;
+}
 
 std::vector<Bytes> MouseChain::press(const PointerEvent& e, const ChainEnv& env) {
     std::vector<Bytes> out;

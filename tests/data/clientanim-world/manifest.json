@@ -1,0 +1,23 @@
+{
+  "clock_unix_ns": 1760400000000000000,
+  "date": "2026-10-18",
+  "eye": {
+    "x": 11,
+    "y": 11,
+    "z": 1
+  },
+  "frames": 609,
+  "note": "frames.txt = every s2c frame except 0x009f; res/\u003cresID\u003e = verified resource bytes (net.ResID(bytes)==name); clock_unix_ns = the pinned render clock (renderab is static)",
+  "resource_bytes": 320,
+  "resource_names": {
+    "163d55fd": "probe.dmi"
+  },
+  "resources": 1,
+  "source": "stock-DD",
+  "viewport": {
+    "h": 352,
+    "w": 352
+  },
+  "world": "world.dmb",
+  "world_dmb_sha256": "b2cb1a2801c18b438482af39ae718c1829b53c90e8503c99f67e95575dc7b406"
+}

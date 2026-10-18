@@ -34,6 +34,8 @@ struct VerbEntry {
 constexpr uint32_t kMouseFlagClick = 0x00000004, kMouseFlagDblClick = 0x00000008, kMouseFlagUp = 0x00200000,
                    kMouseFlagDown = 0x00400000, kMouseFlagDrop = 0x00800000, kMouseFlagDrag = 0x01000000,
                    kMouseFlagExtra = 0x80000000;
+// The second flags word (present iff kMouseFlagExtra): client/MouseMove 0x01, client/MouseWheel 0x02.
+constexpr uint32_t kMouseExtraWheel = 0x00000002;
 
 struct FrameOut { uint16_t type = 0x0002; Bytes body; };
 // A verb's src as the wire carries it: [kind][ref u32] (0x08 client / ref 0, 0x02 mob, 0x01 obj, 0x03 turf cell).
@@ -129,6 +131,8 @@ public:
     bool haveMouseSubs() const { return haveSubs_; }
     uint32_t mouseFlags() const { return flags_; }
     proto::enc::MouseHooks hooks() const;
+    // The world declares client/MouseWheel: stock sends every wheel notch over the map, whatever is under it.
+    bool clientWheel() const { return extra_ & kMouseExtraWheel; }
 
     const std::map<uint16_t, VerbEntry>& verbs() const { return verbs_; }
     const VerbEntry* verbByName(const std::string& name) const;       // case-insensitive exact

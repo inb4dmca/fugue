@@ -117,6 +117,21 @@ Bytes encodeDragCmd(const DragCmd& d) {
     return b;
 }
 
+Bytes encodeWheelCmd(const WheelCmd& w) {
+    Bytes b{kMouseExt, 0x00};
+    putLe16(b, kMouseEventWheel);
+    for (uint8_t x : {0x00, 0xff, 0xff, 0x00, 0x00}) b.push_back(x);
+    b.push_back(6);   // value count
+    AtomRef o = w.over;
+    if (o.kind == RefNull && o.ref == 0) o.ref = 0x0000ffff;
+    b.push_back(0x00);
+    auto e = encodeAtomRef(o);
+    b.insert(b.end(), e.begin(), e.end());
+    for (float f : {w.dx, w.dy}) { uint32_t u; std::memcpy(&u, &f, 4); b.push_back(0x01); putLe32(b, u); }
+    for (const std::string* s : {&w.location, &w.control, &w.params}) { b.push_back(0x02); putStr(b, *s); }
+    return b;
+}
+
 Bytes encodeMove(uint8_t dir) { return Bytes{0x00, 0x00, dir, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00}; }
 
 Bytes encodeVerb(uint16_t id, uint8_t srcKind, uint32_t srcRef, const std::vector<VerbArg>& args) {

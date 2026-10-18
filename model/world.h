@@ -11,10 +11,22 @@
 #include <vector>
 
 #include "model/json.h"
+#include "model/particles.h"
 #include "net/bytes.h"
 #include "proto/registry.h"
 
 namespace fugue::model {
+
+// A glide in flight: the drawn offset from the destination tile at startNs, in tiles (+x east, +y north), shrinking
+// along its own direction to zero at startNs + durNs. A move that lands mid-glide re-arms from the offset still left
+// (see armGlideOffset), so the unfinished part carries over instead of snapping. See glideMotion.
+struct GlideMotion {
+    double sx = 0, sy = 0;
+    int64_t startNs = 0, durNs = 0;
+    double rate = 0;          // base speed along the distance, tiles per ns
+    bool chebyshev = false;   // LONG_GLIDE: the distance is max(|x|,|y|), else Euclidean
+    bool catchUp = false;     // faster while more than a tile behind (see glideMotion)
+};
 
 // One in-view movable. All fields default to zero (what an A1 / 0x000a add inserts).
 struct Atom {
@@ -42,10 +54,17 @@ struct Atom {
 
     // Render state behind the two transient flags above (not in the snapshot: wall-clock based).
     // Times are Unix ns on the ingest clock (Session::setIngestClockNs).
-    struct Glide { int fromX = 0, fromY = 0; int64_t startNs = 0, durNs = 0; };
-    struct AnimStep { uint32_t from = 0, to = 0; uint32_t timeBits = 0; uint8_t easing = 0; };
+    using Glide = GlideMotion;
+    // flags/loop/startNs are filled for animate(client) only: the step's 0x00f0 flags (0x4 ANIMATION_PARALLEL,
+    // 0x40000000 a chain head), its loop count, and, for a step that opens a sequence, when it starts (0 = it follows
+    // the step before it).
+    struct AnimStep {
+        uint32_t from = 0, to = 0; uint32_t timeBits = 0; uint8_t easing = 0;
+        uint32_t flags = 0; int32_t loop = 1; int64_t startNs = 0;
+    };
     struct Chain { int64_t startNs = 0, tickNs = 0; std::vector<AnimStep> steps; };
     Glide glide;              // valid iff gliding
+    uint8_t glideDir = 0;     // the direction (DM dir bits) of the move that last armed a glide
     Chain chain;              // valid iff animating
     // When a non-looping icon state's frames start (Unix ns; 0 = never bound).
     int64_t iconStartNs = 0;
@@ -114,14 +133,18 @@ struct World {
     // Per-axis eye tracker (0x0007 carries one axis at a time).
     uint16_t trkX = 0, trkY = 0;
     bool seenX = false, seenY = false;
-    // One per axis. A move arms only the axes it touched; an untouched axis keeps running its old scroll.
-    // See eyeScrollOffset.
-    struct EyeAxisGlide {
-        bool live = false;
-        int from = 0;   // the eye tile on this axis before the move
-        int64_t startNs = 0, durNs = 0;
-    };
-    EyeAxisGlide eyeGlideX, eyeGlideY;
+    // The view's scroll: one vector for both axes, re-armed by a move like an atom's glide. See eyeScrollOffset.
+    bool eyeGliding = false;
+    GlideMotion eyeGlide;
+    uint8_t eyeGlideDir = 0;
+    // world.movement_mode, from 0x003b's second FormatFlags word (bits 2-3; 0 = LEGACY): it picks the glide re-arm rule.
+    uint8_t movementMode = 0;
+
+    // client.pixel_x/y/w/z, from 0x0007: the map view is offset by (x + w, y + z) world pixels; the HUD is not.
+    int16_t viewPixelX = 0, viewPixelY = 0, viewPixelW = 0, viewPixelZ = 0;
+    // animate(client, ...): s2c 0x00f0 Kind 5. Its From/To are the client's own appearances, carrying the pixel offsets.
+    // Chain != 0 replaces it (Count = 0 clears it), Chain = 0 appends. Transient: not in the snapshot.
+    Atom::Chain clientChain;
 
     bool haveSelf = false;
     uint32_t selfRef = 0;
@@ -138,6 +161,9 @@ struct World {
     // all 0-based). The turfs' looks arrive in 0x00f1 (into `tiles`); what stands on them, as ordinary 0x0008 objects.
     // Drawn only on a secondary map (render/scene.h assembleSecondaryMap). Kept apart from visContents.
     std::map<uint32_t, std::vector<uint32_t>> visTurfs;
+    // An atom's particle set (its `particles`), per atom key, from the 0x0007/0x0008 particle array. Mutable: the
+    // assembler steps each set it draws on the render clock (advanceParticles). Not in the snapshot.
+    mutable std::map<uint32_t, ParticleSet> particles;
     std::map<uint32_t, uint32_t> refBind, turfBinds;
     // usr.contents as stock DreamSeeker tracks it, from the 0x000a arrays: key = obj id, or mob id | kRegistryA;
     // value = the pair's appid. An obj entering arrives as an array-2 [id][appid] pair; leaving for another mob, as an
@@ -155,6 +181,9 @@ struct World {
     bool layer2Indexed = false;
     std::map<std::array<uint16_t, 3>, uint32_t> tiles;      // cumulative map, key (x,y,z) 0-based wire
     std::map<std::array<uint16_t, 3>, IconStart> tileIconStart;   // per `tiles` cell
+    // A turf's vis_contents (0x00d8 tag 1), per `tiles` cell: atom keys (obj id bare, mob id | kRegistryA). vg's gas
+    // overlays are shared nullspace objs held here.
+    std::map<std::array<uint16_t, 3>, std::vector<uint32_t>> turfVis;
     MapGrid grid;
 
     // Remaining sections. Decoder-owned records are kept as the decoder's canonical fields JSON, embedded verbatim
@@ -239,10 +268,27 @@ int iconSizeOf(const World& w);
 // Glide duration: distance in px over the glide px-per-tick, times the tick, truncated to whole ns.
 // glidePx <= 0 means one full tile per tick.
 int64_t glideDurationNs(int dx, int dy, float glidePx, int iconSize, int64_t tickNs, bool longGlide);
+// Arms a glide from offset (sx, sy) tiles at glidePx per tick. With catchUp, while more than one tile is left on an axis
+// the speed is that rate times (tiles left on the longer axis + 1/16), so a glide re-armed before it finishes catches up
+// instead of falling ever further behind.
+GlideMotion glideMotion(double sx, double sy, float glidePx, int iconSize, int64_t tickNs, bool longGlide, int64_t startNs,
+                        bool catchUp);
+// The fraction of the armed offset still left at nowNs: 1 up to the start, 0 once played out.
+double glideLeft(const GlideMotion& g, int64_t nowNs);
+// The offset a one-tile move (mx, my = from - to, tiles) re-arms a glide with, given the glide in flight (null: none)
+// and the direction of the move that armed it, which is updated. false: the sprite snaps instead.
+bool armGlideOffset(const World& w, const GlideMotion* inFlight, int64_t nowNs, int mx, int my, uint8_t& lastDir,
+                    double& sx, double& sy);
+// Whole tiles of offset on either axis that a glide never exceeds.
+constexpr double kGlideMaxTiles = 2;
 // The sub-tile scroll, in image pixels, that the map layers are shifted by while an eye glide is in flight: +x draws
 // map content right, +y draws it down (image space). Zero with no glide or once the glide has played out. It starts
-// at a whole tile (undoing the snap of the view origin) and slides to zero.
+// at the scroll the move left (a whole tile from rest, undoing the snap of the view origin) and slides to zero.
 void eyeScrollOffset(const World& w, int64_t nowNs, int& sx, int& sy);
+// One sequence of World::clientChain: the step that opens it and the steps that follow on, run in turn. Sequences run
+// concurrently, each from its own start; `loop` repeats the whole sequence (< 1 = forever, endNs = -1).
+struct AnimSeq { size_t first = 0, last = 0; int64_t startNs = 0, durNs = 0, endNs = 0; bool head = false, parallel = false; };
+std::vector<AnimSeq> animSequences(const Atom::Chain& c);
 // Selects an alternative rule for test controls; 0 is the shipped behaviour.
 void setModelMutation(int m);
 

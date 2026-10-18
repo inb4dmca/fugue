@@ -285,6 +285,7 @@ int Session::pollTimeoutMs(std::chrono::microseconds left) {
 }
 
 void Session::run(std::chrono::milliseconds duration) {
+    wake_ = false;   // a wake left over from a run() that ended on its time limit
     auto end = std::chrono::steady_clock::now() + duration;
     auto lastTick = std::chrono::steady_clock::now();
     while (fd_ >= 0 && std::chrono::steady_clock::now() < end) {
@@ -313,6 +314,7 @@ void Session::run(std::chrono::milliseconds duration) {
         // driven by the s2c 0x0007 count (handle()). The owner's pump hook runs the resync sweep's clock.
         if (pumpHook_) pumpHook_();
         if (fd_ < 0) return;
+        if (wake_) { wake_ = false; return; }
         // Rounded up to whole ms: truncating would turn the last sub-millisecond of each call into a poll(0) spin.
         socket::PollFd p{fd_, POLLIN, 0};
         int r = socket::poll(&p, 1, pollTimeoutMs(std::chrono::duration_cast<std::chrono::microseconds>(end - now)));
