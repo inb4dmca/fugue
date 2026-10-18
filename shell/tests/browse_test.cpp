@@ -211,15 +211,32 @@ private slots:
         // the remaining unknown name never arrives: 404 after the SHORT bound, not the announced-name one
         QVERIFY(QTest::qWaitFor([&] { return u2->ms >= 0; }, LocalOrigin::kUnnamedWaitMs + 8000));   // slow CI runners
         QCOMPARE(status(u2), 404);
-#ifdef Q_OS_MACOS
-        QEXPECT_FAIL("", "macOS: local-origin timing runs long (issue #13)", Continue);
-#endif
         QVERIFY2(u2->ms >= LocalOrigin::kUnnamedWaitMs - 100 && u2->ms < LocalOrigin::kUnnamedWaitMs + 1500, qPrintable(QString::number(u2->ms)));
         QCOMPARE(o.held(), 0);
         QCOMPARE(o.stats().heldPeak, LocalOrigin::kMaxHeld);
         QVERIFY(o.stats().heldRefused >= 3);
         for (auto& x : rs) delete x->r;
     }
+    void missingResourceTimeoutUsesElapsedTime() {
+        auto st = std::make_shared<BrowseRscStore>();
+        LocalOrigin o(st);
+        QVERIFY(o.listening());
+        st->declare("", 500);
+        QNetworkAccessManager nam;
+        QNetworkReply* r = nam.get(QNetworkRequest(QUrl(o.urlFor("missing.png"))));
+        QVERIFY(QTest::qWaitFor([&] { return o.held() == 1; }, 3000));
+        QVERIFY(!r->isFinished());
+        // Deliberately stop dispatching timers. On resuming, the hold has expired regardless of how few
+        // polling callbacks ran; counting callbacks would make us wait another two seconds (issue #13).
+        QTest::qSleep(LocalOrigin::kUnnamedWaitMs + 100);
+        QVERIFY(QTest::qWaitFor([&] { return r->isFinished(); }, 1000));
+        QCOMPARE(r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), 404);
+        QCOMPARE(o.held(), 0);
+        QCOMPARE(o.stats().waited, 1);
+        QCOMPARE(o.stats().notFound, 1);
+        delete r;
+    }
+
     // Announced-but-missing files beyond kMaxHeld are all still held: a 404'd stylesheet is never retried.
     void announcedNamesOverTheCapAreAllServed() {
         auto st = std::make_shared<BrowseRscStore>();

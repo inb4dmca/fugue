@@ -76,7 +76,7 @@ private:
     void onConn();
     void process(const ConnP& c);
     void respond(const ConnP& c, int status, const QByteArray& type, const QByteArray& body, bool head = false);
-    void serveFile(const ConnP& c, const QString& file, bool head, int waitedMs);
+    void serveFile(const ConnP& c, const QString& file, bool head);
     bool admit(const ConnP& c, BrowseRscStore::Wait w);
     void release(const ConnP& c);
 
