@@ -19,6 +19,22 @@ namespace {
 const std::string kImp = "\xff\x16";   // `\improper`
 Bytes hx(const char* s) { auto b = hexDecode(s); if (!b) qFatal("bad hex %s", s); return *b; }
 std::string hs(const Bytes& b) { return hexEncode(b); }
+// Stock DreamDaemon's 0x003f choice lists.
+constexpr const char* kStockChoicesB =
+    "0c0061614150430061226241504300635c6441504300785b7941504300700a71415043007009714150430041504300626241504300"
+    "ff165a6564415043004d6978656441504300752e7641504300772741504300";
+constexpr const char* kStockChoicesC =
+    "0600616141504300635c6441504300700a7141504300655c415043005c5c664150430067226841504300";
+constexpr const char* kStockChoicesD =
+    "10005c5c66415043005c5c5c66415043005c2771415043005c227141504300782771415043005c5c2771415043005b4150435d00"
+    "785c5c79415043000a415043004150435c002073415043005c5c6e41504300785c6e41504300ff16496d415043002d415043005c5c5b41504300";
+constexpr const char* kStockChoicesE = "050070097141504300700d7141504300700d0a714150430009415043004150430900";
+constexpr const char* kStockChoicesF = "030061415043005c5c006241504300";   // aAPC, a lone backslash, bAPC; DD leaves out an empty choice
+std::vector<std::string> stockChoices(const char* hex) {
+    std::vector<std::string> ch;
+    if (!parseExpansionReply(hx(hex), ch)) qFatal("bad 0x003f %s", hex);
+    return ch;
+}
 void cs(Bytes& b, const std::string& s) { b.insert(b.end(), s.begin(), s.end()); b.push_back(0); }
 Bytes inputReq(const std::string& title, const std::string& def, const std::string& msg, uint32_t mask, uint8_t filter, uint8_t fk, uint32_t id) {
     Bytes b; cs(b, title); cs(b, def); cs(b, msg); putLe32(b, mask); b.push_back(filter); b.push_back(fk); putLe32(b, id); return b;
@@ -111,12 +127,112 @@ private slots:
             QCOMPARE(p.typeName(), std::string(f.type));
             QCOMPARE(p.multiline(), f.multi); QCOMPARE(p.numeric(), f.num); QCOMPARE(p.isColor(), f.color);
             QCOMPARE(p.nullable(), f.null); QCOMPARE(p.inList, f.list);
-            QCOMPARE(p.title, std::string("Fugue")); QCOMPARE(p.def, std::string("seed")); QCOMPARE(p.message, std::string("Pick one"));
+            QCOMPARE(p.title, std::string("Fugue")); QCOMPARE(p.message, std::string("Pick one"));
+            QCOMPARE(p.def, std::string(f.mask == kInputNum ? "" : "seed"));   // `as num` shows no non-number default
         }
         Prompt p;
+        QVERIFY(parseInputRequest(inputReq("t", "c\\\\dAPC", "m", kInputText, 0, kInputFilterList, 0), p));
+        QVERIFY(!p.inList); QCOMPARE(p.def, std::string("c\\dAPC"));   // `as text in L`: stock shows the default in a text field
         QVERIFY(!parseInputRequest(hx("00"), p));
         Bytes shortTail = inputReq("a", "b", "c", 4, 0, 0, 1); shortTail.pop_back();
         QVERIFY(!parseInputRequest(shortTail, p));  // the tail is exactly 10 bytes
+    }
+    // Each row: the 0x0062 default stock DreamDaemon sent, the text stock DreamSeeker showed, and the c2s 0x0062 text it
+    // sent back on OK unchanged.
+    void inputDefaultsShowAndReturnAsStock() {
+        struct C { std::string sent, shown, back; uint32_t mask; };
+        const C cases[] = {
+            {"\\improper APC Arrival Area", "mproper APC Arrival Area", "mproper APC Arrival Area", 0x4},
+            {"aAPC\\nb", "aAPC\nb", "aAPC\\nb", 0x4},
+            {"aAPC\\tb", "aAPC\tb", "aAPC\\tb", 0x4},
+            {"q\\\"APC\\\\z", "q\"APC\\z", "q\\\"APC\\\\z", 0x84},
+            {"\\[APC] x", "[APC] x", "[APC] x", 0x4},
+            {"\\red APC z", "ed APC z", "ed APC z", 0x4},
+            {"x\\bold APC \\bold z", "xold APC old z", "xold APC old z", 0x4},
+            {"\\proper APC y", "roper APC y", "roper APC y", 0x4},
+            {"'s' APC", "'s' APC", "\\'s\\' APC", 0x4},
+            {"x\\green APC \\green\\green z", "xreen APC reenreen z", "xreen APC reenreen z", 0x4},
+            {"APC q\\... \\color(255,0,10)APC \\color z", "APC q.. olor(255,0,10)APC olor z", "APC q.. olor(255,0,10)APC olor z", 0x4},
+            {"\\\\n APC \\\\t \\\\\\\\ z", "\\n APC \\t \\\\ z", "\\\\n APC \\\\t \\\\\\\\ z", 0x4},
+            {"4th w iv <IMG CLASS=icon SRC=\\[0xc000001] ICONSTATE='lobby'> z", "4th w iv <IMG CLASS=icon SRC=[0xc000001] ICONSTATE='lobby'> z",
+             "4th w iv <IMG CLASS=icon SRC=[0xc000001] ICONSTATE=\\'lobby\\'> z", 0x4},
+            {"p\r\\nqAPC", "p\r\nqAPC", "p\\nqAPC", 0x4},
+            {"aAPC\\nb\\tc\\\\d\\\"e\\[f]", "aAPC\nb\tc\\d\"e[f]", "aAPC\\nb\\tc\\\\d\\\"e[f]", 0x800},
+            {"\\improper APC Arr\\n2", "mproper APC Arr\n2", "mproper APC Arr\\n2", 0x880},
+        };
+        for (const C& c : cases) {
+            PromptBook b;
+            const Prompt* p = b.onFrame(kInputMsg, inputReq("t", c.sent, "m", c.mask, 0, 0, 6));
+            QVERIFY(p);
+            QCOMPARE(p->def, c.shown);
+            std::string shown = p->def;   // answering retires the prompt
+            Bytes want{2}; cs(want, c.back); putLe32(want, 6);
+            QCOMPARE(QString::fromStdString(hs(b.answerInput(6, shown).body)), QString::fromStdString(hs(want)));
+        }
+        // edited: the shown text plus what was typed, a typed line break included
+        QCOMPARE(QString::fromStdString(hs(encodeInputText(0, "aAPC\nb\tc\\d\"e[f]Z\\\r\nY"))),
+                 QString::fromStdString(hs([] { Bytes w{2}; cs(w, "aAPC\\nb\\tc\\\\d\\\"e[f]Z\\\\\\nY"); putLe32(w, 0); return w; }())));
+    }
+    void numericDefaultShownOnlyWhenNumberShaped() {
+        for (const char* d : {"1.5", "7.", "-2.5", "-", ".5", "00012", "10000000", "0.0001", ""}) {
+            Prompt p;
+            QVERIFY(parseInputRequest(inputReq("t", d, "m", kInputNum, 0, 0, 1), p));
+            QCOMPARE(p.def, std::string(d));
+        }
+        for (const char* d : {"5x", " 6", "1e3", "0x10", "8 ", "1-2", "..", "+3", "1.2.3", "3-", "\\[3]APC"}) {
+            Prompt p;
+            QVERIFY(parseInputRequest(inputReq("t", d, "m", kInputNum, 0, 0, 1), p));
+            QCOMPARE(p.def, std::string());
+            QVERIFY(parseInputRequest(inputReq("t", d, "m", kInputText, 0, 0, 1), p));
+            QVERIFY(!p.def.empty());
+        }
+    }
+    void expansionChoicesShowAsStock() {
+        QCOMPARE(stockChoices(kStockChoicesD),
+                 (std::vector<std::string>{"\\fAPC", "\\\\fAPC", "'qAPC", "\"qAPC", "x'qAPC", "\\'qAPC", "[APC]", "x\\\\yAPC", "\nAPC",
+                                           "APC\\", " sAPC", "\\nAPC", "x\\nAPC", "ImAPC", "-APC", "\\[APC"}));
+        QCOMPARE(stockChoices(kStockChoicesC), (std::vector<std::string>{"aaAPC", "c\\dAPC", "p\nqAPC", "e\\APC", "\\fAPC", "g\"hAPC"}));
+    }
+    // Picking each choice: the c2s 0x0063 text for input(), and the c2s 0x0039 text for a verb argument.
+    void expansionChoicePicksSendAsStock() {
+        const std::vector<std::string> ch = stockChoices(kStockChoicesD);
+        const char* resolve[] = {"\\\\fAPC ", "\\\\\\\\fAPC ", "\\'qAPC ", "\\\"qAPC ", "x\\'qAPC ", "\\\\\\'qAPC ", "[APC] ",
+                                 "x\\\\\\\\yAPC ", "\\nAPC ", "APC\\\\ ", "-sAPC ", "\\\\nAPC ", "x\\\\nAPC ", "ImAPC ", "-APC ", "\\\\[APC "};
+        const char* verb[] = {"\\\\fAPC", "\\\\\\\\fAPC", "\\'qAPC", "\\\"qAPC", "x\\'qAPC", "\\\\\\'qAPC", "[APC]", "x\\\\\\\\yAPC",
+                              "\\nAPC", "APC\\\\", "-sAPC", "\\\\nAPC", "x\\\\nAPC", "ImAPC", "-APC", "\\\\[APC"};
+        QCOMPARE(int(ch.size()), 16);
+        for (size_t i = 0; i < ch.size(); i++) {
+            QCOMPARE(inputChoiceText(ch[i]), std::string(resolve[i]));
+            QCOMPARE(net::listPickText(ch[i]), std::string(verb[i]));
+        }
+        const std::vector<std::string> ce = stockChoices(kStockChoicesE);
+        const char* resolveE[] = {"p\\tqAPC ", "pqAPC ", "p\\nqAPC ", "\\tAPC ", "APC\\t "};
+        for (size_t i = 0; i < ce.size(); i++) QCOMPARE(inputChoiceText(ce[i]), std::string(resolveE[i]));
+        QCOMPARE(net::listPickText(ce[0]), std::string("p\\tqAPC"));
+        QCOMPARE(net::listPickText(ce[1]), std::string("pqAPC"));
+    }
+    // Which choice stock DreamSeeker selected for each 0x0062 default (the row it answered with; 0 when none matched).
+    void inListDefaultSelectsAsStock() {
+        auto pick = [](const std::vector<std::string>& choices, const std::string& sent) {
+            std::string def = inputDefaultText(sent);
+            for (size_t i = 0; i < choices.size(); i++) if (inputChoiceMatches(choices[i], def)) return int(i);
+            return 0;
+        };
+        const std::pair<const char*, int> rb[] = {{"a\\\"bAPC", 1}, {"c\\\\dAPC", 0}, {"x\\[yAPC", 3}, {"p\\nqAPC", 0}, {"p\\tqAPC", 5},
+                                                  {"APC", 6}, {"bbAPC", 7}, {"\\improper ZedAPC", 0}, {"MixedAPC", 9}, {"u.vAPC", 10},
+                                                  {"w'APC", 11}, {"mixedAPC", 9}, {"Mix", 0}, {"ZedAPC", 8}, {"mproper ZedAPC", 0},
+                                                  {"c\\\\\\\\dAPC", 0}, {"zzAPC", 0}};
+        for (auto& [sent, row] : rb) QCOMPARE(pick(stockChoices(kStockChoicesB), sent), row);
+        const std::pair<const char*, int> rc[] = {{"c\\\\dAPC", 0}, {"cAPC", 0}, {"cdAPC", 1}, {"dAPC", 0}, {"pqAPC", 0}, {"p qAPC", 0},
+                                                  {"p\r\\nqAPC", 0}, {"p\rqAPC", 0}, {"eAPC", 3}, {"fAPC", 4}, {"\\\\\\\\fAPC", 0},
+                                                  {"g\\\"hAPC", 5}, {"ghAPC", 0}};
+        for (auto& [sent, row] : rc) QCOMPARE(pick(stockChoices(kStockChoicesC), sent), row);
+        const std::pair<const char*, int> rd[] = {{"fAPC", 0}, {"\\\\fAPC", 1}, {"qAPC", 0}, {"'qAPC", 2}, {"\\\"qAPC", 3}, {"x'qAPC", 4},
+                                                  {"\\\\'qAPC", 0}, {"\\[APC]", 6}, {"x\\\\yAPC", 7}, {"APC", 9}, {" sAPC", 10}, {"sAPC", 0},
+                                                  {"nAPC", 11}, {"xnAPC", 12}, {"ImAPC", 13}, {"-APC", 14}, {"\\[APC", 15}};
+        for (auto& [sent, row] : rd) QCOMPARE(pick(stockChoices(kStockChoicesD), sent), row);
+        QCOMPARE(stockChoices(kStockChoicesF), (std::vector<std::string>{"aAPC", "\\", "bAPC"}));
+        for (const char* sent : {"", "\\\\"}) QCOMPARE(pick(stockChoices(kStockChoicesF), sent), 0);
     }
     // ---- the book: pend, answer once, cancel semantics, the 0x0064/0x003f choices ----
     void bookAnswersExactlyOnce() {
@@ -264,16 +380,14 @@ private slots:
         QCOMPARE(r.type, kInputResolveMsg);
         QCOMPARE(QString::fromStdString(hs(r.body)), QString("476f2d746f2d52657365617263682d4c616220" "00" "04000000" "00000000"));
     }
-    // A verb argument's listbox (app/sessionworker.cpp) shows unescapeVerbText of each 0x003f choice, and a pick goes back
-    // as listPickText of the shown text, which stock DreamDaemon resolves to the member with the marker inside it.
+    // A verb argument's listbox (app/sessionworker.cpp) shows each choice as parseExpansionReply decodes it, and a pick
+    // goes back as listPickText of the shown text, which stock DreamDaemon resolves to the member with the marker inside it.
     void verbArgumentListboxWithoutMarkers() {
         Bytes reply; putLe16(reply, 2); cs(reply, "Go to " + kImp + "Research Lab"); cs(reply, "\\'q");
         std::vector<std::string> ch;
         QVERIFY(parseExpansionReply(reply, ch));
-        QCOMPARE(int(ch.size()), 2);
-        QCOMPARE(net::unescapeVerbText(ch[0]), std::string("Go to Research Lab"));
-        QCOMPARE(net::unescapeVerbText(ch[1]), std::string("'q"));
-        QCOMPARE(net::listPickText(net::unescapeVerbText(ch[0])), std::string("Go-to-Research-Lab"));
+        QCOMPARE(ch, (std::vector<std::string>{"Go to Research Lab", "'q"}));
+        QCOMPARE(net::listPickText(ch[0]), std::string("Go-to-Research-Lab"));
     }
     void statRowsWithoutMarkers() {
         Session s;

@@ -16,6 +16,8 @@
 #include <QTableWidget>
 #include <QTextEdit>
 #include <QtTest>
+#include "model/prompt.h"
+#include "net/input.h"
 #include "shell/browserpane.h"
 #include "shell/focusfilter.h"
 #include "shell/paste.h"
@@ -246,6 +248,46 @@ private slots:
             QVERIFY(id);
         }
         QVERIFY(!QAccessible::accessibleInterface(id));
+    }
+    // A default arrives as stock shows it (model::inputDefaultText): its line breaks and tabs stay in the field and go back on OK.
+    void defaultKeepsLineBreaksAndSelectsItsChoice() {
+        QWidget anchor; PromptHost h(&anchor);
+        QSignalSpy acc(&h, &PromptHost::accepted);
+        h.present(inputReq(1, 0x4, "aAPC\nb\tc"));
+        auto* f = h.current()->findChild<QLineEdit*>("promptField");
+        QCOMPARE(f->text(), QString("aAPC\nb\tc"));
+        h.current()->findChild<QPushButton*>("promptOk")->click();
+        QCOMPARE(acc.at(0).at(2).toString(), QString("aAPC\nb\tc"));
+        QTRY_VERIFY(!h.busy());
+        h.present(inputReq(2, 0x800, "aAPC\nb\tc"));
+        h.current()->findChild<QPushButton*>("promptOk")->click();
+        QCOMPARE(acc.at(1).at(2).toString(), QString("aAPC\nb\tc"));
+        QTRY_VERIFY(!h.busy());
+        for (auto [def, row] : {std::pair{"CDapc", 1}, std::pair{"c\\dAPC", 0}, std::pair{"", 0}}) {
+            PromptRequest r = inputReq(3, 0, def); r.inList = true; r.choices = {"aaAPC", "c\\dAPC"};
+            h.present(r);
+            QCOMPARE(h.current()->findChild<QListWidget*>("promptList")->currentRow(), row);
+            QCOMPARE(h.current()->findChild<QLineEdit*>("promptField")->text(), r.choices[row]);
+            h.current()->findChild<QPushButton*>("promptOk")->click();
+            QTRY_VERIFY(!h.busy());
+        }
+    }
+    // With no default, stock selects and answers the first choice for input() and for a verb argument, even past a lone `\` or an empty one.
+    void noDefaultAnswersTheFirstChoice() {
+        QWidget anchor; PromptHost h(&anchor);
+        QSignalSpy acc(&h, &PromptHost::accepted), arg(&h, &PromptHost::argAccepted);
+        PromptRequest r = inputReq(1, 0, ""); r.inList = true; r.choices = {"aAPC", "\\", "", "bAPC"};
+        h.present(r);
+        QCOMPARE(h.current()->findChild<QListWidget*>("promptList")->currentRow(), 0);
+        h.current()->findChild<QPushButton*>("promptOk")->click();
+        QCOMPARE(QByteArray::fromStdString(fugue::model::inputChoiceText(acc.at(0).at(2).toString().toStdString())).toHex(), QByteArray("6141504320"));
+        QTRY_VERIFY(!h.busy());
+        r.verbArg = true; r.id = 2;
+        h.present(r);
+        QCOMPARE(h.current()->findChild<QListWidget*>("promptList")->currentRow(), 0);
+        h.current()->findChild<QPushButton*>("promptOk")->click();
+        QCOMPARE(QByteArray::fromStdString(fugue::net::listPickText(arg.at(0).at(1).toString().toStdString())).toHex(), QByteArray("61415043"));
+        QTRY_VERIFY(!h.busy());
     }
     // ---------------------------------------------------------------- paste
     void pasteChordsIntoALineEdit() {

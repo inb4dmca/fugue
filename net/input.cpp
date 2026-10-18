@@ -599,8 +599,8 @@ ArgPrompt argPrompt(const MissingArg& m) {
 
 // A dialog value travels DM-escaped. DreamDaemon parses escapes in a verb's string argument, and stock DreamSeeker
 // escapes exactly four characters: backslash, double quote, single quote, and a newline (as `\n`). Other characters go
-// out bare. The 0x003f choices are not in that form: DreamDaemon sends `\'q` for 'q', and DreamSeeker's listbox shows
-// unescapeVerbText() of each. The picked value is escaped like any other. The same writer serves input() (model/prompt.cpp).
+// out bare. The 0x003f choices are not in that form (unescapeVerbText); the picked value is escaped like any other.
+// The same writer serves input() (model/prompt.cpp).
 std::string escapeVerbText(const std::string& v) {
     std::string o;
     for (char c : v) {
@@ -616,7 +616,16 @@ static std::string argDisplayLine(const MissingArg& m, const std::string& value,
     return (end == std::string::npos ? "" : m.line.substr(0, end + 1)) + " " + quoteArg(value, text);
 }
 
-std::string listPickText(const std::string& choice) { return verbCommandName(escapeVerbText(choice)); }
+std::string escapeChoiceText(const std::string& choice) {
+    std::string o;
+    for (char c : choice) {
+        if (c == '\r') continue;
+        o += c == '\t' ? std::string("\\t") : escapeVerbText(std::string(1, c));
+    }
+    return o;
+}
+
+std::string listPickText(const std::string& choice) { return verbCommandName(escapeChoiceText(choice)); }
 
 CommandResult InputModel::completeArg(const MissingArg& m, const std::string& value, bool haveSelf, const ArgResolver& atoms) {
     CommandResult r;
@@ -746,12 +755,7 @@ bool InputModel::takeListReply(uint8_t& kind, uint32_t& value) {
 }
 
 std::string unescapeVerbText(const std::string& v) {
-    std::string o;
-    for (size_t i = 0; i < v.size(); i++) {
-        if (v[i] == '\\' && i + 1 < v.size() && (v[i + 1] == '\'' || v[i + 1] == '"')) i++;   // only a quote is escaped
-        o += v[i];
-    }
-    return o;
+    return v.size() > 1 && v[0] == '\\' ? v.substr(1) : v;
 }
 
 // 0x003f layout: [0:2] Filter (u16; byte 1 is always 0), [2:6] TypeMask with the null and anything bits cleared,

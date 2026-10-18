@@ -100,6 +100,12 @@ private slots:
         s.lastPrefetch = account::Timestamp{1759000000, 0};
         QCOMPARE(plainWarmState(s), std::string("Resources downloaded 27 Sep."));
     }
+    void closingNeverEndsARunningGame() {
+        QCOMPARE(closeAction(false, true), CloseAction::Quit);
+        QCOMPARE(closeAction(false, false), CloseAction::Quit);
+        QCOMPARE(closeAction(true, true), CloseAction::HideToTray);
+        QCOMPARE(closeAction(true, false), CloseAction::Minimize);
+    }
 };
 QTEST_APPLESS_MAIN(PagerModel)
 #include "pager_model_test.moc"

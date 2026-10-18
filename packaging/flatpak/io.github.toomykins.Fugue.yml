@@ -28,6 +28,9 @@ finish-args:
   # all client state, including sid (the machine id servers see; it must survive restarts)
   - --persist=.fugue
   - --filesystem=~/.byond/cfg:ro
+  # the pager's tray icon (StatusNotifierItem): without it Qt reports no tray and closing the pager while a game runs
+  # minimizes it instead of hiding it to the tray
+  - --talk-name=org.kde.StatusNotifierWatcher
   # Chromium's own sandbox cannot nest inside bubblewrap; the Flatpak sandbox stands in for it (the BaseApp's documented setting).
   - --env=QTWEBENGINE_DISABLE_SANDBOX=1
 cleanup-commands:

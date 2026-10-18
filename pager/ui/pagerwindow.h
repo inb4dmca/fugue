@@ -21,6 +21,7 @@
 
 class QAction;
 class QCheckBox;
+class QCloseEvent;
 class QComboBox;
 class QDialog;
 class QLabel;
@@ -30,6 +31,8 @@ class QMenu;
 class QPlainTextEdit;
 class QPushButton;
 class QStackedWidget;
+class QSystemTrayIcon;
+class QTimer;
 class QTabWidget;
 class QToolButton;
 
@@ -114,6 +117,17 @@ public:
     void setWarming(bool on, const QString& progress = {}, bool error = false);
     QString logText() const;
 
+    // ---- closing while a game runs (model.h closeAction) ----
+    // While a game runs a tray icon offers Open Fugue and Exit; closing the window hides it there (a notice says so once).
+    // When the game ends, or the tray goes away while the window is hidden, the window comes back. Exit, from the gear menu
+    // or the tray, asks before it ends a running game, then emits quitRequested. A session ending is never refused.
+    void requestQuit();
+    void showPager();
+    bool hiddenToTray() const;
+    QSystemTrayIcon* trayIcon() const;   // null until a game first runs with a tray available
+    void setTrayHook(std::function<bool()> available);   // replaces QSystemTrayIcon::isSystemTrayAvailable (tests)
+    void setNoticeHook(std::function<void(const QString& title, const QString& text)> hook);   // replaces the tray balloon (tests)
+
 signals:
     void joinRequested(const QString& addr, bool hub, const QString& account);
     void warmRequested(const QString& addr, bool hub, const QString& account);   // run the headless prefetch pass for it
@@ -127,6 +141,11 @@ signals:
     void serverRemoved(const QString& addr);
     void accountApplied(const QString& account);   // Details > Setup: set an account name without signing in
     void clearCacheRequested();                    // confirmed by the player; the caller runs pager/cache.h clearCache
+    void quitRequested();                          // the caller quits (stopping a running game)
+
+protected:
+    void closeEvent(QCloseEvent* e) override;
+    bool eventFilter(QObject* o, QEvent* e) override;
 
 private:
     void rebuildServers();
@@ -142,6 +161,9 @@ private:
     void submitDialog();
     void updateSignInNote();
     bool hasSavedSignIn(const QString& account) const;
+    bool trayAvailable() const;
+    void updateTray();
+    bool confirmQuit();
     account::Config cfg_;
     Status st_;
     std::vector<account::Server> sorted_;
@@ -191,6 +213,11 @@ private:
     QString warmNote_;
     bool autoSignIn_ = true, held_ = false;   // held_: holdSignIn() -- a saved account waits for the Sign in window
     QString runNote_;
+    QSystemTrayIcon* tray_ = nullptr;
+    QTimer* trayWatch_ = nullptr;
+    std::function<bool()> trayHook_;
+    std::function<void(const QString&, const QString&)> notice_;
+    bool parked_ = false, trayNoticed_ = false, quitting_ = false;   // parked_: closed while a game runs
 };
 
 }  // namespace fugue::pager

@@ -103,9 +103,12 @@ const SrcCandidate* atomTyped(const std::vector<SrcCandidate>& cands, const std:
 std::string atomArgumentText(const std::string& name, uint32_t dmRef);
 // A verb name as typed and as DreamSeeker titles its dialogs: each space written `-`.
 std::string verbCommandName(const std::string& name);
-// A listbox pick's text in the c2s 0x0039: escaped (escapeVerbText), each space written `-`.
+// A listbox choice as stock DreamSeeker names it to the server: escapeVerbText, a tab as `\t`, a CR dropped.
+std::string escapeChoiceText(const std::string& choice);
+// A listbox pick's text in the c2s 0x0039: escapeChoiceText, each space written `-`.
 std::string listPickText(const std::string& choice);
-// A 0x003f choice as DreamSeeker's listbox shows it: DreamDaemon backslashes a quote in it (`\'q` for 'q), and only a quote.
+// A 0x003f choice as DreamSeeker's listbox shows it: DreamDaemon backslashes a choice's first character when it is `\`,
+// `'` or `"`, and nothing else.
 std::string unescapeVerbText(const std::string& v);
 // A dialog's or an input()'s text as stock DreamSeeker puts it on the wire: `\`, `"` and `'` backslashed, a newline as
 // `\n`. DreamDaemon parses those escapes back out, so the world receives the text as typed.

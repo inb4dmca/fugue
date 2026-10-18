@@ -177,8 +177,8 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
     struct ChoiceFetch { bool verbArg; quint32 id; std::chrono::steady_clock::time_point deadline; bool abandoned = false; };
     std::deque<ChoiceFetch> choiceFetches;
     std::map<quint32, shell::PromptRequest> argHeld;   // verb-argument dialogs held for their 0x003f (by pendingArgs id)
-    // Verb-argument dialogs whose listbox the 0x003f filled: the listbox shows the choices unescaped and without
-    // text-macro markers (model::parseExpansionReply), and a pick goes back in the 0x0039 as net::listPickText.
+    // Verb-argument dialogs whose listbox the 0x003f filled: the listbox shows the choices as model::parseExpansionReply
+    // decodes them, and a pick goes back in the 0x0039 as net::listPickText.
     std::set<quint32> argServerLists;
     // List resolves in flight (c2s 0x0039 sent, s2c 0x0039 awaited), in SEND order: the answer names no request, so
     // the oldest owns it. Stock DreamSeeker sends the verb when the answer arrives and not before
@@ -283,7 +283,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                         shell::PromptRequest r = std::move(it->second);
                         argHeld.erase(it);
                         std::vector<std::string> ch;
-                        if (model::parseExpansionReply(body, ch)) for (const std::string& c : ch) r.choices << QString::fromStdString(net::unescapeVerbText(c));
+                        if (model::parseExpansionReply(body, ch)) for (const std::string& c : ch) r.choices << QString::fromStdString(c);
                         argServerLists.insert(r.id);
                         std::string raw;
                         for (const std::string& c : ch) raw += (raw.empty() ? "" : "|") + c;

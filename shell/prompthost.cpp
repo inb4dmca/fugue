@@ -11,6 +11,7 @@
 #include <QVBoxLayout>
 #include <cstdio>
 #include <functional>
+#include "model/prompt.h"
 #include "shell/fugueicon.h"
 #include "shell/paste.h"
 
@@ -155,14 +156,16 @@ QDialog* PromptHost::build(const PromptRequest& r) {
         QObject::connect(list, &QListWidget::currentTextChanged, le, [le](const QString& t) { if (!t.isEmpty()) le->setText(t); });
         QObject::connect(list, &QListWidget::itemDoubleClicked, d, [d] { d->finish(true); });
         QObject::connect(le, &QLineEdit::returnPressed, d, [d] { d->finish(true); });
-        if (!r.def.isEmpty()) for (int i = 0; i < list->count(); i++) if (list->item(i)->text() == r.def) { list->setCurrentRow(i); break; }
+        std::string def = r.def.toStdString();
+        for (int i = 0; i < list->count(); i++)
+            if (model::inputChoiceMatches(list->item(i)->text().toStdString(), def)) { list->setCurrentRow(i); break; }
+        if (list->currentRow() < 0 && list->count()) list->setCurrentRow(0);
         lay->addWidget(list);
         lay->addWidget(le);
         d->value = [le] { return le->text(); };
         focus = le;
         if (r.verbArg && !r.choices.isEmpty()) {
-            // Stock DreamSeeker shows a listbox alone, with its first choice selected, so Enter picks it.
-            if (list->currentRow() < 0) list->setCurrentRow(0);
+            // Stock DreamSeeker shows a listbox alone, so Enter picks its selected choice.
             le->hide();
             focus = list;
         }

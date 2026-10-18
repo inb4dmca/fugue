@@ -289,4 +289,9 @@ std::string plainWarmState(const account::Server& s) {
     return "Resources downloaded " + fmtDayMonth(s.lastPrefetch.sec) + ".";
 }
 
+CloseAction closeAction(bool gameRunning, bool trayAvailable) {
+    if (!gameRunning) return CloseAction::Quit;
+    return trayAvailable ? CloseAction::HideToTray : CloseAction::Minimize;
+}
+
 }  // namespace fugue::pager

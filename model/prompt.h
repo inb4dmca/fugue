@@ -37,7 +37,7 @@ struct Prompt {
     uint32_t id = 0;
     std::string message, title;
     std::vector<std::string> buttons;   // alert only; empty slots removed, never empty ("OK" when nothing was labelled)
-    std::string def;                    // input: seeds the editor
+    std::string def;                    // input: seeds the editor, as stock shows it (inputDefaultText)
     uint32_t typeMask = 0;
     uint8_t filter = 0, filterKind = 0;
     bool inList = false;                // `in <list>`: the choices are not on this frame; see PromptBook::needsChoices
@@ -68,7 +68,16 @@ struct Prompt {
 // message, buttons and choices come back without text-macro markers (net::plainText), as stock shows and answers them.
 bool parseAlertRequest(ByteSpan body, Prompt& out);
 bool parseInputRequest(ByteSpan body, Prompt& out);
-// 0x003f reply -> choices (marker-free).
+// The default as stock DreamSeeker shows and returns it. DreamDaemon sends it DM-escaped: `\n`, `\t`, `\\`, `\"` and
+// `\[` are unescaped, and any other backslash pair is dropped, so `\improper X` shows as `mproper X`. An `as num`
+// prompt shows its default only when it is an optional '-', digits and at most one '.' (numericDefaultShown).
+std::string inputDefaultText(const std::string& sent);
+bool numericDefaultShown(const std::string& def);
+// Whether an in-list input() selects this shown choice for its default: equal ignoring ASCII case once each `\x` pair in
+// the choice is read as x. An empty default or a choice holding a newline never matches; with no match the first choice
+// is selected.
+bool inputChoiceMatches(const std::string& choice, const std::string& def);
+// 0x003f reply -> choices as stock shows them: net::unescapeVerbText, then marker-free.
 bool parseExpansionReply(ByteSpan body, std::vector<std::string>& out);
 
 // Reply encoders: the BODY of the c2s frame (type is kAlertMsg / kInputMsg).
@@ -80,8 +89,8 @@ Bytes encodePendingInputExpansionRequest();   // nine zero bytes
 // The c2s 0x0063 that asks the server for the list member a choice names (Prompt::resolvesThroughServer):
 // [inputChoiceText(choice)\0][id u32][u32 0].
 Bytes encodeInputResolveRequest(uint32_t id, const std::string& choice);
-// A choice as stock DreamSeeker names it in that 0x0063: DM-escaped (net::escapeVerbText), each space written as `-`,
-// and a trailing space. The 0x003f lists each choice unescaped.
+// A choice as stock DreamSeeker names it in that 0x0063: net::escapeChoiceText, each space written as `-`,
+// and a trailing space, from the choice as parseExpansionReply shows it.
 std::string inputChoiceText(const std::string& choice);
 // The input() answer carrying the server's value from that s2c 0x0039: [00][kind u8][value u32][id u32].
 Bytes encodeInputValue(uint32_t id, uint8_t kind, uint32_t value);

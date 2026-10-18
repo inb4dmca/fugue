@@ -1,6 +1,7 @@
 #include "shell/localorigin.h"
 #include "render/dmi.h"
 #include <QBuffer>
+#include <QElapsedTimer>
 #include <QImage>
 #include <QRandomGenerator>
 #include <QTcpSocket>
@@ -16,6 +17,7 @@ struct LocalOrigin::Conn {
     QPointer<QTcpSocket> sock;
     QByteArray buf;
     bool done = false;
+    QElapsedTimer waitTimer;
     BrowseRscStore::Wait held = BrowseRscStore::Wait::No;   // why it is in held_ (No: not held)
     QString file;
     bool head = false;
@@ -125,7 +127,8 @@ void LocalOrigin::process(const ConnP& c) {
         respond(c, 200, "text/html; charset=utf-8", pages_.value(file), head);
         return;
     }
-    serveFile(c, file, head, 0);
+    c->waitTimer.start();
+    serveFile(c, file, head);
 }
 
 // browserImage: an icon a page references is served as its first cell (first state, dir, frame) as a plain PNG,
@@ -154,7 +157,7 @@ QByteArray LocalOrigin::browserImage(const QByteArray& b) {
 // A name nobody announced waits only kUnnamedWaitMs, because on vg most names are unannounced. At most kMaxHeld
 // guesses are held at once, since each held request occupies one of Chromium's connections to this origin. An
 // announced name is never refused for the cap (admit): it evicts a guess, or is held over the cap.
-void LocalOrigin::serveFile(const ConnP& c, const QString& file, bool head, int waitedMs) {
+void LocalOrigin::serveFile(const ConnP& c, const QString& file, bool head) {
     std::string bytes;
     if (store_ && store_->get(file.toStdString(), bytes)) {
         release(c);
@@ -165,13 +168,14 @@ void LocalOrigin::serveFile(const ConnP& c, const QString& file, bool head, int 
     using Wait = BrowseRscStore::Wait;
     const Wait w = store_ ? store_->waitFor(file.toStdString()) : Wait::No;
     const int bound = w == Wait::Announced ? kMissWaitMs : w == Wait::Unnamed ? kUnnamedWaitMs : 0;
-    if (waitedMs < bound && (c->held != Wait::No || admit(c, w))) {
+    // Timer callbacks can run late: bound the hold by monotonic elapsed time, not the number of polls.
+    if (c->waitTimer.elapsed() < bound && (c->held != Wait::No || admit(c, w))) {
         if (w == Wait::Announced) c->held = w;   // announced while held: no longer counted against the unnamed cap
         c->file = file;
         c->head = head;
-        QTimer::singleShot(20, this, [this, c, file, head, waitedMs] {
+        QTimer::singleShot(20, this, [this, c, file, head] {
             if (c->done) { release(c); return; }
-            serveFile(c, file, head, waitedMs + 20);
+            serveFile(c, file, head);
         });
         return;
     }

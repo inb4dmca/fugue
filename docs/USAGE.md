@@ -30,6 +30,11 @@ On macOS, use `Fugue.app/Contents/MacOS/Fugue` in place of `fugue-qt`, or open t
 * Guests and signed-in players both work; signing in lets servers that require a BYOND key accept you.
 * A game started from the launcher, or as `dreamseeker`, plays as the signed-in account. `client --connect`,
   `--state-dir` and `--screenshot` runs play as a guest unless `--account` names one.
+* Closing the launcher window while a game runs hides it to a tray icon (Open Fugue, Exit) and the game keeps running;
+  the window comes back when the game ends. A desktop with no tray, such as GNOME without an AppIndicator extension,
+  minimizes it instead. **Exit**, in the gear menu or the tray (or Cmd+Q on macOS), asks before it closes a running game.
+* Starting Fugue again, or clicking a `byond://` link, while the launcher runs shows the running launcher (and opens the
+  link there) instead of starting a second one.
 * Logout keeps the saved sign-in (`identity-<key>`); **Preferences > Clear cache** removes saved sign-ins, the
   resource cache and the login-certificate cache, and keeps `pager.json` and the machine id.
 

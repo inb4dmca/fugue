@@ -7,7 +7,7 @@ file(GLOB shell_srcs CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 add_library(fugue_shell STATIC ${shell_srcs} ${CMAKE_CURRENT_SOURCE_DIR}/fugue.qrc)
 target_include_directories(fugue_shell PUBLIC ${PROJECT_SOURCE_DIR})
 # fugue_canon: model/json.cpp (pulled in by render/scene.cpp and model::plainAtomName) calls canon::str.
-target_link_libraries(fugue_shell PUBLIC fugue_skin fugue_render fugue_proto fugue_model fugue_canon Qt6::Widgets Qt6::WebEngineWidgets Qt6::WebChannel Qt6::Network)
+target_link_libraries(fugue_shell PUBLIC fugue_skin fugue_render fugue_proto fugue_model fugue_net fugue_canon Qt6::Widgets Qt6::WebEngineWidgets Qt6::WebChannel Qt6::Network)
 
 # Test targets: each is added only when its source file exists, so a tree that ships a subset of tests still configures.
 set(CMAKE_AUTOMOC ON)

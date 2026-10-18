@@ -2,6 +2,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QDialog>
 #include <QFontDatabase>
 #include <QComboBox>
@@ -20,9 +21,11 @@
 #include <QPushButton>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
+#include <QSystemTrayIcon>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTableWidget>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -206,6 +209,7 @@ QListWidget* gameList(QWidget* parent, const char* name) {
 
 PagerWindow::PagerWindow(QWidget* parent) : QWidget(parent) {
     setObjectName("pager");
+    qApp->installEventFilter(this);
     setAttribute(Qt::WA_StyledBackground, true);
     setStyleSheet(kStyle);
     setWindowTitle("Fugue");
@@ -554,7 +558,7 @@ PagerWindow::PagerWindow(QWidget* parent) : QWidget(parent) {
         if (vis) show();
     });
     gear_->addSeparator();
-    connect(act("Exit", "exit", QKeySequence("Ctrl+Q")), &QAction::triggered, this, &QWidget::close);
+    connect(act("Exit", "exit", QKeySequence("Ctrl+Q")), &QAction::triggered, this, &PagerWindow::requestQuit);
     gearTool_->setMenu(gear_);
 
     // ================= Details (the technical half; a right-pane tab, closed by default) =================
@@ -1236,6 +1240,119 @@ void PagerWindow::setClientRunning(bool running, const QString& note) {
     updateJoin();
     updateGameTab();
     updatePrefs();
+    if (!running && parked_) showPager();
+    updateTray();
+}
+
+bool PagerWindow::trayAvailable() const { return trayHook_ ? trayHook_() : QSystemTrayIcon::isSystemTrayAvailable(); }
+void PagerWindow::setTrayHook(std::function<bool()> available) { trayHook_ = std::move(available); }
+void PagerWindow::setNoticeHook(std::function<void(const QString&, const QString&)> hook) { notice_ = std::move(hook); }
+QSystemTrayIcon* PagerWindow::trayIcon() const { return tray_; }
+bool PagerWindow::hiddenToTray() const { return parked_ && isHidden(); }
+
+void PagerWindow::updateTray() {
+    if (!running_ || !trayAvailable()) {
+        if (tray_) tray_->hide();
+        return;
+    }
+    if (!tray_) {
+        tray_ = new QSystemTrayIcon(windowIcon(), this);
+        auto* m = new QMenu(this);
+        m->setObjectName("traymenu");
+        QAction* open = m->addAction("Open Fugue");
+        open->setObjectName("trayopen");
+        connect(open, &QAction::triggered, this, &PagerWindow::showPager);
+        m->addSeparator();
+        QAction* exit = m->addAction("Exit");
+        exit->setObjectName("trayexit");
+        connect(exit, &QAction::triggered, this, &PagerWindow::requestQuit);
+        tray_->setContextMenu(m);
+        connect(tray_, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason r) {
+            if (r == QSystemTrayIcon::Trigger || r == QSystemTrayIcon::DoubleClick) showPager();
+        });
+        trayWatch_ = new QTimer(this);
+        trayWatch_->setInterval(2000);
+        connect(trayWatch_, &QTimer::timeout, this, [this] {
+            if (hiddenToTray() && !trayAvailable()) showPager();   // the panel went away: nothing would bring the window back
+        });
+    }
+    tray_->setToolTip("Fugue: a game is running");
+    tray_->show();
+}
+
+void PagerWindow::showPager() {
+    // A Wayland client cannot un-minimize its window; mapping it again brings it back.
+    if (parked_ && QGuiApplication::platformName().startsWith("wayland")) hide();
+    parked_ = false;
+    if (trayWatch_) trayWatch_->stop();
+    if (isMinimized()) showNormal();
+    else show();
+    raise();
+    activateWindow();
+}
+
+void PagerWindow::closeEvent(QCloseEvent* e) {
+    if (quitting_ || qApp->isSavingSession()) {
+        e->accept();
+        return;
+    }
+    switch (closeAction(running_, trayAvailable())) {
+    case CloseAction::Quit:
+        e->accept();
+        requestQuit();
+        return;
+    case CloseAction::HideToTray:
+        e->ignore();
+        parked_ = true;
+        updateTray();
+        hide();
+        trayWatch_->start();
+        if (!trayNoticed_) {
+            trayNoticed_ = true;
+            const QString title = "Fugue is still running";
+            const QString text = "The game keeps running. Click the Fugue icon to open the pager again.";
+            if (notice_) notice_(title, text);
+            else tray_->showMessage(title, text);
+        }
+        return;
+    case CloseAction::Minimize:
+        e->ignore();
+        parked_ = true;
+        showMinimized();
+        return;
+    }
+}
+
+bool PagerWindow::confirmQuit() {
+    if (!running_) return true;
+    const QString title = "Exit Fugue";
+    const QString text = "A game is still running. Exiting Fugue closes the game.";
+    if (confirm_) return confirm_(title, text);
+    QMessageBox box(QMessageBox::Question, title, text, QMessageBox::Yes | QMessageBox::No, this);
+    box.setInformativeText("Exit anyway?");
+    box.setDefaultButton(QMessageBox::No);
+    return box.exec() == QMessageBox::Yes;
+}
+
+void PagerWindow::requestQuit() {
+    if (!confirmQuit()) return;
+    quitting_ = true;
+    emit quitRequested();
+}
+
+// Every quit reaches the application as QEvent::Quit, which closes the windows. One this window did not ask for comes from
+// the platform: on macOS, Cmd+Q or the Dock's Quit, which ask like Exit; elsewhere the session ending, which nothing may veto.
+bool PagerWindow::eventFilter(QObject* o, QEvent* e) {
+    if (o != qApp || e->type() != QEvent::Quit) return QWidget::eventFilter(o, e);
+#ifdef Q_OS_MACOS
+    if (!quitting_ && !confirmQuit()) {
+        e->ignore();
+        return true;
+    }
+#endif
+    quitting_ = true;
+    QTimer::singleShot(0, this, [this] { quitting_ = false; });   // still running: another window refused the quit
+    return false;
 }
 
 void PagerWindow::setDetailsVisible(bool on) {

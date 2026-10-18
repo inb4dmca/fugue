@@ -34,6 +34,8 @@ jobs:
       matrix:
         os: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Install prerequisites
@@ -58,14 +60,22 @@ jobs:
           cmake --install build --prefix "$PWD/build/macos"
           build/macos/Fugue.app/Contents/MacOS/Fugue --version
           codesign --verify --deep --strict build/macos/Fugue.app
-          ditto -c -k --sequesterRsrc --keepParent build/macos/Fugue.app "Fugue-$(uname -m).zip"
+          case "$(uname -m)" in arm64) cpu=apple-silicon ;; *) cpu=intel ;; esac
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Fugue.app "Fugue-macos-$cpu.zip"
       - uses: actions/upload-artifact@v4
         with:
           name: Fugue-${{ matrix.os }}
           path: Fugue-*.zip
+      - name: Attach the bundle to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Fugue-*.zip
 
   windows:
     runs-on: windows-2022
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125   # v4.4.1
@@ -121,6 +131,17 @@ jobs:
         with:
           name: fugue-windows-x64
           path: dist/
+      - name: Zip the bundle
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          Copy-Item dist Fugue -Recurse
+          Compress-Archive -Path Fugue -DestinationPath Fugue-windows-x64.zip
+      - name: Attach the bundle to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Fugue-windows-x64.zip
 
   flatpak:
     if: startsWith(github.ref, 'refs/tags/v')

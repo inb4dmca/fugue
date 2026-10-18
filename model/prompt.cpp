@@ -1,6 +1,7 @@
 #include "model/prompt.h"
 #include "net/input.h"
 #include "net/textmacro.h"
+#include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <cstdio>
@@ -62,13 +63,52 @@ bool parseInputRequest(ByteSpan b, Prompt& out) {
     if (!cstrAt(b, pos, p.title) || !cstrAt(b, pos, p.def) || !cstrAt(b, pos, p.message)) return false;
     p.title = net::plainText(p.title);
     p.message = net::plainText(p.message);
+    p.def = inputDefaultText(p.def);
     if (b.size() - pos != 10) return false;
     p.typeMask = le32(b.data() + pos);
     p.filter = b[pos + 4];
     p.filterKind = b[pos + 5];
     p.id = le32(b.data() + pos + 6);
-    p.inList = p.filterKind == kInputFilterList;
+    p.inList = p.filterKind == kInputFilterList && !(p.typeMask & kInputText);   // `as text in L` is a plain text field
+    if ((p.typeMask & ~kInputNull) == kInputNum && !numericDefaultShown(p.def)) p.def.clear();
     out = std::move(p);
+    return true;
+}
+
+std::string inputDefaultText(const std::string& sent) {
+    std::string o;
+    for (size_t i = 0; i < sent.size(); i++) {
+        if (sent[i] != '\\') { o += sent[i]; continue; }
+        if (++i == sent.size()) break;
+        char c = sent[i];
+        if (c == 'n') o += '\n';
+        else if (c == 't') o += '\t';
+        else if (c == '\\' || c == '"' || c == '[') o += c;
+    }
+    return o;
+}
+
+bool numericDefaultShown(const std::string& def) {
+    size_t i = !def.empty() && def[0] == '-';
+    bool dot = false;
+    for (; i < def.size(); i++) {
+        if (def[i] == '.' && !dot) dot = true;
+        else if (def[i] < '0' || def[i] > '9') return false;
+    }
+    return true;
+}
+
+bool inputChoiceMatches(const std::string& choice, const std::string& def) {
+    if (def.empty()) return false;
+    std::string c;
+    for (size_t i = 0; i < choice.size(); i++) {
+        if (choice[i] == '\n') return false;
+        if (choice[i] == '\\' && ++i == choice.size()) break;
+        c += choice[i];
+    }
+    if (c.size() != def.size()) return false;
+    for (size_t i = 0; i < c.size(); i++)
+        if (std::tolower((unsigned char)c[i]) != std::tolower((unsigned char)def[i])) return false;
     return true;
 }
 
@@ -80,7 +120,7 @@ bool parseExpansionReply(ByteSpan b, std::vector<std::string>& out) {
     for (unsigned i = 0; i < n; i++) {
         std::string s;
         if (!cstrAt(b, pos, s)) return false;
-        v.push_back(net::plainText(s));
+        v.push_back(net::plainText(net::unescapeVerbText(s)));
     }
     if (pos != b.size()) return false;
     out = std::move(v);
@@ -94,10 +134,16 @@ Bytes encodeAlertReply(uint32_t id, const std::string& answer) {
     return b;
 }
 // A text answer is DMValue kind 2 with the text DM-escaped, as stock DreamSeeker 516 writes it: input() `a\b` is sent
-// as `02 "a\\b"`, and DM receives the text exactly as typed.
+// as `02 "a\\b"`, a tab as `\t` and a CR LF line break as `\n`, and DM receives the text exactly as typed.
 Bytes encodeInputText(uint32_t id, const std::string& text) {
+    std::string t;
+    for (size_t i = 0; i < text.size(); i++) {
+        if (text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n') continue;
+        if (text[i] == '\t') t += "\\t";
+        else t += net::escapeVerbText(text.substr(i, 1));
+    }
     Bytes b{2};
-    putCStr(b, net::escapeVerbText(text));
+    putCStr(b, t);
     put32(b, id);
     return b;
 }
@@ -120,7 +166,7 @@ Bytes encodeInputNull(uint32_t id) {
 Bytes encodePendingInputExpansionRequest() { return Bytes(9, 0); }
 
 std::string inputChoiceText(const std::string& choice) {
-    std::string t = net::escapeVerbText(choice);
+    std::string t = net::escapeChoiceText(choice);
     for (char& c : t) if (c == ' ') c = '-';
     return t + ' ';
 }

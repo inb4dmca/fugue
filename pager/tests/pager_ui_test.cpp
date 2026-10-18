@@ -14,13 +14,22 @@
 #include <QPushButton>
 #include <QDir>
 #include <QFile>
+#include <QLocalServer>
 #include <QSignalSpy>
+#include <QSystemTrayIcon>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QtTest>
 #include <algorithm>
 #include <functional>
+#include <future>
+#ifndef _WIN32
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 #include "platform/file.h"
+#include "pager/ui/instance.h"
 #include "pager/ui/pagerwindow.h"
 
 using namespace fugue;
@@ -548,6 +557,184 @@ private slots:
         QVERIFY2(text.contains("Sign in once with your BYOND account and Fugue writes it"), qPrintable(text));
         QVERIFY2(text.contains("\u2717 identity: none for NoKeyHere  \u2192 Sign in"), qPrintable(text));
         QCOMPARE(text.count("\n"), go.size() ? int(std::count(go.begin(), go.end(), '\n')) : 0);
+    }
+    void closingWhileAGameRunsHidesToTheTray() {
+        PagerWindow w;
+        account::Config cfg;
+        cfg.servers = account::defaultServers();
+        w.setState(cfg, check(cfg));
+        QPixmap px(16, 16);
+        px.fill(Qt::blue);
+        w.setWindowIcon(QIcon(px));
+        w.setTrayHook([] { return true; });
+        QSignalSpy quit(&w, &PagerWindow::quitRequested);
+        w.show();
+        w.setClientRunning(true);
+        QSystemTrayIcon* tray = w.trayIcon();
+        QVERIFY(tray && tray->isVisible());
+        QStringList texts;
+        for (QAction* a : tray->contextMenu()->actions()) if (!a->isSeparator()) texts << a->text();
+        QCOMPARE(texts, QStringList({"Open Fugue", "Exit"}));
+        QVERIFY(!w.close());
+        QVERIFY(w.hiddenToTray());
+        QCOMPARE(quit.count(), 0);
+        tray->contextMenu()->findChild<QAction*>("trayopen")->trigger();
+        QVERIFY(w.isVisible() && !w.hiddenToTray());
+        QVERIFY(!w.close());
+        // the game ends: the window comes back and the icon goes
+        w.setClientRunning(false);
+        QVERIFY(w.isVisible());
+        QVERIFY(!tray->isVisible());
+        QVERIFY(w.close());
+        QCOMPARE(quit.count(), 1);
+    }
+    void withNoTrayClosingMinimizes() {
+        PagerWindow w;
+        account::Config cfg;
+        w.setState(cfg, check(cfg));
+        w.setTrayHook([] { return false; });
+        QSignalSpy quit(&w, &PagerWindow::quitRequested);
+        w.show();
+        w.setClientRunning(true);
+        QVERIFY(!w.trayIcon());
+        QVERIFY(!w.close());
+        QVERIFY(w.isMinimized());
+        QCOMPARE(quit.count(), 0);
+        w.setClientRunning(false);
+        QVERIFY(!w.isMinimized() && w.isVisible());
+    }
+    void exitAsksBeforeEndingAGame() {
+        PagerWindow w;
+        account::Config cfg;
+        w.setState(cfg, check(cfg));
+        QPixmap px(16, 16);
+        px.fill(Qt::blue);
+        w.setWindowIcon(QIcon(px));
+        w.setTrayHook([] { return true; });
+        int asked = 0;
+        bool answer = false;
+        w.setConfirmHook([&](const QString&, const QString& text) {
+            asked++;
+            return answer && text.contains("closes the game");
+        });
+        QSignalSpy quit(&w, &PagerWindow::quitRequested);
+        w.menuAction("exit")->trigger();
+        QCOMPARE(asked, 0);
+        QCOMPARE(quit.count(), 1);
+        w.setClientRunning(true);
+        w.menuAction("exit")->trigger();
+        QCOMPARE(asked, 1);
+        QCOMPARE(quit.count(), 1);
+        answer = true;
+        w.trayIcon()->contextMenu()->findChild<QAction*>("trayexit")->trigger();
+        QCOMPARE(asked, 2);
+        QCOMPARE(quit.count(), 2);
+    }
+    void theTrayNoticeAppearsOnce() {
+        PagerWindow w;
+        account::Config cfg;
+        w.setState(cfg, check(cfg));
+        w.setTrayHook([] { return true; });
+        int notices = 0;
+        w.setNoticeHook([&](const QString& title, const QString&) {
+            notices++;
+            QCOMPARE(title, QString("Fugue is still running"));
+        });
+        w.show();
+        w.setClientRunning(true);
+        for (int i = 0; i < 3; i++) {
+            QVERIFY(!w.close());
+            QVERIFY(w.hiddenToTray());
+            w.showPager();
+        }
+        QCOMPARE(notices, 1);
+    }
+    void theWindowComesBackWhenTheTrayGoes() {
+        PagerWindow w;
+        account::Config cfg;
+        w.setState(cfg, check(cfg));
+        bool tray = true;
+        w.setTrayHook([&] { return tray; });
+        w.setNoticeHook([](const QString&, const QString&) {});
+        w.show();
+        w.setClientRunning(true);
+        QVERIFY(!w.close());
+        QVERIFY(w.hiddenToTray());
+        tray = false;
+        QTRY_VERIFY_WITH_TIMEOUT(w.isVisible(), 5000);
+        QVERIFY(!w.hiddenToTray());
+    }
+    void aSecondPagerHandsOverItsLink() {
+        QTemporaryDir dir;
+        const QString name = dir.path() + "/pager";
+        QStringList got;
+        InstanceServer first([&](const QString& link) { got << link; });
+        QVERIFY(first.listen(name));
+        InstanceServer second([](const QString&) { QFAIL("the running pager keeps the channel"); });
+        QVERIFY(!second.listen(name));
+        auto forward = [&](const QString& link) {
+            auto f = std::async(std::launch::async, [&] { return forwardToRunning(name, link); });
+            while (f.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) QCoreApplication::processEvents();
+            return f.get();
+        };
+        QVERIFY(forward("byond://127.0.0.1:53321"));
+        QVERIFY(forward(""));
+        QTRY_COMPARE(got, QStringList({"byond://127.0.0.1:53321", ""}));
+        QVERIFY(!forwardToRunning(dir.path() + "/nobody", "", 500));
+    }
+#ifndef _WIN32
+    void aDeadPagersSocketIsReplaced() {
+        QTemporaryDir dir;
+        const QString name = dir.path() + "/pager";
+        int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+        sockaddr_un a{};
+        a.sun_family = AF_UNIX;
+        std::snprintf(a.sun_path, sizeof a.sun_path, "%s", name.toUtf8().constData());
+        QCOMPARE(::bind(fd, reinterpret_cast<sockaddr*>(&a), sizeof a), 0);
+        ::close(fd);   // the file stays, as after a crash
+        QVERIFY(QFile::exists(name));
+        QVERIFY(!forwardToRunning(name, "", 500));
+        QStringList got;
+        InstanceServer s([&](const QString& link) { got << link; });
+        QVERIFY(s.listen(name));
+        auto f = std::async(std::launch::async, [&] { return forwardToRunning(name, "byond://127.0.0.1:53322"); });
+        while (f.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) QCoreApplication::processEvents();
+        QVERIFY(f.get());
+        QTRY_COMPARE(got, QStringList({"byond://127.0.0.1:53322"}));
+    }
+#endif
+    // last: a quit event leaves QCoreApplication's quit flag set for any later event loop
+    void aQuitFromThePlatform() {
+        for (bool tray : {true, false}) {
+            PagerWindow w;
+            account::Config cfg;
+            w.setState(cfg, check(cfg));
+            w.setTrayHook([tray] { return tray; });
+            w.setNoticeHook([](const QString&, const QString&) { QFAIL("no notice while quitting"); });
+            int asked = 0;
+            bool answer = false;
+            w.setConfirmHook([&](const QString&, const QString&) { asked++; return answer; });
+            w.show();
+            w.setClientRunning(true);
+            QEvent quit(QEvent::Quit);
+#ifdef Q_OS_MACOS
+            // Cmd+Q or the Dock's Quit: asks like Exit
+            QCoreApplication::sendEvent(qApp, &quit);
+            QVERIFY(!quit.isAccepted());
+            QCOMPARE(asked, 1);
+            QVERIFY(w.isVisible());
+            answer = true;
+            quit.setAccepted(true);
+            QCoreApplication::sendEvent(qApp, &quit);
+            QCOMPARE(asked, 2);
+#else
+            // the session ending: never refused, never asked
+            QCoreApplication::sendEvent(qApp, &quit);
+            QCOMPARE(asked, 0);
+#endif
+            QVERIFY(quit.isAccepted());
+            QVERIFY(!w.isVisible());
+        }
     }
 };
 QTEST_MAIN(PagerUi)

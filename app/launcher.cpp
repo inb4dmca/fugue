@@ -5,7 +5,8 @@
 //   dreamseeker "byond://host:port" -pager ...   fugue-qt installed AS DreamSeeker: DreamSeeker's own command line (pager/dsargv.h)
 // No subcommand => the build's defaultMode: a FUGUE_RELEASE build is the pager (a player starting it from a menu passes no
 // arguments); a development build stays the client.
-// A join is `<self> client ...` run as a child with ARGV ONLY; the pager stays open and streams the child's log.
+// A join is `<self> client ...` run as a child with ARGV ONLY; the pager streams the child's log. Closing the pager while the
+// game runs hides it to a tray icon (pagerwindow.h); only Exit ends the game.
 // The pager reads a password in two places: -login ($FUGUE_BYOND_PASSWORD or an echo-off prompt) and the Sign in field.
 // It uses the password for one hub call (pager/signin.h), wipes it, and never passes it on: not via argv, env, a file or a log.
 #include <QApplication>
@@ -38,6 +39,7 @@
 #include "pager/model.h"
 #include "pager/signin.h"
 #include "pager/target.h"
+#include "pager/ui/instance.h"
 #include "pager/ui/pagerwindow.h"
 #include "shell/fugueicon.h"
 #include "shell/urlopener.h"
@@ -81,6 +83,7 @@ struct PagerOpts {
     std::string join, account, keytxt, autoJoin, hubAddr;
     bool warm = false;   // -warm: run the client as a headless --prefetch (fill ~/.fugue/rsc) instead of a game window
     bool hub = false, dry = false, list = false, login = false, install = false, help = false, haveAccount = false;
+    bool plain = false;   // no flags: at most a link, which a running pager can take (pager/ui/instance.h)
     double quitAfter = -1;
     std::vector<std::string> pass, positional;
     std::string bad;
@@ -90,6 +93,7 @@ PagerOpts parsePagerArgs(const std::vector<std::string>& a) {
     PagerOpts o;
     if (!a.empty() && a[0] == "--url") {
         if (auto u = pager::handlerUrl(a, &o.bad)) o.join = *u;
+        o.plain = o.bad.empty();
         return o;
     }
     for (size_t i = 0; i < a.size(); i++) {
@@ -124,6 +128,7 @@ PagerOpts parsePagerArgs(const std::vector<std::string>& a) {
     }
     // A bare argument is a server to join: how a clicked byond:// link arrives (`pager %u`).
     if (o.join.empty() && o.positional.size() == 1) o.join = o.positional[0];
+    o.plain = a.size() == o.positional.size() && a.size() <= 1;
     return o;
 }
 
@@ -179,6 +184,7 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     app->setApplicationName("fugue-qt");
     app->setApplicationVersion(fugue::kVersion);
     const std::string self = QCoreApplication::applicationFilePath().toStdString();
+    if (o.plain && pager::forwardToRunning(pager::instanceName(), QString::fromStdString(o.join))) return 0;
 
     if (o.install) {
 #ifdef __APPLE__
@@ -496,23 +502,28 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
         persist();
         refresh();
     });
+    // The pager quits on Exit or on closing it with no game running; a window hidden to the tray is not a last window closed.
+    QApplication::setQuitOnLastWindowClosed(false);
+    QObject::connect(&win, &pager::PagerWindow::quitRequested, app.get(), &QCoreApplication::quit);
     QObject::connect(app.get(), &QCoreApplication::aboutToQuit, &win, stopChild);
     QObject::connect(app.get(), &QCoreApplication::aboutToQuit, &win, stopWarmer);   // a download in progress keeps what arrived
     // A link opened while the pager runs joins like the Join button, and like it is refused while a game runs.
-    auto openLink = [&](const QUrl& url) {
-        win.raise();
-        win.activateWindow();
+    auto openLink = [&](const std::string& link) {
+        win.showPager();
         if (child && child->state() != QProcess::NotRunning) { win.setStatus("Close the game before joining another server.", true); return; }
         std::string error;
-        auto addr = pager::parseTarget(url.toString(QUrl::FullyEncoded).toStdString(), &error);
+        auto addr = pager::parseTarget(link, &error);
         if (!addr) { win.setStatus(QString::fromStdString(error), true); return; }
         emit win.joinRequested(QString::fromStdString(*addr), false, QString());
     };
 #ifdef Q_OS_MACOS
-    fugue::shell::UrlOpener urlOpener(&win, openLink);
-#else
-    (void)openLink;
+    fugue::shell::UrlOpener urlOpener(&win, [&](const QUrl& url) { openLink(url.toString(QUrl::FullyEncoded).toStdString()); });
 #endif
+    pager::InstanceServer instance([&](const QString& link) {
+        if (link.isEmpty()) win.showPager();
+        else openLink(link.toStdString());
+    });
+    instance.listen(pager::instanceName());
     win.show();
     // Signed out (and not a remembered guest), the Sign in window opens over the pager. With "Sign in automatically"
     // off, a saved account waits there to be confirmed. An -account override is not held.

@@ -74,4 +74,9 @@ std::string plainWarmProgress(const WarmProgress& p);            // "Downloading
 // The game tab's note about the resource cache for this server (lastPrefetch).
 std::string plainWarmState(const account::Server& s);
 
+// Closing the pager window never ends a running game: the window hides to its tray icon, or minimizes where the desktop
+// has no tray. With no game running, closing quits.
+enum class CloseAction { Quit, HideToTray, Minimize };
+CloseAction closeAction(bool gameRunning, bool trayAvailable);
+
 }  // namespace fugue::pager
