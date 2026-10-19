@@ -2,6 +2,7 @@
 #include <QSignalSpy>
 #include <QPointer>
 #include <QFile>
+#include <QGuiApplication>
 #include <QTemporaryDir>
 #include <QLabel>
 #include <QScreen>
@@ -150,6 +151,7 @@ private slots:
     }
     // Read from the screen, not the widget: a control stacked above the map shows over the native presenter.
     void controlsAboveTheMapStayVisible() {
+        if (QGuiApplication::platformName() == "offscreen") QSKIP("needs a real screen to read pixels from");
         QWidget top;
         top.resize(96, 72);
         auto* map = new MapWidget(&top);
