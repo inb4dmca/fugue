@@ -115,10 +115,19 @@ HitTarget targetFromHit(const World& w, uint8_t hitKind, uint32_t ref, int world
 // With no candidates nothing is sent. With several of different names the client asks in a listbox, in the order
 // returned here. Order: mobs, then objs (by ascending ref, carried and floor objs interleaved), then turfs by ascending
 // turf id, then areas. Several of one name, or a mob and an obj of one name, collapse to the first (the mob). A pick in
-// that dialog sends just the 0x0002 (no 0x003f).
+// that dialog sends just the 0x0002 (no 0x003f). everyAtom keeps every atom, of any name (a typed line reads them all).
+//
+// Each candidate carries stock DreamSeeker's rank of it as a src (srcRank): `dist`, the tile gap between the atom's
+// footprint and usr's (-1 off the map: the client, usr, what usr carries; 127 out of sight), and two tie-breaks, `cell`
+// (its place in its cell's list: the cell's mobs, then its objs, each in the relinks' Bind order (World::cellMobs /
+// cellObjs), then the turf) and `carried` (its place in usr.contents: objs in the order they arrived, then mobs). A footprint is the cell widened by bound_x/y + step_x/y and
+// bound_width/height against world.icon_size; pixel_x/y and the icon's size play no part. usr's footprint is drawn at
+// the eye.
 struct VerbSrc { uint8_t kind = 0; uint32_t ref = 0; };
-struct VerbSrcCandidate { VerbSrc src; std::string name; };
-std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t verbId);
+struct VerbSrcRank { int dist = 127, cell = -1, carried = -1; };
+struct VerbSrcCandidate { VerbSrc src; std::string name; VerbSrcRank rank = {}; };
+std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t verbId, bool everyAtom = false);
+VerbSrcRank srcRank(const World& w, VerbSrc src);
 // A typed ATOM argument DreamSeeker resolves itself (FilterKind view / oview / range / orange / usr, an atom-only mask,
 // or `as anything` / `as text|anything` without a list, read as mob|obj|turf): the atoms it accepts, in its bare
 // listbox's order (objs by ascending ref, carried ones interleaved; mobs first and turfs last; usr's own turf first among

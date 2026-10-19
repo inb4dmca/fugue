@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <map>
+#include <optional>
 #include <set>
 #include <unordered_map>
 
@@ -283,7 +284,83 @@ HitTarget targetFromHit(const World& w, uint8_t hitKind, uint32_t ref, int world
     return h;
 }
 
-std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t id) {
+namespace {
+int floorDiv(int a, int b) { return a >= 0 ? a / b : -((b - 1 - a) / b); }
+// The tiles an atom at (x, y) covers: its cell, widened where bound + step leave it.
+struct Footprint { int x0, y0, x1, y1; };
+Footprint footprintOf(const Atom* a, int x, int y, int tile) {
+    Footprint f{x, y, x, y};
+    if (!a) return f;
+    auto axis = [&](int c, int off, int size, int& lo, int& hi) {
+        if (off >= 0 && off + size <= tile) return;
+        lo = c + floorDiv(off, tile);
+        hi = c + floorDiv(off + size - 1, tile);
+    };
+    axis(x, (a->hasBounds ? a->boundX : 0) + (a->hasStep ? a->stepX : 0), a->hasBounds ? a->boundW : tile, f.x0, f.x1);
+    axis(y, (a->hasBounds ? a->boundY : 0) + (a->hasStep ? a->stepY : 0), a->hasBounds ? a->boundH : tile, f.y0, f.y1);
+    return f;
+}
+const std::vector<uint32_t>* cellList(const std::map<std::array<int, 3>, std::vector<uint32_t>>& cells, const std::array<int, 3>& c) {
+    auto it = cells.find(c);
+    return it == cells.end() ? nullptr : &it->second;
+}
+// The Chebyshev gap between two footprints, kept to a byte as stock keeps it.
+int gapOf(const Footprint& a, const Footprint& u) {
+    auto axis = [](int a0, int a1, int u0, int u1) {
+        int d = u0 - a1;
+        if (d < 0) d = a0 - u1;
+        return d < 0 ? 0 : d;
+    };
+    return int8_t(uint8_t(std::max(axis(a.x0, a.x1, u.x0, u.x1), axis(a.y0, a.y1, u.y0, u.y1))));
+}
+}  // namespace
+
+VerbSrcRank srcRank(const World& w, VerbSrc src) {
+    VerbSrcRank r;
+    const int tile = iconSizeOf(w);
+    const Atom* self = nullptr;
+    if (w.haveSelf)
+        if (auto s = w.atoms.find(w.selfRef | kRegistryA); s != w.atoms.end()) self = &s->second;
+    std::optional<Footprint> usr;
+    if (w.haveEye) usr = footprintOf(self, w.eyeX, w.eyeY, tile);
+    const bool mob = src.kind == kTargetMob, obj = src.kind == kTargetObj;
+    if (mob || obj) {
+        uint32_t key = mob ? (src.ref | kRegistryA) : src.ref;
+        int objs = 0, at = -1, before = 0;
+        for (uint32_t k : w.usrContentsOrder) {
+            bool m = k & kRegistryA;
+            if (k == key) at = before;
+            if (m == mob) before++;
+            if (!m) objs++;
+        }
+        bool carried = at >= 0;
+        if (carried) r.carried = mob ? objs + at : at;
+        auto a = w.atoms.find(key);
+        if (mob && w.haveSelf && src.ref == w.selfRef) r.dist = -1;
+        else if (a != w.atoms.end() && a->second.hasPos && usr) r.dist = gapOf(footprintOf(&a->second, a->second.x, a->second.y, tile), *usr);
+        else r.dist = carried ? -1 : 127;
+        if (a != w.atoms.end() && a->second.hasPos) {
+            // Its place in its cell's list: the cell's mobs, then its objs (World::cellMobs / cellObjs).
+            std::array<int, 3> cell{a->second.x, a->second.y, a->second.z};
+            const std::vector<uint32_t>* mobs = cellList(w.cellMobs, cell);
+            const std::vector<uint32_t>* l = mob ? mobs : cellList(w.cellObjs, cell);
+            if (l)
+                if (auto at = std::find(l->rbegin(), l->rend(), src.ref); at != l->rend())
+                    r.cell = int(l->rend() - at - 1) + (mob || !mobs ? 0 : int(mobs->size()));
+        }
+    } else if (src.kind == kTargetTurf) {
+        int x = int(src.ref & 0xffff) + 1, y = int(src.ref >> 16) + 1;
+        r.dist = usr ? gapOf({x, y, x, y}, *usr) : 127;
+        std::array<int, 3> cell{x, y, self ? self->z : 0};
+        const std::vector<uint32_t>* mobs = cellList(w.cellMobs, cell);
+        const std::vector<uint32_t>* objs = cellList(w.cellObjs, cell);
+        r.cell = int((mobs ? mobs->size() : 0) + (objs ? objs->size() : 0));   // after the cell's mobs and objs
+    } else if (src.kind == 0x08) r.dist = -1;
+    else if (src.kind == 0x04) r.dist = 0;   // usr's own area
+    return r;
+}
+
+std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t id, bool everyAtom) {
     std::vector<VerbSrcCandidate> out;
     // Does an appearance carry the verb? Memoised per call, since many atoms share an appearance.
     std::unordered_map<uint32_t, bool> memo;
@@ -296,7 +373,7 @@ std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t id) {
         return yes;
     };
     // A /client verb: the client appearance's own section; nothing else can carry its id.
-    if (w.haveClientAppid && carries(w.clientAppid)) { out.push_back({{0x08, 0}, "client"}); return out; }
+    if (w.haveClientAppid && carries(w.clientAppid)) { out.push_back({{0x08, 0}, "client", srcRank(w, {0x08, 0})}); return out; }
     VerbDef e;
     bool haveDef = dict(w, id, e);
     int px = 0, py = 0;
@@ -399,8 +476,8 @@ std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t id) {
             if (!seen.insert({c.kind, c.ref}).second) continue;
             // One entry per NAME, the first one kept. Mobs are listed first, so a mob and an obj of one name collapse to the mob.
             std::string n = appearanceName(w, c.appid);
-            if (!names.insert(n).second) continue;
-            out.push_back({{c.kind, c.ref}, n});
+            if (!names.insert(n).second && !everyAtom) continue;
+            out.push_back({{c.kind, c.ref}, n, srcRank(w, {c.kind, c.ref})});
         }
     return out;
 }
@@ -496,7 +573,7 @@ std::vector<VerbSrcCandidate> verbArgCandidates(const World& w, const VerbArgSpe
     std::stable_sort(mobs.begin(), mobs.end(), byRef);
     std::stable_sort(objs.begin(), objs.end(), byRef);
     for (const auto* list : {&mobs, &objs, &turfs})
-        for (const Cand& c : *list) out.push_back({{c.kind, c.ref}, appearanceName(w, c.appid)});
+        for (const Cand& c : *list) out.push_back({{c.kind, c.ref}, appearanceName(w, c.appid), srcRank(w, {c.kind, c.ref})});
     return out;
 }
 

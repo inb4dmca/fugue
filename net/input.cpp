@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>
+#include <set>
 
 namespace fugue::net {
 using proto::enc::VerbArg;
@@ -15,6 +16,8 @@ constexpr uint32_t kArgAtoms = 0x01 | 0x02 | 0x20;   // mob | obj | turf: a type
 constexpr uint32_t kArgCommandText = 0x10000;
 constexpr uint8_t kFilterContents = 0x08, kFilterWorld = 0x10;   // `in usr`, `in world` (FilterKind on the 0x0011)
 constexpr uint8_t kFilterList = 0x40;   // VerbArgSpec.filterKind for an `in <list>` clause
+// 0x0011 flag 0x02 is `set src = ...` (not `in`); a turf / area src kind.
+constexpr uint8_t kVerbFlagSrcEquals = 0x02, kVerbSrcTurf = 0x03, kVerbSrcArea = 0x04;
 
 std::string lower(std::string s) { for (auto& c : s) c = char(std::tolower((unsigned char)c)); return s; }
 bool ieq(const std::string& a, const std::string& b) { return a.size() == b.size() && lower(a) == lower(b); }
@@ -222,17 +225,24 @@ bool InputModel::spaceCompletion(const std::string& line, std::string& out) cons
         head = verbCommandName(e->name) + line.substr(e->name.size());
     } else {
         if (line.find_first_of(" \t") != std::string::npos) return false;
-        int n = 0;
+        std::set<std::string> names;   // an override shares its verb's name: one completion, not an ambiguous prefix
         for (auto& [id, v] : verbs_) {
             if (v.name.empty() || v.name.size() <= line.size()) continue;
-            if (ieq(verbCommandName(v.name).substr(0, line.size()), line)) { e = &v; n++; }
+            if (ieq(verbCommandName(v.name).substr(0, line.size()), line) && names.insert(v.name).second) e = &v;
         }
-        if (n != 1) return false;
+        if (names.size() != 1) return false;
         head = verbCommandName(e->name);
     }
     size_t filled = 0;
     for (std::string r = rest, nr; !r.empty(); filled++) { nextToken(r, nr); r = nr; }
-    bool quote = filled < e->args.size() && (e->args[filled].typeMask & (kArgText | kArgMessage)) != 0;
+    // Stock ORs the next argument's mask over the verbs of the name (a `set src in ...` one's next word is its src, so it
+    // adds nothing) and types ` "` only for exactly text, message or another text kind: not for null|text or text|num.
+    uint32_t mask = 0;
+    for (auto& [id, v] : verbs_) {
+        if (v.name != e->name || (v.src != 0 && !(v.flags & 0x80) && !(v.flags & kVerbFlagSrcEquals))) continue;
+        if (filled < v.args.size()) mask |= v.args[filled].typeMask;
+    }
+    bool quote = mask == kArgText || mask == kArgMessage || mask == 0x8000 || mask == 0x20000;
     out = head + (quote ? " \"" : " ");
     return true;
 }
@@ -254,9 +264,13 @@ static VerbArg atomArg(const SrcCandidate& c) { VerbArg a; a.tag = 0; a.kind = c
 //   * a backslashed character matches only itself, case-sensitively: `\ ` matches a space, `\b` a lowercase b only.
 //     `\n`, `\t` and `\r` are newline, tab and CR. A lone trailing `\` is ignored.
 //   * if nothing matches, the token is cut at its last backslash and tried again.
-// A whole-name match beats a last-words match, and ties go to the first candidate (verbArgCandidates' order, lowest ref).
-// The candidates are model::verbArgCandidates, never a guess at what is carried. A refusal names the token (refusedAtom).
+// A whole-name match beats a last-words match, then the nearer (SrcCandidate::dist), and ties go to the first candidate
+// (verbArgCandidates' order, lowest ref). The candidates are model::verbArgCandidates, never a guess at what is carried.
+// A refusal names the token (refusedAtom).
 namespace {
+bool ownMob(const SrcCandidate& c) { return c.src.kind == proto::enc::kVerbSrcMob && !c.named; }
+bool isClient(const SrcCandidate& c) { return c.src.kind == proto::enc::kVerbSrcClient; }
+int distOf(const SrcCandidate& c) { return isClient(c) || ownMob(c) ? -1 : c.dist; }
 struct NameChar { char c; bool exact; };
 std::vector<NameChar> namePattern(const std::string& raw) {
     std::vector<NameChar> p;
@@ -286,12 +300,15 @@ bool patternIs(const std::vector<NameChar>& p, const std::string& name, size_t a
 }
 const SrcCandidate* atomForPattern(const std::vector<SrcCandidate>& cands, const std::vector<NameChar>& p) {
     if (p.empty()) return nullptr;
+    const SrcCandidate* best = nullptr;
+    auto take = [&](const SrcCandidate& c) { if (!best || distOf(c) < distOf(*best)) best = &c; };
     for (const SrcCandidate& c : cands)
-        if (patternIs(p, c.name, 0)) return &c;
+        if (patternIs(p, c.name, 0)) take(c);
+    if (best) return best;
     for (const SrcCandidate& c : cands)
         for (size_t k = 1; k < c.name.size(); k++)
-            if (c.name[k - 1] == ' ' && patternIs(p, c.name, k)) return &c;
-    return nullptr;
+            if (c.name[k - 1] == ' ' && patternIs(p, c.name, k)) { take(c); break; }
+    return best;
 }
 }  // namespace
 
@@ -501,6 +518,132 @@ static CommandResult continueVerb(const VerbEntry& e, const VerbSrc& vs, const s
     return r;
 }
 
+// A typed line, as stock DreamSeeker resolves it. Every verb id of the typed name is one match, in id order (the client's
+// verb table, not the order the 0x0011s arrived). A match whose src the line need not name has it at once (implicitSrc);
+// for the others the first word after the name must name it. Each further word gets ONE reading for all the matches:
+// the readings every open match offers for its next slot are gathered in match order, and the first literal (number,
+// text, command text) is taken, else the best-named atom. A match that cannot take that reading drops out. Of the
+// complete matches srcBetter picks one, the earlier keeping a tie.
+namespace {
+constexpr uint32_t kArgTextLike = 0x28804;   // the masks a "..." word, or the last argument's rest of line, fills
+constexpr uint32_t kArgAtomish = 0x1123;     // mob | obj | turf | area | anything: a bare word may name an atom
+struct Reading {
+    enum Kind { Num, Text, Command, Atom, Server, Raw, Fail } kind = Fail;   // Raw: a `ref:` / `num:` word
+    bool rest = false;     // takes the rest of the line
+    SrcCandidate atom;
+    bool whole = true;     // Atom: named by its whole name, not its last words
+};
+struct Match {
+    const VerbEntry* v = nullptr;
+    std::vector<SrcCandidate> named;   // the srcs the line would have to name
+    std::optional<SrcCandidate> src;
+    bool typed = false;                // the src is the first word's
+    bool resolving = false;            // a word went to the server: the rest of the line is parsed once it answers
+    size_t argc = 0;                   // arguments the words filled
+    bool failed = false;
+    std::string failTok, after;        // after: the line after a typed src
+};
+bool sameAtom(const SrcCandidate& a, const SrcCandidate& b) { return a.src.kind == b.src.kind && a.src.ref == b.src.ref; }
+// The src a verb has without a word, in stock's order: the client, usr (a default mob verb), usr's turf or area (a
+// default turf / area verb), else the first atom a `set src = <list>` verb admits (mobs, then objs, by ref).
+std::optional<SrcCandidate> implicitSrc(const VerbEntry& v, const std::vector<SrcCandidate>& cands) {
+    for (const SrcCandidate& c : cands) if (isClient(c)) return c;
+    if (v.src == 0) {
+        for (const SrcCandidate& c : cands) if (ownMob(c)) return c;
+        for (uint8_t k : {kVerbSrcTurf, kVerbSrcArea})
+            for (const SrcCandidate& c : cands) if (c.src.kind == k) return c;
+    }
+    if (!(v.flags & 0x80) && (v.flags & kVerbFlagSrcEquals) && !cands.empty()) return cands.front();
+    return std::nullopt;
+}
+// Stock's compare of two complete matches (a the later): a typed src beats one the line did not name, then the nearer
+// src (SrcCandidate::dist). At one distance off the map, anything beats the client, then anything beats usr, then the
+// earlier in usr.contents wins; in view, the one earlier in its cell's list. The earlier match keeps any other tie.
+bool srcBetter(const Match& a, const Match& b) {
+    if (a.typed != b.typed) return a.typed;
+    const SrcCandidate &sa = *a.src, &sb = *b.src;
+    int da = distOf(sa), db = distOf(sb);
+    if (da != db) return da < db;
+    if (da < 0) {
+        if (isClient(sa) != isClient(sb)) return isClient(sb);
+        if (ownMob(sa) != ownMob(sb)) return ownMob(sb);
+        return sa.carried >= 0 && sb.carried >= 0 && sa.carried < sb.carried;
+    }
+    return sa.cell >= 0 && sb.cell >= 0 && sa.cell < sb.cell;
+}
+bool isNumber(const std::string& s) {
+    char* end = nullptr;
+    std::strtod(s.c_str(), &end);
+    return !s.empty() && end != s.c_str() && !*end;
+}
+void atomReadings(const std::vector<SrcCandidate>& cands, const std::string& raw, std::vector<Reading>& out) {
+    for (const SrcCandidate& c : cands)
+        if (atomTyped({c}, raw)) out.push_back({Reading::Atom, false, c, patternIs(namePattern(raw), c.name, 0)});
+}
+// What word `word` (0 = the first after the name) can be to match m: its src, else its next argument. `out` is shared by
+// every match, so a bare word is the last argument's text only when no match read it otherwise.
+void readingsFor(const Match& m, size_t word, const Token& tok, const InputModel::ArgResolver& atoms, std::vector<Reading>& out) {
+    bool bare = tok.kind == Token::Bare, quoted = tok.kind == Token::Quoted || tok.kind == Token::QuotedRest;
+    if (word == 0 && !m.src) {
+        if (bare) atomReadings(m.named, tok.raw, out);
+        return;
+    }
+    const auto& args = m.v->args;
+    if (m.argc >= args.size()) return;
+    const VerbArgSpec& a = args[m.argc];
+    uint32_t base = a.typeMask & ~kArgNull;
+    uint32_t ref;
+    float n;
+    if (bare && (parseRefArg(tok.raw, ref) || parseNumArg(tok.raw, n))) out.push_back({Reading::Raw});
+    if ((a.typeMask & kArgNum) && bare && isNumber(tok.raw)) out.push_back({Reading::Num});
+    if ((a.typeMask & kArgTextLike) && quoted) out.push_back({Reading::Text, tok.kind == Token::QuotedRest});
+    if (base == kArgCommandText) out.push_back({Reading::Command, true});
+    if (base == 0 && a.filterKind == 0 && bare) out.push_back({Reading::Text});
+    if (bare) {
+        if (resolvesThroughServer(a) || a.filterKind == kFilterWorld) out.push_back({Reading::Server});
+        else if ((a.typeMask & kArgAtomish) && atoms)
+            if (std::optional<std::vector<SrcCandidate>> c = atoms(a)) atomReadings(*c, tok.raw, out);
+    }
+    if (out.empty() && !quoted && m.argc + 1 == args.size() && (base == kArgText || base == kArgMessage || base == 0x8000 || base == 0x20000))
+        out.push_back({Reading::Text, true});
+}
+// The one reading a word gets: the first literal, else the best-named atom (whole names first, then the nearer, the
+// earlier keeping a tie), else a server-resolved argument's word as typed.
+Reading chosenReading(const std::vector<Reading>& rs) {
+    std::vector<Reading> named;
+    bool server = false;
+    for (const Reading& x : rs) {
+        if (x.kind == Reading::Num || x.kind == Reading::Text || x.kind == Reading::Raw) return x;
+        if (x.kind == Reading::Command) return named.empty() ? x : named.front();
+        if (x.kind == Reading::Atom) named.push_back(x);
+        if (x.kind == Reading::Server) server = true;
+    }
+    if (!named.empty()) {
+        std::stable_sort(named.begin(), named.end(), [](const Reading& a, const Reading& b) {
+            if (a.whole != b.whole) return a.whole;
+            return distOf(a.atom) < distOf(b.atom);
+        });
+        return named.front();
+    }
+    return {server ? Reading::Server : Reading::Fail};
+}
+bool takes(const VerbArgSpec& a, const Reading& x, const InputModel::ArgResolver& atoms) {
+    switch (x.kind) {
+        case Reading::Num: return a.typeMask & kArgNum;
+        case Reading::Text: return (a.typeMask & kArgTextLike) || (a.typeMask & ~kArgNull) == 0;
+        case Reading::Command: return a.typeMask & kArgCommandText;
+        case Reading::Server: case Reading::Raw: return true;
+        case Reading::Atom: {
+            if (!(a.typeMask & kArgAtomish) || !atoms) return false;
+            std::optional<std::vector<SrcCandidate>> c = atoms(a);
+            return c && std::any_of(c->begin(), c->end(), [&](const SrcCandidate& o) { return sameAtom(o, x.atom); });
+        }
+        default: return false;
+    }
+}
+bool textNext(const Match& m) { return m.src && m.argc < m.v->args.size() && (m.v->args[m.argc].typeMask & kArgTextLike); }
+}  // namespace
+
 CommandResult InputModel::verbCommand(const std::string& line, bool haveSelf, const SrcResolver& src, const ArgResolver& atoms,
                                       bool promptNull) const {
     CommandResult r;
@@ -509,26 +652,120 @@ CommandResult InputModel::verbCommand(const std::string& line, bool haveSelf, co
     if (!e) { r.error = "Unrecognized or inaccessible verb: " + trim(line).substr(0, trim(line).find_first_of(" \t")); return r; }
     if (!haveSelf) { r.error = "verb " + e->name + ": no own-mob ref yet (no 0x0071 seen) \xe2\x80\x94 the server would drop this"; return r; }
     // Exactly one frame, with the verb's real src: a /client verb goes out as [08][0], an own /mob verb as [02][mob ref],
-    // an /obj verb as [01][obj ref], a /turf verb as [03][(x-1) | (y-1) << 16]. An unresolvable src is a local refusal,
-    // never a guess on the wire. The src comes from model::verbSrcCandidates. A verb that no known atom carries is not
-    // sent. When differently-named atoms carry it, the caller is asked which one.
-    std::vector<SrcCandidate> cands = src ? src(e->id) : std::vector<SrcCandidate>{};
-    if (cands.empty()) { r.error = "verb " + e->name + ": no atom the client knows carries it \xe2\x80\x94 not sent"; return r; }
-    if (cands.size() > 1) {
+    // an /obj verb as [01][obj ref], a /turf verb as [03][(x-1) | (y-1) << 16]. The srcs come from model::verbSrcCandidates,
+    // asked for every id of the name: an override is its own id and an atom carries only its own type's, so each
+    // candidate goes out under the id it carries (a re-run's picked candidate keeps its id).
+    std::vector<Match> ms;
+    bool carried = false;
+    for (const auto& [id, v] : verbs_) {
+        if (v.name != e->name) continue;
+        Match m;
+        m.v = &v;
+        std::vector<SrcCandidate> cands;
+        if (src)
+            for (SrcCandidate c : src(id)) {
+                if (c.verb && *c.verb != id) continue;
+                c.verb = id;
+                cands.push_back(std::move(c));
+            }
+        carried |= !cands.empty();
+        m.src = implicitSrc(v, cands);
+        if (!m.src) m.named = std::move(cands);
+        ms.push_back(std::move(m));
+    }
+    // A known verb that nothing carries: DreamSeeker sends nothing and prints nothing.
+    if (!carried) { r.error = "verb " + e->name + ": no atom the client knows carries it \xe2\x80\x94 not sent"; r.quiet = true; return r; }
+    std::string text = rest;
+    for (size_t word = 0; !text.empty(); word++) {
+        std::string after;
+        Token tok = nextToken(text, after);
+        std::vector<Reading> rs;
+        for (const Match& m : ms) if (!m.failed) readingsFor(m, word, tok, atoms, rs);
+        Reading x = chosenReading(rs);
+        for (Match& m : ms) {
+            if (m.failed) continue;
+            if (word == 0 && !m.src) {
+                auto c = std::find_if(m.named.begin(), m.named.end(), [&](const SrcCandidate& o) { return x.kind == Reading::Atom && sameAtom(o, x.atom); });
+                if (c != m.named.end()) { m.src = *c; m.typed = true; m.after = after; continue; }
+            } else if (m.argc < m.v->args.size() && takes(m.v->args[m.argc], x, atoms)) {
+                m.argc++;
+                m.resolving = x.kind == Reading::Server;
+                continue;
+            }
+            m.failed = true;
+            m.failTok = tok.raw;
+        }
+        if (x.rest || x.kind == Reading::Server) break;
+        text = after;
+    }
+    auto runOn = [&](const Match& m, const SrcCandidate& c, bool picked) {
+        const VerbEntry& v = *m.v;
+        std::string shown = verbCommandName(v.name), args = m.typed ? m.after : rest;
+        bool pn = promptNull;
+        if (picked) { shown += " " + verbCommandName(c.name); pn = true; }
+        if (!rest.empty()) shown += " " + rest;
+        // A leading command_text argument starts one character after the first word and keeps the spacing after that.
+        if (!m.typed && !v.args.empty() && (v.args[0].typeMask & kArgCommandText)) {
+            args = line.substr(std::min(line.size(), line.find_first_not_of(" \t")));
+            size_t w = args.find_first_of(" \t");
+            args = w == std::string::npos ? "" : args.substr(w + 1);
+        }
+        return continueVerb(v, c.src, shown, {}, 0, args, atoms, pn);
+    };
+    auto complete = [&](const Match& m) {
+        if (m.failed || !m.src) return false;
+        if (m.resolving) return true;
+        for (size_t i = m.argc; i < m.v->args.size(); i++)
+            if (!(m.v->args[i].typeMask & kArgNull) || promptNull) return false;
+        return true;
+    };
+    const Match* win = nullptr;
+    for (const Match& m : ms)
+        if (complete(m) && (!win || srcBetter(m, *win))) win = &m;
+    if (win) return runOn(*win, *win->src, false);
+    // None complete. One that only lacks its src lists the atoms that carry it as `<Verb> word`, one row per name, on the
+    // nearest atom of that name (a row runs as the line with its name typed); a single row is taken without asking. One
+    // that lacks an argument asks for it, a text one first, on the match that would win once it is filled.
+    std::vector<const Match*> open;
+    for (const Match& m : ms) if (!m.failed) open.push_back(&m);
+    const Match* ask = nullptr;
+    for (const Match* m : open) {
+        if (!m->src || m->argc >= m->v->args.size()) continue;
+        if (!ask || (textNext(*m) != textNext(*ask) ? textNext(*m) : srcBetter(*m, *ask))) ask = m;
+    }
+    if (ask) return runOn(*ask, *ask->src, false);
+    std::vector<std::pair<const Match*, SrcCandidate>> listed;
+    for (const Match* m : open) {
+        if (m->src) continue;
+        for (const SrcCandidate& c : m->named) {
+            auto row = std::find_if(listed.begin(), listed.end(), [&](const auto& o) { return sameAtom(o.second, c) || o.second.name == c.name; });
+            if (row == listed.end()) listed.push_back({m, c});
+            else if (!sameAtom(row->second, c) && distOf(c) < distOf(row->second)) *row = {m, c};
+        }
+    }
+    if (listed.size() == 1) return runOn(*listed[0].first, listed[0].second, true);
+    if (listed.size() > 1) {
+        std::vector<SrcCandidate> cands;
+        for (const auto& [m, c] : listed) cands.push_back(c);
         r.srcChoice = SrcChoice{verbCommandName(e->name) + " word", line, std::move(cands), promptNull};
         r.error = "verb " + e->name + ": " + std::to_string(r.srcChoice->candidates.size()) + " atoms carry it \xe2\x80\x94 asking which";
         return r;
     }
-    std::string shown = verbCommandName(e->name);
-    if (cands[0].named) { shown += " " + verbCommandName(cands[0].name); promptNull = true; }
-    if (!rest.empty()) shown += " " + rest;
-    // A leading command_text argument starts one character after the first word and keeps the spacing after that.
-    if (!e->args.empty() && (e->args[0].typeMask & kArgCommandText)) {
-        rest = line.substr(std::min(line.size(), line.find_first_not_of(" \t")));
-        size_t w = rest.find_first_of(" \t");
-        rest = w == std::string::npos ? "" : rest.substr(w + 1);
+    if (!open.empty()) { r.error = "verb " + e->name + ": nothing the line could name carries it \xe2\x80\x94 not sent"; r.quiet = true; return r; }
+    // Every match refused a word: per match, `Sorry, the following is not valid: <word>` (unless it repeats the line
+    // before) and its usage. A lone match keeps its own parse's wording.
+    if (ms.size() == 1 && ms[0].src) {
+        CommandResult one = runOn(ms[0], *ms[0].src, false);
+        if (one.frames.empty() && !one.resolve) return one;
     }
-    return continueVerb(*e, cands[0].src, shown, {}, 0, rest, atoms, promptNull);
+    std::string last;
+    for (const Match& m : ms) {
+        if (!r.error.empty()) r.error += "\n";
+        if (m.failTok != last) r.error += "Sorry, the following is not valid: " + m.failTok + "\n";
+        r.error += usageLine(*m.v);
+        last = m.failTok;
+    }
+    return r;
 }
 
 // ================================================================================================================

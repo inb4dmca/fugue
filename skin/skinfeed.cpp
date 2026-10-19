@@ -45,6 +45,7 @@ bool parseWingetBody(ByteSpan body, WingetQuery& q) {
 }
 
 void SkinFeed::loadText(const std::string& text) {
+    if (live_->loadedFrom(text)) { loadErr_.clear(); c_.skinLoads++; return; }
     std::string e = live_->load(text);
     loadErr_ = e;
     if (e.empty()) c_.skinLoads++;
@@ -52,10 +53,15 @@ void SkinFeed::loadText(const std::string& text) {
 
 void SkinFeed::onFrame(uint16_t type, ByteSpan b) {
     if (type == 0x00af) {
-        // [dmf\0][hub\0]?[flags u16]?  An empty body / empty dmf is "no skin": it must not replace one.
+        // [dmf\0][hub\0]?[flags u16]?  An empty body / empty dmf is "no skin": the default skin, unless this session's
+        // 0x00ef named a skin resource.
         size_t p = 0;
         std::string dmf;
-        if (b.empty() || !cstrAt(b, p, dmf) || dmf.empty()) return;
+        if (b.empty() || !cstrAt(b, p, dmf) || dmf.empty()) {
+            if (!textLoaded_ && !resLoaded_ && skinResId_ == 0xffffffffu && !defaultSkin_.empty() && !live_->loadedFrom(defaultSkin_))
+                loadText(defaultSkin_);
+            return;
+        }
         textLoaded_ = true;
         loadText(dmf);
     } else if (type == 0x00ef) {

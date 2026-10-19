@@ -213,6 +213,7 @@ void BrowseHost::open(const QString& name0, const QString& params, const QString
     if (!p.hasTitlebar()) fl |= Qt::FramelessWindowHint;
     if (p.minimizable()) fl |= Qt::WindowMinimizeButtonHint;
     auto* w = new PopupWidget(anchor_, fl);
+    w->setProperty("fugueControl", name);   // a drag over the page names the popup's window id (shell/mapwidget.h targetAt)
     // Until its page says otherwise a popup has no title, not its window id: stock DreamSeeker answers "" for
     // winget(p1, "title"). A browse() `title=` option is applied as the window's own parameter.
     setPopupTitle(w, QString::fromStdString(p.extra.count("title") ? p.extra.at("title") : std::string()).trimmed());

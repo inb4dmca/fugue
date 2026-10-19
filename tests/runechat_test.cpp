@@ -192,9 +192,10 @@ private slots:
     }
 
     // The runechat fades in: animate(alpha 255, 2 ticks) after DD's 1-tick delay, from the alpha-0 appearance.
+    // Line 46 is the chain's Count = 0 frame, which the server sends after the fade has played out and which clears it.
     void runechatFadesIn() {
         model::Session s;
-        ingestUpTo(s, 46);
+        ingestUpTo(s, 45);
         Scene before = assemble(s, kT0 + kTick / 2);  // the chain has not started: the From appearance, alpha 0
         const render::DrawLayer* mt = onPlane(before.dl, 25, 96, 16);
         QVERIFY(!mt || mt->alpha == 0);

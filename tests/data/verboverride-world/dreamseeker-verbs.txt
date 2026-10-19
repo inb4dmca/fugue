@@ -1,0 +1,15 @@
+# Stock DreamSeeker 516.1684 (wine) against stock DreamDaemon 516.1684 running world.dm: each typed line, then the c2s
+# 0x0002 it sent (verb id, src kind:ref, arguments). The mob ref is that session's own; the obj refs are world/New's.
+# The world's log line for each run is shown after it.
+become-plain	verb=6 src=2:self
+become-human	verb=7 src=2:self
+Whisper hi	verb=9 src=2:self args=text:hi	# VERB Whisper-living /mob/living/carbon/human hi
+Poke 5	verb=13 src=2:self args=text:5	# VERB Poke-living /mob/living/carbon/human 5
+Me m	verb=3 src=2:self args=text:m	# VERB Me /mob/living/carbon/human m
+Use-It	listbox "Use-It word": zdesk|mdesk|alamp
+Use-It <- zdesk	verb=16 src=1:0	# VERB UseIt-obj /obj/desk zdesk
+Use-It <- mdesk	verb=16 src=1:2	# VERB UseIt-obj /obj/desk mdesk
+Use-It <- alamp	verb=17 src=1:1	# VERB UseIt-lamp /obj/lamp alamp
+# After the steps above, "Whis" then a space in the command bar became: Whisper "
+# As /mob (become-plain), "Human-Only" (known, carried only by the human) sent nothing and printed nothing; "Zzz" printed
+# Unrecognized or inaccessible verb: Zzz

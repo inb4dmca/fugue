@@ -19,6 +19,7 @@
 #include <atomic>
 #include <deque>
 #include <mutex>
+#include <set>
 #include <string>
 #include <variant>
 #include "net/input.h"
@@ -43,8 +44,8 @@ struct VerbMenuItem {
 };
 Q_DECLARE_METATYPE(VerbMenuItem)
 Q_DECLARE_METATYPE(QList<VerbMenuItem>)
-// One atom of the right-click STACK (every atom on the clicked tile, topmost first): its name and icon as the top-level
-// row, its own eligible verbs as that row's submenu (empty = a disabled row that still names what was clicked).
+// One atom of the right-click STACK (render::hitStack: the atoms under the pixel, topmost first): its name and icon as the
+// top-level row, its own eligible verbs as that row's submenu (empty = a disabled row that still names what was clicked).
 struct MenuAtom {
     QString name;
     QImage icon;
@@ -69,7 +70,7 @@ public:
     void setAudioSpec(std::string spec) { audioSpec_ = std::move(spec); }
 
     // ---- thread-safe: callable from the GUI thread; each only appends to the inbox ----
-    void postMouse(const fugue::shell::MapPointer& p, bool rightClickToWire, const std::string& control = "mapwindow.map");
+    void postMouse(const fugue::shell::MapPointer& p, bool rightClickToWire);
     void postCommand(const QString& line, bool promptNull = false);   // a command-bar line / macro command: verb or `say hi`;
                                                                       // promptNull: a stat-panel verb click (InputModel::verbCommand)
     void postStockMove(int dir);                    // a skin's `.north`...`.southwest`: always the stock move (client.North()...)
@@ -107,24 +108,26 @@ signals:
     void verbStackReady(const QPoint& globalPos, const QList<MenuAtom>& atoms);   // the two-level right-click menu
     void chatLines(const QStringList& html);
     void promptRequested(const fugue::shell::PromptRequest& r);   // an alert()/input() the player must answer, or a missing verb argument
+    void promptWithdrawn(quint32 id, bool alert);                  // the server dropped that alert()/input(): close its dialog unanswered
     void statView(const fugue::shell::StatView& v);               // the INFO control's tab strip + rows (changed)
     void browseHtml(const QString& name, const QString& params, const QString& html);   // a page to show (every 0x0084, every browse_file offer)
     void outputFile(const QString& control, const QString& html);   // output(file, "win.ctl"): the page for that browser control
     void pageCall(const QString& target, const QString& fn, const QStringList& args);   // output(v, "win.ctl:fn") into a page's JS; target = "win.ctl"
     void browseClosed(const QString& name);
     void externalLink(const QString& url);      // link(url) to a web or mail address, for the desktop to open
-    void worldLink(const QString& url);         // link(url) to another world: this client leaves for it
+    void worldAddress(const QString& host, quint16 port);   // a link() moved this window to another server address
     void worldName(const QString& name);
     void frameTiming(qint64 tickNs, qint64 frameNs);   // the world tick and the client frame (0x0037), when they change
     // The main window's icon file (skin/winicon.h): its bytes as the world sent them, or empty for "no icon / not here yet".
     void windowIcon(const QString& name, const QByteArray& bytes);
+    void popupMenus(bool shown);                // client.show_popup_menus (each 0x003b)
     void localOutput(const QString& line);      // a client-side refusal DreamSeeker prints itself (unknown verb, bad argument)
 protected:
     void run() override;
 private:
     fugue::net::SessionEnding runSession(fugue::net::Session& s, bool first, bool afterReboot);
     void noteSessionEnd(const std::string& line);   // stderr and <state dir>/session.log
-    struct MouseJob { fugue::shell::MapPointer p; bool rightClick; std::string control; };
+    struct MouseJob { fugue::shell::MapPointer p; bool rightClick; };
     struct CmdJob { std::string line; bool promptNull = false; };
     struct MoveJob { int dir; };
     struct TopicJob { std::string href; };
@@ -147,5 +150,7 @@ private:
     std::string audioSpec_;
     std::atomic<bool> stop_{false};
     std::atomic<bool> reconnect_{false};
+    std::string linkTarget_;   // host:port a link() asked to join; session thread only
+    std::set<std::string> openPopups_;   // browse() popups open, carried into the next session; session thread only
     std::string sessionLog_;
 };

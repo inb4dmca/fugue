@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-19",
+  "eye": {
+    "x": 4,
+    "y": 4
+  },
+  "frames": 34,
+  "frames_sha256": "dcb8a286b7a53e5896d5f1fd9bf92c84c3afbfa403f0e1b546c24c841e508ce5",
+  "note": "frames.txt = every s2c frame except 0x009f, recorded from a fugue-qt session against stock DD 516.1684 that logged in and stood still past the lamp's creation. dreamseeker-verbs.txt = what STOCK DreamSeeker 516.1684 (wine) did for each typed line in a fresh session against the same world.",
+  "resources": 0,
+  "source": "stock-DD",
+  "world": "fugue-qt/tests/data/verborder-world/world.dm",
+  "world_dmb_sha256": "06b2e355df7dbbaaf9a4c5de27ec688fb2fcf26f338a4ebfd30edb18a82410f1"
+}

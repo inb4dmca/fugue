@@ -177,6 +177,26 @@ private slots:
         QCOMPARE(acc.at(1).at(2).toString(), QString("two"));
         QTRY_VERIFY(!h.busy());
     }
+    // Stock DreamSeeker closes a withdrawn (s2c 0x009d) text input() and alert() with nothing sent, and a queued in-list
+    // prompt withdrawn before it showed never opens.
+    void withdrawnPromptsCloseWithNoOutcome() {
+        QWidget anchor; PromptHost h(&anchor);
+        QSignalSpy acc(&h, &PromptHost::accepted), can(&h, &PromptHost::cancelled);
+        h.present(inputReq(0, 0x84, "")); h.present(inputReq(1, 0x1080, "")); h.present(alertReq(0, {"Yes", "No"}));
+        QCOMPARE(h.queued(), 2);
+        h.withdraw(1, false);
+        QCOMPARE(h.queued(), 1); QCOMPARE(h.currentId(), 0u);
+        h.withdraw(0, true);   // the queued alert, not the open input
+        QCOMPARE(h.queued(), 0); QVERIFY(h.busy());
+        QPointer<QDialog> d = h.current();
+        h.withdraw(0, false);
+        QVERIFY(!h.busy());
+        QTRY_VERIFY(d.isNull());
+        h.present(alertReq(2, {"OK"}));   // non-cancellable, closed all the same
+        h.withdraw(2, true);
+        QVERIFY(!h.busy());
+        QCOMPARE(acc.count(), 0); QCOMPARE(can.count(), 0);
+    }
     // ---------------------------------------------------------------- input forms
     void textSeedsDefaultAndOkReturnsEdit() {
         QWidget anchor; PromptHost h(&anchor);

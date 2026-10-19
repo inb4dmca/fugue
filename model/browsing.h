@@ -40,7 +40,7 @@ bool outputFileControl(const std::string& offerParams, std::string& control);
 // "file=NAME" out of a decoded options string ("" when absent).
 std::string browseFileAlias(const std::string& opts);
 
-struct BrowseFrame { std::string html, params; bool close = false; };
+struct BrowseFrame { std::string html, params; bool close = false; };   // html and params without text-macro markers
 bool parseBrowseFrame(ByteSpan body, BrowseFrame& out);
 
 struct OutputFrame { std::string value, control; };   // value has ONE trailing '\n' removed, NOT url-decoded

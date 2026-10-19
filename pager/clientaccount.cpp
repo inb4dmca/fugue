@@ -6,7 +6,7 @@ namespace fugue::pager {
 
 FugueOptions clientOptions(bool asDreamSeeker) {
     FugueOptions o;
-    o.value = {"connect", "state-dir", "rsc-dir", "screenshot", "after", "size", "account", "identity-file", "audio"};
+    o.value = {"connect", "state-dir", "rsc-dir", "screenshot", "after", "size", "account", "identity-file", "audio", "renderer"};
     o.flag = {"no-pacing", "hub", "help", "help-all"};   // help / help-all: QCommandLineParser::addHelpOption
     o.keepUnknown = !asDreamSeeker;
     return o;

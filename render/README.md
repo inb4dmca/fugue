@@ -19,3 +19,10 @@ Notes:
 - Filters not implemented (alpha, displacement, ripple, wave, and others) are counted in the stats and not drawn.
 - A runtime-icon recipe holding an op this client does not run is refused (logged once) and left invisible rather than guessed.
 - Maptext glyph shapes come from a host rasterizer; positions follow DreamSeeker's layout.
+
+## Scene preparation
+
+`SceneCache` (optional argument of `assembleMapControl` / `assembleSecondaryMap`, one per session thread) keeps parsed
+appearances across frames, keyed by appid and the complete appearance JSON, so a recycled or edited id is a miss. It is an
+LRU bounded by entry count and payload bytes. Placement, resources and hit scenes are rebuilt every frame. `scene_cache`
+replays recorded worlds with and without it and requires identical draw lists, hit scenes and pixels, also under eviction.

@@ -1,0 +1,12 @@
+# Stock DreamSeeker 516 (wine) x stock DreamDaemon 516.1684, world.dme: the right-click menu at one map pixel per row.
+# x,y: the pixel, 0-based from the 480x480 viewport's bottom-left. atoms: the menu's rows, top first.
+# label	x	y	atoms
+A	48	48	Am|As|floor
+B	112	48	Bs|Bm|floor
+C	176	48	floor|Cm|Cs
+D	240	48	floor|Dm|Ds
+E	304	48	Es|Em|floor
+F	368	48	Fs|floor
+G	432	48	Gm|floor
+H	48	112	Hs|floor|Hm
+I	112	112	Is|floor|Im

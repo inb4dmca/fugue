@@ -6,10 +6,11 @@
 // callback the caller supplies.
 //
 // Verb matching (InputModel::matchVerb): a verb is typed under its name with each space written `-`, case-insensitively.
-// Ties go to the lower id. Each argument's typemask decides how it is parsed, and the last text-like argument takes the
-// rest of the line unquoted. The verb's src gives
-// the src-kind, and exactly one frame is sent with it. No verb is ever chosen by its argument shape: movement is the
-// stock move command (stockMoveFrame) or whatever verb a macro names. Mouse subscription flags are the 0x003b bits.
+// Several verbs can share a name (an override, or distinct verbs on different owners); verbCommand resolves the line
+// over all of them, word by word, as stock DreamSeeker does (input.cpp). Each argument's typemask decides how
+// it is parsed, and the last text-like argument takes the rest of the line unquoted. The verb's src gives the src-kind,
+// and exactly one frame is sent with it. Movement is the stock move command (stockMoveFrame) or whatever verb a macro
+// names. Mouse subscription flags are the 0x003b bits.
 #pragma once
 #include <cstdint>
 #include <deque>
@@ -33,15 +34,24 @@ struct VerbEntry {
 
 constexpr uint32_t kMouseFlagClick = 0x00000004, kMouseFlagDblClick = 0x00000008, kMouseFlagUp = 0x00200000,
                    kMouseFlagDown = 0x00400000, kMouseFlagDrop = 0x00800000, kMouseFlagDrag = 0x01000000,
-                   kMouseFlagExtra = 0x80000000;
+                   kMouseFlagHover = 0x02000000, kMouseFlagNoPopupMenus = 0x10000000, kMouseFlagExtra = 0x80000000;
+// kMouseFlagHover: client/MouseEntered, MouseExited or MouseMove.
 // The second flags word (present iff kMouseFlagExtra): client/MouseMove 0x01, client/MouseWheel 0x02.
-constexpr uint32_t kMouseExtraWheel = 0x00000002;
+constexpr uint32_t kMouseExtraMove = 0x00000001, kMouseExtraWheel = 0x00000002;
 
 struct FrameOut { uint16_t type = 0x0002; Bytes body; };
 // A verb's src as the wire carries it: [kind][ref u32] (0x08 client / ref 0, 0x02 mob, 0x01 obj, 0x03 turf cell).
 struct VerbSrc { uint8_t kind = proto::enc::kVerbSrcMob; uint32_t ref = 0; };
-// One atom a verb could run on (model::verbSrcCandidates) and the name DreamSeeker lists it under.
-struct SrcCandidate { VerbSrc src; std::string name; bool named = false; };
+// One atom a verb could run on (model::verbSrcCandidates) and the name DreamSeeker lists it under. `verb` is the id
+// that atom carries, set by verbCommand: an override (/mob/living/whisper) is its own verb id under the same name.
+// dist, cell and carried are the model's src rank (model::VerbSrcRank); the client and usr count as -1 whatever dist says.
+struct SrcCandidate {
+    VerbSrc src;
+    std::string name;
+    bool named = false;
+    std::optional<uint16_t> verb = std::nullopt;
+    int dist = 0, cell = -1, carried = -1;
+};
 // A verb whose command line ran out before its arguments did. DreamSeeker does not refuse such a line: it opens a dialog
 // for the argument and, on OK, sends the verb with that value as the argument verbatim. The frame is built by
 // completeArg, never by re-parsing a line.
@@ -133,17 +143,24 @@ public:
     proto::enc::MouseHooks hooks() const;
     // The world declares client/MouseWheel: stock sends every wheel notch over the map, whatever is under it.
     bool clientWheel() const { return extra_ & kMouseExtraWheel; }
+    // client.show_popup_menus; DreamDaemon resends 0x003b whenever it changes.
+    bool showPopupMenus() const { return !(flags_ & kMouseFlagNoPopupMenus); }
+    // The world declares a client hover proc: stock reports every change of the atom under the pointer (render::HoverTracker).
+    bool clientHover() const { return flags_ & kMouseFlagHover; }
+    // The world declares client/MouseMove: stock also reports every pointer step over any atom.
+    bool clientMove() const { return extra_ & kMouseExtraMove; }
 
     const std::map<uint16_t, VerbEntry>& verbs() const { return verbs_; }
     const VerbEntry* verbByName(const std::string& name) const;       // case-insensitive exact
     // The verb a command line names, and the rest of the line in `rest`. *firstWord: named by the first word.
     const VerbEntry* matchVerb(const std::string& line, std::string& rest, bool* firstWord = nullptr) const;
     // DreamSeeker's command-bar completion for a space typed at the end of `line`: true + the bar's new text (space
-    // included; ` "` when the next argument is text), false to type a plain space.
+    // included; ` "` when the next argument of every verb of that name is non-nullable text), false to type a plain space.
     bool spaceCompletion(const std::string& line, std::string& out) const;
 
-    // The verb's candidate srcs (model::verbSrcCandidates). None: the line is refused locally and nothing is sent.
-    // One: it goes out on that src. Several: `srcChoice` (DreamSeeker asks).
+    // The verb's candidate srcs (model::verbSrcCandidates), asked for every verb id of the typed name. None: nothing is
+    // sent and nothing shown. Otherwise one id and src is picked (input.cpp, srcBetter) and goes out under the id it
+    // carries, or the player is asked which (`srcChoice`) when only atoms the line would have to name carry it.
     using SrcResolver = std::function<std::vector<SrcCandidate>(uint16_t verbId)>;
     // The atoms a typed atom argument may name (model::verbArgCandidates), or nullopt for an argument DreamSeeker does
     // not resolve itself (text, num, `in world`, a runtime list). A token names a candidate by its whole name or its

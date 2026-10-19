@@ -10,7 +10,14 @@
 //     is the same as no flag (the named-property arm). Only winexists() adds a flag byte. A wildcard control (* ?) is
 //     not answerable by winexists. A browse() popup answers MAIN once a skin is loaded (a name the skin declares answers
 //     that control's type instead), and even with no skin once the hold's deadline passes (liveskin.h setPopups).
-//   * the skin text wins over the skin resource: only a non-empty 0x00af dmf replaces the skin.
+//   * the skin text wins over the skin resource. A 0x00af with an empty body or an empty dmf is "this world has no
+//     skin" (stock applies a null skin there): the default skin (setDefaultSkin), unless the 0x00ef before it named a
+//     skin resource (inferred: stock never sends that pair, and its 0x00af handler applies a null skin regardless).
+//   * the skin a session brings (the world's, or the default one when it sends none) is compared with the loaded one.
+//     The same skin, sent again by a later session (a reconnect, a reboot, a link() to any world), changes nothing:
+//     stock DreamSeeker keeps every control's state, runtime window and macro across it, so vg's credits keep rolling.
+//     A different skin replaces all of it, so a link() from a world with a skin to one without brings the default skin
+//     back, and the default skin already loaded is not reloaded (nor signalled).
 //   * the disclosure answer: winget(src, null, "fugue-version") answers kFugueVersionValue at once, with no skin needed.
 //     It is the one winget this client answers that stock DreamSeeker does not. Stock answers the empty string for that
 //     query, for an unknown control's type, and for wildcards asking for it. A mixed list names it with an empty value
@@ -61,6 +68,8 @@ public:
     void setBrowseNames(std::set<std::string> names) { live_->setPopups(std::move(names)); }
     // What winget(src, null, "fugue-version") answers (see the header). Default kFugueVersionValue.
     void setClientVersion(std::string v) { version_ = std::move(v); }
+    // The skin for a world that sends none (app/defaultskin.h). Empty = such a world leaves the loaded skin alone.
+    void setDefaultSkin(std::string dmf) { defaultSkin_ = std::move(dmf); }
 
     // Answer now when ready, else hold. `reply` is invoked synchronously for an immediate answer.
     void submitWinget(const WingetQuery& q, int64_t nowMs, const Reply& reply);
@@ -86,6 +95,7 @@ private:
     bool textLoaded_ = false, resLoaded_ = false;
     std::string loadErr_;
     std::string version_ = kFugueVersionValue;
+    std::string defaultSkin_;
     Counters c_;
 };
 

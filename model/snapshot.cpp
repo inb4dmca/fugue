@@ -58,6 +58,7 @@ CellGrid Session::cells() const {
     const World& w = w_;
     bool err = false;
     int cw = 0, ch = 0, ox = 0, oy = 0, vz = 1;
+    bool haveZ = false;
     std::vector<uint32_t> cells;
     auto& mv = st_.mapView;
     auto& g2v = st_.get<proto::g2::MapView>();
@@ -74,6 +75,7 @@ CellGrid Session::cells() const {
             }
         ox = g2v.originX + 1; oy = g2v.originY + 1;
         vz = int(g2v.z) + 1;
+        haveZ = true;
     } else if (!w.grid.have) {
         err = true;
     } else {
@@ -108,7 +110,7 @@ CellGrid Session::cells() const {
     }
     if (err) { cw = ch = ox = oy = 0; cells.clear(); }
     CellGrid g;
-    g.err = err; g.w = cw; g.h = ch; g.originX = ox; g.originY = oy; g.viewZ = vz;
+    g.err = err; g.w = cw; g.h = ch; g.originX = ox; g.originY = oy; g.viewZ = vz; g.haveZ = haveZ;
     g.appids = std::move(cells);
     return g;
 }

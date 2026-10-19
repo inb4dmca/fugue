@@ -31,6 +31,7 @@ fugue_shell_test(shell_browse   browse_test)      # browse(): popups, loopback o
 fugue_shell_test(shell_prompt   prompt_test)      # alert()/input() PromptHost, the INFO control's StatPanelWidget, paste in every key-taking widget
 fugue_shell_test(shell_ttmetrics ttmetrics_test)  # MeasureText's TrueType metrics
 fugue_shell_test(shell_skinfont skinfont_test)    # skin control fonts: stock defaults, .dmf and winset font-family/size/style
+fugue_shell_test(shell_serverkey serverkey_test)  # the per-server macro key across a link() to the same server
 if(TARGET browse_test)
   target_sources(browse_test PRIVATE ${PROJECT_SOURCE_DIR}/app/renderthread.cpp)   # the map-remount test drives the real render thread
 endif()

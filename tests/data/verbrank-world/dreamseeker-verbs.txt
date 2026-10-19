@@ -1,0 +1,91 @@
+# Stock DreamSeeker 516.1684 (wine) against stock DreamDaemon 516.1684 running world.dm, the player at 4,4 (box 5,4,
+# crate 4,5, npc 3,4, cat 4,3, a pebble carried). Each typed line, then the c2s 0x0002 it sent (verb id, src kind:ref,
+# arguments), the listbox it opened ("<- x" picks x), or the dialog it asked. `self` is the own mob (ref 2) and its
+# name; a client src went out with a session ref, not 0. The world log line follows each send. Spin, Flip, Rub, Roll,
+# Calc 5 and Zap 5 sent the same in a second session, which also typed Kick box, Wave cat and Fold box 5.
+Ping	verb=34 src=2:self	# VERB Ping mob
+Grab	verb=35 src=2:self	# VERB Grab mob
+Tap	verb=18 src=8:client	# VERB Tap client
+Nudge	verb=37 src=2:self	# VERB Nudge self
+Stomp	verb=38 src=2:self	# VERB Stomp mob
+Shout	verb=39 src=2:self	# VERB Shout mob
+Dig	verb=20 src=8:client	# VERB Dig client
+Glow	verb=21 src=8:client	# VERB Glow client
+Toss	verb=22 src=8:client	# VERB Toss client
+Drop	verb=42 src=2:self	# VERB Drop mob
+Calc 5	verb=19 src=8:client args=num:5	# VERB Calc client 5
+Calc hi	verb=41 src=2:self args=text:hi	# VERB Calc mob hi
+Zap 5	verb=23 src=8:client args=text:5	# VERB Zap client 5
+Zap hi	verb=23 src=8:client args=text:hi	# VERB Zap client hi
+Hop x	verb=44 src=2:self args=text:x	# VERB Hop mob x
+Bow	verb=45 src=2:self	# VERB Bow mob
+Bow x	verb=25 src=8:client args=text:x	# VERB Bow client x
+Nod	verb=26 src=8:client	# VERB Nod client
+Nod x	verb=46 src=2:self args=text:x	# VERB Nod mob x
+Spin	verb=4 src=3:196611	# VERB Spin turf 4,4
+Flip	verb=5 src=3:196611	# VERB Flip turf 4,4
+Roll	verb=13 src=4:0	# VERB Roll area
+Rub	verb=6 src=3:196611	# VERB Rub turf 4,4
+Lick	verb=77 src=1:0	# VERB Lick box
+Sniff	verb=27 src=8:client	# VERB Sniff client
+Duo	verb=48 src=2:self	# VERB Duo b (DreamDaemon sent only duo_b's id)
+Trio	verb=29 src=8:client	# VERB Trio b (DreamDaemon sent only trio_b's id)
+Yell hi	verb=49 src=2:self args=text:hi	# VERB Yell self hi
+Hum	verb=51 src=2:self	# VERB Hum self
+Clap	verb=30 src=8:client	# VERB Clap client
+Purr x	verb=53 src=2:self args=text:x	# VERB Purr mob x
+Moo 5	verb=54 src=2:self args=num:5	# VERB Moo mob 5
+Quack 5	verb=14 src=4:0 args=num:5	# VERB Quack area 5
+Quack hi	verb=55 src=2:self args=text:hi	# VERB Quack mob hi
+Oink 5	verb=15 src=4:0 args=num:5	# VERB Oink area 5
+Neigh 5	verb=7 src=3:196611 args=num:5	# VERB Neigh turf 5
+Baa 5	verb=8 src=3:196611 args=text:5	# VERB Baa turf 5
+Baa hi	verb=8 src=3:196611 args=text:hi	# VERB Baa turf hi
+Cluck 5	verb=58 src=2:self args=text:5	# VERB Cluck mob 5
+Tweet 5	verb=9 src=3:196611 args=text:5	# VERB Tweet turf 5
+Tweet hi	verb=9 src=3:196611 args=text:hi	# VERB Tweet turf hi
+Mew	verb=59 src=2:self args=null	# VERB Mew
+Knock	listbox "Knock word": box|crate
+Knock <- crate	verb=81 src=1:1	# VERB Knock crate the crate
+Use-It	listbox "Use-It word": box|pebble|crate
+Use-It <- pebble	verb=68 src=1:2	# VERB UseIt obj the pebble
+Wave	listbox "Wave word": npc|cat|self
+Wave <- cat	verb=36 src=2:1	# VERB Wave the cat
+Pack	listbox "Pack word": box|pebble
+Pack <- pebble	verb=85 src=1:2	# VERB Pack item the pebble
+Kick	listbox "Kick word": floor|box
+Kick <- box	verb=72 src=1:0	# VERB Kick box the box
+Look	listbox "Look word": npc|cat|self
+Look <- cat	verb=40 src=2:1	# VERB Look mob the cat
+Pet	listbox "Pet word": npc|box
+Pet <- box	verb=74 src=1:0	# VERB Pet box the box
+Hail	listbox "Hail word": npc|cat
+Hail <- cat	verb=65 src=2:1	# VERB Hail cat the cat
+Kick box	verb=72 src=1:0	# VERB Kick box the box
+Wave cat	verb=36 src=2:1	# VERB Wave the cat
+Fold box 5	verb=73 src=1:0 args=num:5	# VERB Fold box 5
+Hop	dialog "Hop \"text\""
+Yell	dialog "Yell \"text\""
+# Not matched: "Calc" (client num, mob text) sent verb=41 src=2:self args=text:\" (a backslash, a quote, a space) with no
+# dialog, and "Zap" (mob num, client text) verb=23 src=8:client the same text; fugue-qt asks for that verb's text.
+# "Beam hi" printed "Sorry, the following is not valid: hi" + "usage: Beam mob \"text\""; fugue-qt's usage has no "mob".
+# The command bar after typing the left side and a space:
+Pin	completes "Ping "
+Cal	completes "Calc "
+Za	completes "Zap "
+Kno	completes "Knock "
+Fol	completes "Fold "
+Calc	completes "Calc "
+Zap	completes "Zap "
+Hop	completes "Hop \""
+Bow	completes "Bow \""
+Nod	completes "Nod \""
+Quack	completes "Quack "
+Baa	completes "Baa "
+Yel	completes "Yell \""
+Wav	completes "Wave "
+Bea	completes "Beam "
+Purr	completes "Purr "
+Clap	completes "Clap "
+Cluc	completes "Cluck "
+Mew	completes "Mew "

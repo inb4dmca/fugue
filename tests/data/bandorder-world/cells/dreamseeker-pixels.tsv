@@ -1,0 +1,9 @@
+# Stock DreamSeeker 516 (wine, hardware mode) x stock DreamDaemon 516.1684, world.dme: the colour drawn at one map pixel per row.
+# x,y: the pixel, 0-based from the 480x480 viewport's bottom-left. rgb: what DreamSeeker drew there.
+# label	x	y	rgb
+ns_north_first	80	141	0000ff
+ns_south_first	144	141	0000ff
+we_east_first	108	335	00ffff
+we_west_first	172	335	00ffff
+ov_east	300	335	00ffff
+ov_west	372	335	0000ff

@@ -11,6 +11,7 @@
 //   input back 0x0062 [kind u8][value][id u32]         kind 2 [cstring] DM-escaped text (prompt.cpp), kind 1 [f32] number,
 //                                                      kind 0 [00][ref u32] null, kind 0 [value kind u8][value u32] the
 //                                                      server's own value (in list)
+//   withdrawn  s2c 0x009d [id u32][kind u8]          kind 0 an input(), 1 an alert(): its proc is gone; the dialog closes
 //   in-list pick   0x0063 [choice\0][id u32][u32 0]  -> s2c 0x0039 [kind u8][value u32][u32 0] -> 0x0062 kind 0
 //                                                      (Prompt::resolvesThroughServer)
 //
@@ -30,7 +31,7 @@ constexpr uint32_t kInputText = 0x0004, kInputNum = 0x0008, kInputNull = 0x0080,
                    kInputAnything = 0x1000, kInputColor = 0x020000;
 constexpr uint8_t kInputFilterList = 0x40;
 constexpr uint16_t kAlertMsg = 0x0092, kInputMsg = 0x0062, kPendingInputExpansionMsg = 0x0064, kExpansionReplyMsg = 0x003f;
-constexpr uint16_t kInputResolveMsg = 0x0063, kInputResolveReplyMsg = 0x0039;
+constexpr uint16_t kInputResolveMsg = 0x0063, kInputResolveReplyMsg = 0x0039, kPromptWithdrawMsg = 0x009d;
 
 struct Prompt {
     enum Kind { Alert, Input } kind = Alert;
@@ -80,12 +81,20 @@ bool inputChoiceMatches(const std::string& choice, const std::string& def);
 // 0x003f reply -> choices as stock shows them: net::unescapeVerbText, then marker-free.
 bool parseExpansionReply(ByteSpan body, std::vector<std::string>& out);
 
+// s2c 0x009d: the server dropped a pending prompt (its proc ended, e.g. its src was deleted) and nothing will read an
+// answer. Kinds other than 0 and 1 withdraw something other than a prompt and return false.
+struct PromptWithdrawal { uint32_t id = 0; bool alert = false; };
+bool parsePromptWithdrawal(ByteSpan body, PromptWithdrawal& out);
+
 // Reply encoders: the BODY of the c2s frame (type is kAlertMsg / kInputMsg).
 Bytes encodeAlertReply(uint32_t id, const std::string& answer);
 Bytes encodeInputText(uint32_t id, const std::string& text);
 Bytes encodeInputNum(uint32_t id, float n);
 Bytes encodeInputNull(uint32_t id);           // [00][null ref: 00 ffff0000][id], the stock cancel
-Bytes encodePendingInputExpansionRequest();   // nine zero bytes
+// The c2s 0x0064 asking for an in-list input()'s choices: [00][id u32][u32 0], naming the prompt. Prompt ids are
+// server-wide, and DreamDaemon answers with whichever prompt holds that id, any player's: an empty list for a non-list
+// prompt, and no reply at all for an id nothing holds.
+Bytes encodePendingInputExpansionRequest(uint32_t id);
 // The c2s 0x0063 that asks the server for the list member a choice names (Prompt::resolvesThroughServer):
 // [inputChoiceText(choice)\0][id u32][u32 0].
 Bytes encodeInputResolveRequest(uint32_t id, const std::string& choice);
@@ -103,16 +112,25 @@ struct PromptReply { uint16_t type = 0; Bytes body; };
 class PromptBook {
 public:
     // Feeds an s2c frame. Returns the newly pended prompt (0x0092/0x0062), or nullptr. A 0x003f with a prompt waiting
-    // for its list attaches the choices and returns that prompt.
-    const Prompt* onFrame(uint16_t type, ByteSpan body);
+    // for its list attaches the choices to the oldest such prompt and returns it; a 0x009d withdraws. A new prompt
+    // replaces a pending one of the same kind and id, since the server holds an id for one prompt at a time; `replaced`
+    // then reports it.
+    const Prompt* onFrame(uint16_t type, ByteSpan body, bool* replaced = nullptr);
+    // Retires the prompt a 0x009d names; true when one was pending. Its id stays refused (answer* and cancel return an
+    // empty reply) until the server asks with it again.
+    bool withdraw(const PromptWithdrawal& w);
+    bool withdrawn(uint32_t id, bool alert) const;
+    // A 0x003f answering the 0x0064 for prompt `id`: attaches its choices (none when malformed) and returns the prompt,
+    // or nullptr when `id` is not waiting for choices.
+    const Prompt* attachChoices(uint32_t id, ByteSpan body);
     const std::deque<Prompt>& pending() const { return pending_; }
     const Prompt* find(uint32_t id) const;
+    const Prompt* find(uint32_t id, bool alert) const;   // alert() and input() ids are matched apart, as 0x009d names them
     // The in-list prompt (if any) that has asked for choices and not yet had them: the session sends 0x0064 for it.
     const Prompt* needsChoices() const;
-    void giveUpOnChoices(uint32_t id);   // fall back to typed text (timeout)
 
     // Each retires the prompt and returns the frame to send. Unknown ids still answer: a double click is harmless to
-    // the server, and an out-of-order reply must still reach a parked proc.
+    // the server, and an out-of-order reply must still reach a parked proc. A withdrawn id gets an empty reply (type 0).
     PromptReply answerAlert(uint32_t id, const std::string& button);
     // For a prompt that resolvesThroughServer() the reply is the 0x0063 (type kInputResolveMsg), and the input() is not
     // answered yet: the caller feeds the s2c 0x0039 to resolvedInput() and sends that. The 0x0039 names no request, so
@@ -123,10 +141,12 @@ public:
     static PromptReply resolvedInput(uint32_t id, uint8_t kind, uint32_t value);
     // Null for a cancellable input (or an unknown id). For a prompt stock DreamSeeker cannot dismiss (Prompt::cancellable)
     // it returns an EMPTY reply (type 0, nothing to send) and the prompt stays pending, since the world's proc waits.
+    // A withdrawn id also gets an empty reply.
     PromptReply cancel(uint32_t id);
 private:
-    void retire(uint32_t id);
+    void retire(uint32_t id, bool alert);
     std::deque<Prompt> pending_;
+    std::deque<PromptWithdrawal> withdrawn_;   // newest last, kCap kept
     uint64_t total_ = 0;
     static constexpr size_t kCap = 32;
 };

@@ -1,0 +1,75 @@
+# Stock DreamSeeker 516 (wine) x stock DreamDaemon 516.1684, world.dme: the right-click menu at one map pixel per row.
+# x,y: the pixel, 0-based from the 480x480 viewport's bottom-left. atoms: the menu's rows, top first. verbs: each atom's
+# submenu, atoms separated by '|', verbs by ','; '-' where that submenu was not opened.
+# label	x	y	atoms	verbs
+A_item	80	79	jumpsuit|i_clothing|floor	Inspect Close,Examine,Look,Toggle Suit Sensors|Examine|Examine,Look
+A_margin	67	79	jumpsuit|i_clothing|floor	-|-|-
+B_item	144	79	gloves|i_gloves|floor	Inspect Close,Examine,Look,Toggle Suit Sensors|Examine|-
+B_margin	131	79	gloves|i_gloves|floor	-|-|-
+C_slot	208	79	i_shoes|floor	-|-
+D_item	272	79	button|i_belt|floor	Examine|Examine|-
+D_margin	259	79	button|i_belt|floor	-|-|-
+E	336	79	e_second|e_first|floor	-|-|-
+F13_out	388	79	floor	-
+F13_clear	402	79	shifted|floor	-|-
+F13_ink	412	79	shifted|floor	-|-
+F14_ink	420	79	shifted|floor	-|-
+F14_clear	428	79	shifted|floor	Inspect Close,Examine,Look,Toggle Suit Sensors|-
+G	80	143	g_slot|floor	Examine|-
+G_edge	66	157	g_slot|floor	-|-
+clicker	240	400	floor	-
+under	208	143	floor|under	-
+mo2_margin	259	143	mo2|floor	-
+s_unnamed	336	143	floor	-
+s_space	16	208	 |floor	-
+s_improper	80	208	floor	-
+s_p0	208	208	s_p0|m_p0_l5|floor|m_p0_l1	-
+s_m50	272	208	floor|m_m40|s_m50|m_m60	-
+s_p24	336	208	m_p30|s_p24|m_p24_l30|floor	-
+s_invis	400	208	floor	-
+s_nostate	176	336	s_nostate|floor	-
+s_noicon1	240	336	s_noicon1|floor	-
+s_blank	272	432	s_blank|floor	-
+s_blank2	336	432	s_blank2|floor	-
+s_noicon	400	432	s_noicon|floor	-
+s_ov_over	80	432	s_ov|floor	-
+s_img_over	208	432	s_img|floor	-
+s_ov64_gap	80	16	floor	-
+s_ov64_over	112	16	s_ov64|floor	-
+m_unnamed	48	304	floor	-
+m_space	112	304	 |floor	-
+m_improper	176	304	floor	-
+m_blank	240	304	m_blank|floor	-
+m_blank2	304	304	m_blank2|floor	-
+m_noicon	368	304	m_noicon|floor	-
+m_noicon1	48	336	m_noicon1|floor	-
+m_nostate	112	336	m_nostate|floor	-
+px16_over	68	368	m_px16|floor	-
+px16_loc_clear	36	368	floor	-
+px16_loc_ink	60	368	m_px16|floor	-
+py16_in	400	324	m_py16|floor	-
+py16_out	400	292	floor	-
+m_invis	144	368	floor	-
+m_alpha0	208	368	m_alpha0|floor	-
+mo_margin	259	368	m_mo1|m_mo2|floor	-
+mo_ink	272	368	m_mo1|m_mo2|floor	-
+m_ov_over	368	368	m_ov|floor	-
+m_img_over	432	368	m_img|floor	-
+m_ov64_gap	336	400	floor	-
+m_ov64_over	368	400	m_ov64|floor	-
+mob_margin	226	226	player|floor	-
+mob_ink	240	240	player|floor	-
+s_ovonly_own	80	272	s_ovonly|floor	-
+s_ovonly_ov	112	272	s_ovonly|floor	-
+m_eff	176	272	m_eff|s_eff|floor	-
+s_bg	240	272	floor|s_bg	-
+m_bg	304	272	floor|m_bg	-
+s_e1	368	272	s_e1|m_e2|floor	-
+s_bg1	432	272	floor|s_bg1|m_bg2	-
+s_bgl	48	464	s_l1|floor|s_bgl	-
+s_4999	112	464	s_4999|m_5000|floor	-
+m_5000h	176	464	m_5000h|s_l1b|floor	-
+m_20000	240	464	m_20000|floor	-
+m_20000h	304	464	floor|m_20000h	-
+s_neg	368	464	s_neg|floor|m_neg	-
+s_huge	432	464	m_huge|floor|s_huge	-

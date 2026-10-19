@@ -196,6 +196,22 @@ private slots:
         QCOMPARE(QString::fromStdString(reconnectStep(SessionEnding{}, false, false).message), QString("Connection failed."));
 
         QCOMPARE(reconnectStep(kicked, false, true).delayMs, 0);   // .reconnect works after any ending
+
+        // A link() joins its target; when that join's handshake fails (vg's world is rebooting), it is
+        // retried once 10 s later. With no server there at all, it is not.
+        SessionEnding linkJoin;
+        linkJoin.connected = linkJoin.afterLink = true;
+        r = reconnectStep(linkJoin, false, false);
+        QCOMPARE(r.delayMs, 10000);
+        QVERIFY(!r.sameConnection);
+        QCOMPARE(QString::fromStdString(r.message),
+                 QString("Connection failed during handshake. (code 0: no/unknown reason)\nReconnecting in 10 seconds..."));
+        SessionEnding linkNoServer;
+        linkNoServer.afterLink = true;
+        QCOMPARE(reconnectStep(linkNoServer, false, false).delayMs, -1);
+        SessionEnding linkRefused = linkJoin;
+        linkRefused.refused = true;
+        QCOMPARE(reconnectStep(linkRefused, false, false).delayMs, -1);
     }
 };
 

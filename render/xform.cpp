@@ -88,6 +88,8 @@ Mat recompose(const Decomposed& s) {
 
 }  // namespace
 
+bool invertMat(const Mat& m, Mat& out) { return invert(m, out); }
+
 Mat matMul(const Mat& m, const Mat& n) {
     return Mat{m.a * n.a + m.b * n.d,
                m.a * n.b + m.b * n.e,

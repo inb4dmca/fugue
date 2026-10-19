@@ -1,0 +1,18 @@
+# Stock DreamSeeker 516.1684 (wine) against stock DreamDaemon 516.1684 running world.dm, the player (mob 2) at 6,6 and
+# the placements in world.dm. Each typed line, then the c2s 0x0002 it sent (verb id, src kind:ref, arguments). `self` is
+# the own mob. The world log line follows.
+Buzz	verb=1 src=1:1	# VERB Buzz near 7,6
+Hum	verb=2 src=1:2	# VERB Hum 6,9
+Tap pad	verb=4 src=1:5	# VERB Tap b 6,7
+Tap	verb=4 src=1:5	# VERB Tap b 6,7
+Ring	verb=6 src=1:7	# VERB Ring b 5,5
+Bell	verb=8 src=1:9	# VERB Bell b 8,8
+Gong	verb=9 src=1:11	# VERB Gong a 4,8
+Ping	verb=12 src=1:13	# VERB Ping b 10,6 -96 128
+Purr	verb=13 src=1:14	# VERB Purr a 8,6
+Hiss	verb=16 src=1:17	# VERB Hiss b 6,8 -16
+Toss	verb=18 src=1:25	# VERB Toss b
+aim pad	verb=25 src=2:self args=obj:5	# VERB Aim /obj/tapb 6,7
+Zing	verb=19 src=1:19	# VERB Zing a 8,7
+Clap	verb=22 src=1:21	# VERB Clap b 8,4
+Flip	verb=24 src=1:23	# VERB Flip b

@@ -74,6 +74,7 @@ public:
     // skin stays). Buffered pre-skin winsets are replayed.
     std::string load(const std::string& dmf);
     bool loaded() const;
+    bool loadedFrom(const std::string& dmf) const;   // the loaded skin was parsed from exactly this text
     // True once a skin AND a real client size are known: the point at which a winget can be answered from a
     // laid-out tree rather than held ("not yet" is not "no").
     bool ready() const;
@@ -96,6 +97,11 @@ public:
     bool setSplitter(const std::string& path, double pct);
     // winexists(): the control's TYPE, "" when there is no such control/window/popup.
     std::string wingetType(const std::string& control) const;
+    // Whether output() text sent to this control prints in the chat (model::Session::setTextTarget). Stock DreamSeeker
+    // prints it only into an OUTPUT control: not into a BROWSER, LABEL, MAP or window, nor a control that does not exist
+    // (a winclone'd window, which fugue-qt does not make). With no skin loaded yet, everything prints. No winexists()
+    // side effect.
+    bool printsOutput(const std::string& control) const;
     // The default MAP control's `style` (what a winset last set, else the .dmf's). Stock lays out MeasureText() with
     // this sheet: MeasureText(t, null, w) after `winset map style=S` answers MeasureText(t, S, w) (render/dsmaptext.h).
     // The is-default map, else the first map; "" with no skin or no map. A text-color the control sets (not "none") leads
@@ -104,6 +110,11 @@ public:
     // The MAP controls a winset `parent=` created (SkinSnapshot::runtime), by name: the secondary maps the session thread
     // assembles a scene for (render/scene.h assembleSecondaryMap).
     std::vector<std::string> runtimeMaps() const;
+    // The default MAP control's "window.elem": the is-default one, else the first; "" with no skin or no map.
+    std::string defaultMapId() const;
+    // Every MAP control but the default one, by the name a screen_loc prefix uses: the .dmf's other MAPs (their elem
+    // name) and runtimeMaps(). The secondary maps the session thread assembles.
+    std::vector<std::string> secondaryMaps() const;
 
     // winget(client, null or "", params): the client-wide ("special") wingets, answered as stock DreamSeeker 516
     // answers them (the table is in liveskin.cpp kGlobalParams). Which name reads the windows,
@@ -185,6 +196,7 @@ private:
     bool setFocusLocked(const std::string& target, bool on);
     void uncheckSiblingsLocked(const std::string& target);
     bool wingetLocked(const std::string& control, const std::string& param, std::string& out) const;
+    std::string defaultMapIdLocked() const;
     bool controlFocusLocked(const std::string& id, const std::string& param, std::string& out) const;
     bool buttonUncheckedLocked(const std::string& id, const std::string& param, std::string& out) const;
     Menu menuLocked() const;
@@ -204,6 +216,7 @@ private:
     // Runtime-created controls (winset `parent=`): see runtime_.
     struct RuntimeCtl { std::string name, parent, type; };
     const RuntimeCtl* runtimeLocked(const std::string& name) const;
+    std::string typeLocked(const std::string& control) const;
     bool applyParentLocked(const WinsetPair& p);
     std::string parentWindowLocked(const std::string& v) const;
     bool runtimeWingetLocked(const RuntimeCtl& r, const std::string& param, std::string& out) const;
@@ -216,6 +229,7 @@ private:
 
     mutable std::mutex mu_;
     std::shared_ptr<const File> file_;
+    std::string text_;   // the .dmf text file_ was parsed from
     uint64_t fileId_ = 0, gen_ = 0;
     Rect client_;
     bool clientSet_ = false;

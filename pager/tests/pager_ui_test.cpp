@@ -12,6 +12,7 @@
 #include <QListWidget>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSettings>
 #include <QDir>
 #include <QFile>
 #include <QLocalServer>
@@ -29,6 +30,7 @@
 #include <unistd.h>
 #endif
 #include "platform/file.h"
+#include "pager/launch.h"
 #include "pager/ui/instance.h"
 #include "pager/ui/pagerwindow.h"
 
@@ -224,6 +226,32 @@ private slots:
         QVERIFY(w.joinEnabled());
         QFile::remove(keyTxt);
         QFile::remove(QString::fromStdString(account::identityPath("Held One")));
+    }
+    // Preferences > "Use GPU rendering (experimental)" is the client's display.ini renderer key, hidden until the launcher
+    // hands it the path (GPU builds only), and re-read each time Preferences opens.
+    void gpuRenderingPreferenceIsTheClientsSetting() {
+        PagerWindow w;
+        account::Config cfg;
+        cfg.servers = account::defaultServers();
+        w.setGuestChosen(true);
+        w.setState(cfg, check(cfg));
+        w.showPreferences();
+        auto* gpu = w.preferencesDialog()->findChild<QCheckBox*>("prefsgpu");
+        QVERIFY(gpu && gpu->isHidden());
+        const QString ini = home_.path() + "/gpu-state/display.ini";
+        w.setRendererSettings(ini);
+        QVERIFY(!gpu->isHidden() && !gpu->isChecked());
+        QVERIFY(gpu->toolTip().contains("next join"));
+        gpu->setChecked(true);
+        QCOMPARE(QSettings(ini, QSettings::IniFormat).value("renderer").toString(), QString("gpu"));
+        QVERIFY(savedRendererGpu(ini.toStdString()));
+        gpu->setChecked(false);
+        QCOMPARE(QSettings(ini, QSettings::IniFormat).value("renderer").toString(), QString("cpu"));
+        w.preferencesDialog()->hide();
+        QVERIFY(setSavedRenderer(ini.toStdString(), true));   // as the game's Renderer menu writes it
+        w.showPreferences();
+        QVERIFY(gpu->isChecked());
+        w.preferencesDialog()->hide();
     }
     void unsupportedControlsAreHidden() {
         PagerWindow w;

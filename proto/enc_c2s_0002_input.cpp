@@ -1,4 +1,5 @@
 #include "proto/enc_c2s_0002_input.h"
+#include <cctype>
 #include <cstring>
 
 namespace fugue::proto::enc {
@@ -22,36 +23,84 @@ Bytes encodeAtomRef(const AtomRef& a) {
 
 static int clampPx(int v) { return v < 1 ? 1 : (v > 32 ? 32 : v); }
 
-std::string clickParams(const ClickCmd& c) {
+// Order: icon-x, icon-y, vis-x, vis-y, the button (none for a hover), the modifiers, screen-loc.
+static std::string mouseParams(const ClickCmd& c, bool withButton) {
     std::string btn = c.button.empty() ? "left" : c.button;
     // icon-x/icon-y are not clamped: they are in the named atom's icon frame, whatever the cursor's distance from it
     // (stock MouseParams::ParamString prints %hd). Over an overlay at -8,-8 the pair can be negative.
     std::string s = "icon-x=" + std::to_string(c.iconX) + ";icon-y=" + std::to_string(c.iconY) + ";";
-    // Order: icon-x, icon-y, vis-x, vis-y, the button, the modifiers, screen-loc.
     if (c.hasVis) s += "vis-x=" + std::to_string(c.visX) + ";vis-y=" + std::to_string(c.visY) + ";";
-    s += btn + "=1;button=" + btn + ";";
+    if (withButton) s += btn + "=1;button=" + btn + ";";
     if (c.mods.ctrl) s += "ctrl=1;";
     if (c.mods.shift) s += "shift=1;";
     if (c.mods.alt) s += "alt=1;";
     int spx = c.screenPX ? c.screenPX : c.iconX, spy = c.screenPY ? c.screenPY : c.iconY;
-    s += "screen-loc=" + std::to_string(c.screenX) + ":" + std::to_string(clampPx(spx)) + "," +
+    s += "screen-loc=" + (c.screenLocMap.empty() ? std::string() : mapIdParam(c.screenLocMap) + ":") + std::to_string(c.screenX) + ":" + std::to_string(clampPx(spx)) + "," +
          std::to_string(c.screenY) + ":" + std::to_string(clampPx(spy));
     return s;
 }
 
+std::string mapIdParam(const std::string& id) {
+    static const char* hexd = "0123456789abcdef";
+    std::string o;
+    for (unsigned char ch : id) {
+        if (std::isalnum(ch) || ch == '_' || ch == '.' || ch == '-') o += char(ch);
+        else { o += '%'; o += hexd[ch >> 4]; o += hexd[ch & 15]; }
+    }
+    return o;
+}
+
+std::string clickParams(const ClickCmd& c) { return mouseParams(c, true); }
+std::string hoverParams(const ClickCmd& c) { return mouseParams(c, false); }
+
 static void putStr(Bytes& b, const std::string& s) { b.insert(b.end(), s.begin(), s.end()); b.push_back(0); }
 
-Bytes encodeMouseCmd(const ClickCmd& c) {
-    Bytes b{c.sub, 0x00, 0xff, 0xff};
-    auto o = encodeAtomRef(c.over);
+static Bytes mouseBody(uint8_t sub, const AtomRef& over, const AtomRef& loc, const std::string& locStr, const std::string& control,
+                       const std::string& params) {
+    Bytes b{sub, 0x00, 0xff, 0xff};
+    auto o = encodeAtomRef(over);
     b.insert(b.end(), o.begin(), o.end());
-    b.push_back(0x03); b.push_back(0x00);   // three values follow; the first (loc) is tag 0, an atom (cf. encodeInfoClick)
-    auto l = encodeAtomRef(c.loc);
-    b.insert(b.end(), l.begin(), l.end());
+    b.push_back(0x03);   // three values follow; loc is tag 0, an atom, or tag 2, a string (cf. encodeInfoClick)
+    if (!locStr.empty()) { b.push_back(0x02); putStr(b, locStr); }
+    else {
+        b.push_back(0x00);
+        auto l = encodeAtomRef(loc);
+        b.insert(b.end(), l.begin(), l.end());
+    }
     b.push_back(0x02);
-    putStr(b, c.control.empty() ? "mapwindow.map" : c.control);
+    putStr(b, control.empty() ? "mapwindow.map" : control);
     b.push_back(0x02);
-    putStr(b, clickParams(c));
+    putStr(b, params);
+    return b;
+}
+
+Bytes encodeMouseCmd(const ClickCmd& c) { return mouseBody(c.sub, c.over, c.loc, c.locStr, c.control, clickParams(c)); }
+
+Bytes encodeMouseNone(uint8_t sub, const std::string& locStr, const std::string& control, const std::string& params) {
+    const Bytes n = encodeAtomRef(nullRef());
+    Bytes b{sub, 0x00, 0xff, 0xff};
+    b.insert(b.end(), n.begin(), n.end());
+    b.push_back(0x03);
+    for (const std::string* v : {&locStr, &control}) {
+        if (v->empty()) { b.push_back(0x00); b.insert(b.end(), n.begin(), n.end()); }
+        else { b.push_back(0x02); putStr(b, *v); }
+    }
+    b.push_back(0x02);
+    putStr(b, params);
+    return b;
+}
+
+Bytes encodeHover(const AtomRef& over, const AtomRef& loc, const std::string& control, const std::string& params, const std::string& locStr) {
+    return mouseBody(kMouseHover, over, loc, locStr, control, params);
+}
+
+Bytes encodeHoverLeave() {
+    Bytes b{kMouseHover, 0x00, 0xff, 0xff};
+    auto n = encodeAtomRef(nullRef());
+    b.insert(b.end(), n.begin(), n.end());
+    b.push_back(0x03);
+    for (int i = 0; i < 2; i++) { b.push_back(0x00); b.insert(b.end(), n.begin(), n.end()); }   // loc and control: null atoms
+    b.push_back(0x02); b.push_back(0x00);                                                      // params ""
     return b;
 }
 
@@ -106,14 +155,24 @@ Bytes encodeDragCmd(const DragCmd& d) {
     putLe16(b, d.drop ? kMouseEventDrop : kMouseEventDrag);
     for (uint8_t x : {0x00, 0xff, 0xff, 0x00, 0x00}) b.push_back(x);
     b.push_back(7);   // value count
-    for (const AtomRef* r : {&d.src, &d.over, &d.srcLoc, &d.overLoc}) {
+    const std::string none;
+    for (auto [r, str] : {std::pair{&d.src, &none}, {&d.over, &none}, {&d.srcLoc, &d.srcLocStr}, {&d.overLoc, &d.overLocStr}}) {
+        if (!str->empty() || (r == &d.overLoc && d.overLocBlank)) { b.push_back(0x02); putStr(b, *str); continue; }
         AtomRef a = *r;
         if (a.kind == RefNull && a.ref == 0) a.ref = 0x0000ffff;
         b.push_back(0x00);
         auto e = encodeAtomRef(a);
         b.insert(b.end(), e.begin(), e.end());
     }
-    for (const std::string* s : {&d.srcControl, &d.overControl, &d.params}) { b.push_back(0x02); putStr(b, *s); }
+    for (const std::string* s : {&d.srcControl, &d.overControl, &d.params}) {
+        if (s == &d.overControl && d.overControlNull) {
+            b.push_back(0x00);
+            auto n = encodeAtomRef(nullRef());
+            b.insert(b.end(), n.begin(), n.end());
+            continue;
+        }
+        b.push_back(0x02); putStr(b, *s);
+    }
     return b;
 }
 

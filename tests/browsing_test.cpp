@@ -112,6 +112,16 @@ private slots:
         QVERIFY(!parseLinkFrame(fugue::ByteSpan(noNul.data(), noNul.size()), f));
         QVERIFY(!parseLinkFrame(fugue::ByteSpan(trailing.data(), trailing.size()), f));
     }
+    // Stock DreamDaemon's 0x0084 for a page built from `"\improper YouTool"` and `"\red [x] B2 \b[x]\b B3"`; stock
+    // DreamSeeker writes the page without any marker (FF 16 \improper, FF 1F \red, FF 17 \b).
+    void browseDropsTextMacroMarkers() {
+        BrowseFrame f;
+        auto b = B(LIT("<b>\xff\x16YouTool C1</b> \xff\x1fTMX B2 \xff\x17TMX\xff\x17 B3\0window=vend\xff\x16ing\0\0"));
+        QVERIFY(parseBrowseFrame(fugue::ByteSpan(b.data(), b.size()), f));
+        QCOMPARE(f.html, std::string("<b>YouTool C1</b> TMX B2 TMX B3"));
+        QCOMPARE(f.params, std::string("window=vending"));
+        QCOMPARE(parseBrowseParams(f.params).window, std::string("vending"));
+    }
     void frames() {
         BrowseFrame f;
         auto b = B(LIT("<b>hi</b>\0win=a;size=1x1\0\0"));

@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <random>
+#include <thread>
 #include "account/records.h"
 
 namespace fugue::pager {
@@ -79,13 +80,19 @@ bool wireHubCert(net::SessionConfig& cfg, const account::AccountLogin& al, std::
     auto gate = std::make_shared<Gate>();
     cfg.hubCertAnswer = [id = *id, hubAddr, timeoutMs, gate](uint32_t cauthKey, const std::string& certStr,
                                                              std::string* err) -> std::optional<Bytes> {
-        {
-            std::lock_guard<std::mutex> lk(gate->m);
+        // A challenge inside the plain gap waits it out: the session that a link() started right after a login is a new
+        // connection the server will not initialise without an answer. One with more than kHubMintGap still to wait is refused.
+        for (;;) {
             int wait = 0;
-            if (!gate->t.allow(HubThrottle::Clock::now(), &wait)) {
+            {
+                std::lock_guard<std::mutex> lk(gate->m);
+                if (gate->t.allow(HubThrottle::Clock::now(), &wait)) break;
+            }
+            if (wait > kHubMintGap.count() + 1) {
                 if (err) *err = "hub: token mint throttled, next allowed in " + std::to_string((wait + 999) / 1000) + " s";
                 return std::nullopt;
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(wait));
         }
         HubCertIdentity q = id;
         q.cauthKey = cauthKey;   // the key the 0x1a carried

@@ -38,6 +38,16 @@ On macOS, use `Fugue.app/Contents/MacOS/Fugue` in place of `fugue-qt`, or open t
 * Logout keeps the saved sign-in (`identity-<key>`); **Preferences > Clear cache** removes saved sign-ins, the
   resource cache and the login-certificate cache, and keeps `pager.json` and the machine id.
 
+## Experimental GPU rendering
+
+A build configured with `-DFUGUE_BUILD_GPU=ON` can draw the map with the GPU: start with `--renderer=gpu`, or pick
+**Client > Renderer** in the window-icon menu or in Options & Messages, which switches without reconnecting, or tick
+**Use GPU rendering (experimental)** in the pager's Preferences, which is the same setting and applies from the next
+join. The same menu has **Performance metrics**, an overlay of per-map timings. Both choices are kept in `display.ini`
+in the state directory (`~/.fugue`, or `--state-dir`); `--renderer` overrides the saved choice for one launch. A list
+the GPU cannot draw is drawn on the CPU. Recording the GPU commands runs on the GUI thread, so a heavy scene can delay
+input. A build without GPU support refuses `--renderer=gpu`.
+
 ## For server operators
 
 Fugue announces itself in two ways. Its `client.computer_id` always satisfies `text2num(computer_id) % 1000 == 523`, and
@@ -75,6 +85,10 @@ A command-line flag, where one exists, wins.
 | Variable | Meaning |
 |---|---|
 | `FUGUE_AUDIO` | audio sink; same as `--audio` |
+| `FUGUE_GPU_BACKEND` | GPU builds only: renderer backend, `d3d11`, `metal` or `opengl` (default: the platform's) |
+| `FUGUE_GPU_SOFTWARE` | GPU builds only: `1` prefers a software GPU adapter (D3D11 WARP) |
+| `FUGUE_SCENE_PROFILE` | `1`: log the main map's scene-assembly time and appearance-cache hits once a second |
+| `FUGUE_SCENE_TRACE` | path: a CSV row per map per assembly (time, cache hits, parses, cache size) |
 | `FUGUE_IDENTITY` | path of the identity file to log in with |
 | `FUGUE_PAGER_CONFIG` | path of `pager.json` |
 | `FUGUE_BYOND_SID` | path of the `byond-sid` file |

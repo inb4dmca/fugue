@@ -66,6 +66,19 @@ void PromptHost::present(const PromptRequest& r) {
     if (!busy()) showNext();
 }
 
+void PromptHost::withdraw(quint32 id, bool alert) {
+    auto same = [id, alert](const PromptRequest& r) { return !r.verbArg && r.id == id && r.alert == alert; };
+    for (auto it = queue_.begin(); it != queue_.end();) it = same(*it) ? queue_.erase(it) : it + 1;
+    if (!cur_ || curDone_ || curVerbArg_ || curId_ != id || curAlert_ != alert) return;
+    curDone_ = true;
+    std::fprintf(stderr, "[prompt] %s id=%u withdrawn - closed\n", alert ? "alert" : "input", id);
+    static_cast<PromptDialog*>(cur_.data())->done = nullptr;
+    cur_->hide();
+    cur_->deleteLater();
+    cur_.clear();
+    showNext();
+}
+
 void PromptHost::showNext() {
     if (queue_.empty()) return;
     PromptRequest r = queue_.front();
@@ -73,6 +86,7 @@ void PromptHost::showNext() {
     cur_ = build(r);
     curId_ = r.id;
     curAlert_ = r.alert;
+    curVerbArg_ = r.verbArg;
     curDone_ = false;
     cur_->show();
     cur_->raise();

@@ -1,6 +1,7 @@
 // Session::ingest: the world model's frame handlers.
 //
 // The wire is parsed by the proto/ decoders; this file holds the model rules, i.e. what a decoded record does to the world.
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
@@ -168,6 +169,26 @@ std::vector<AnimSeq> animSequences(const Atom::Chain& c) {
         q.endNs = loop < 1 ? -1 : q.startNs + int64_t(loop) * q.durNs;
     }
     return out;
+}
+
+// An 0x00f0 frame into a chain, as the stock handler builds it for every kind: Chain != 0 (or nothing still playing)
+// replaces it, so a Count = 0 frame clears it; Chain = 0 appends. The first step starts at Delay ticks from `now`, a
+// step with a StepDelay (a parallel or a head) opens a sequence at StepDelay ticks from `now`, and any other step
+// follows the one before it.
+static void scheduleChain(Atom::Chain& ch, const JVal& v, int64_t now, int64_t tick) {
+    bool playing = false;
+    for (const AnimSeq& q : animSequences(ch)) playing = playing || q.endNs < 0 || now < q.endNs;
+    if (v["chain"].i() != 0 || !playing) { ch = Atom::Chain{}; ch.tickNs = tick; }
+    auto at = [&](uint32_t bits) { return now + int64_t(double(bitsToFloat(bits)) * double(ch.tickNs)); };
+    for (const JVal& st : v["steps"].a) {
+        Atom::AnimStep s{st["from"].u32(), st["to"].u32(), st["time"].f32bits(), uint8_t(st["easing"].i())};
+        s.flags = st["flags"].u32();
+        s.loop = st["loop"].i() == 0 ? 1 : int32_t(st["loop"].i());
+        if (ch.steps.empty()) { s.startNs = at(v["delay"].f32bits()); s.flags &= ~0x40000000u; }
+        else if (st["hasDelay"].b) s.startNs = at(st["delay"].f32bits());
+        ch.steps.push_back(s);
+    }
+    if (!ch.steps.empty()) ch.startNs = ch.steps[0].startNs;
 }
 
 // The eye scroll offset. X is negated, Y is not: the image y-flip already lives in placement, so flipping it here too
@@ -636,14 +657,10 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
                     int(v["winH"].i()), int(v["viewW"].i()), int(v["viewH"].i())};
         return;   // the decoder already fed st_.mapView (SetBounds)
     }
-    case 0x00c7: {   // flick() command half
-        if (!parsed(v)) return;
-        World::Flick& f = w.flicks[v["loc"]["ref"].u32()];
-        f.appid = v["appid"].u32();
-        f.haveAppid = v["hasAppid"].b;
-        f.startNs = ingestNs_;
+    case 0x00c7:
+        // DD sends it before a flick, but the stock client reads it as a record check and appearance bind for an obj
+        // (kind 2) or a mob (kind 3) only; the flick itself starts with the 0x006c.
         return;
-    }
     case 0x006c: {   // flick() payload half
         if (!parsed(v)) return;
         World::Flick& f = w.flicks[v["loc"]["ref"].u32()];
@@ -734,10 +751,18 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
             if (auto it = w.atoms.find(p["id"].u32() | kRegistryA); it != w.atoms.end()) bindAppearance(it->second, p["appearance"].u32());
         // usr.contents (World::usrContents): array 1 = an obj leaving it, 2 = an obj entering it, 3 = a mob leaving it,
         // 4 = a mob entering it.
-        for (const JVal& id : v["addA"].a) w.usrContents.erase(id.u32());
-        for (const JVal& p : v["bindA"].a) w.usrContents[p["id"].u32()] = p["appearance"].u32();
-        for (const JVal& id : v["removeB"].a) w.usrContents.erase(id.u32() | kRegistryA);
-        for (const JVal& p : v["bindB"].a) w.usrContents[p["id"].u32() | kRegistryA] = p["appearance"].u32();
+        auto leave = [&](uint32_t key) {
+            w.usrContents.erase(key);
+            w.usrContentsOrder.erase(std::remove(w.usrContentsOrder.begin(), w.usrContentsOrder.end(), key), w.usrContentsOrder.end());
+        };
+        auto enter = [&](uint32_t key, uint32_t appid) {
+            if (!w.usrContents.count(key)) w.usrContentsOrder.push_back(key);
+            w.usrContents[key] = appid;
+        };
+        for (const JVal& id : v["addA"].a) leave(id.u32());
+        for (const JVal& p : v["bindA"].a) enter(p["id"].u32(), p["appearance"].u32());
+        for (const JVal& id : v["removeB"].a) leave(id.u32() | kRegistryA);
+        for (const JVal& p : v["bindB"].a) enter(p["id"].u32() | kRegistryA, p["appearance"].u32());
         return;
     }
     case 0x0008:
@@ -805,24 +830,8 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
     case 0x00f0: {
         // Only the settled appid matters: an atom held with no appearance adopts the last step's `to`.
         if (!parsed(v)) return;
-        if (v["kind"].i() == 5) {
-            // animate(client), scheduled as the stock handler builds the chain: Chain != 0 (or no chain held) replaces
-            // it, so a Count = 0 frame clears it; Chain = 0 appends. The first step starts at Delay ticks from now, a
-            // step with a StepDelay (a parallel or a head) opens a sequence at StepDelay ticks from now, and any other
-            // step follows the one before it.
-            Atom::Chain& ch = w.clientChain;
-            const bool replace = v["chain"].i() != 0 || ch.steps.empty();
-            if (replace) { ch = Atom::Chain{}; ch.tickNs = tickNs(w); }
-            auto at = [&](uint32_t bits) { return ingestNs_ + int64_t(double(bitsToFloat(bits)) * double(ch.tickNs)); };
-            for (const JVal& st : v["steps"].a) {
-                Atom::AnimStep s{st["from"].u32(), st["to"].u32(), st["time"].f32bits(), uint8_t(st["easing"].i())};
-                s.flags = st["flags"].u32();
-                s.loop = st["loop"].i() == 0 ? 1 : int32_t(st["loop"].i());
-                if (ch.steps.empty()) { s.startNs = at(v["delay"].f32bits()); s.flags &= ~0x40000000u; }
-                else if (st["hasDelay"].b) s.startNs = at(st["delay"].f32bits());
-                ch.steps.push_back(s);
-            }
-            if (!ch.steps.empty()) ch.startNs = ch.steps[0].startNs;
+        if (v["kind"].i() == 5) {   // animate(client)
+            scheduleChain(w.clientChain, v, ingestNs_, tickNs(w));
             return;
         }
         // An animate() names its target by {ref, Key} like an 0x0008 record does, so it runs the same Key check and
@@ -830,54 +839,36 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         // This runs before the step check: the closing frame of a tween has no steps and still carries the Key.
         if ((v["kind"].i() == 2 || v["kind"].i() == 3) && !altRecordModel())
             record(v["ref"].u32() | (v["kind"].i() == 3 ? kRegistryA : 0u), uint16_t(v["ver"].u32()), true);
-        if (v["steps"].size() == 0) return;
-        // An obj animate with steps binds the obj's appearance, which clears the poll mark like an A5 does.
-        if (v["kind"].i() == 2 && !altRecordModel()) w.resync.newObjs.erase(v["ref"].u32());
         int64_t kind = v["kind"].i();
+        const bool steps = v["steps"].size() != 0;
+        // An obj animate with steps binds the obj's appearance, which clears the poll mark like an A5 does.
+        if (steps && kind == 2 && !altRecordModel()) w.resync.newObjs.erase(v["ref"].u32());
         if (kind == 13) {
             // Only an image we hold. A chain is never expired by time, so its snapshot effect is set membership.
             uint32_t img = v["ref"].u32();
             if (!w.images.count(img)) return;
-            w.imageAnims.insert(img);
-            // A Chain==0 frame while the held chain is still running amends it (its steps are appended); anything else
-            // replaces it, stamped like a movable's (below). The zero-step frame returned above arrives when the tween
-            // completes, so it must not settle the chain early.
-            Atom::Chain& ch = w.imageChains[img];
-            int64_t end = ch.startNs;
-            for (const Atom::AnimStep& st : ch.steps) end += int64_t(double(bitsToFloat(st.timeBits)) * double(ch.tickNs));
-            bool amend = !ch.steps.empty() && v["chain"].i() == 0 && ingestNs_ < end;
-            if (!amend) {
-                ch = Atom::Chain{};
-                ch.tickNs = tickNs(w);
-                ch.startNs = ingestNs_ + int64_t(bitsToFloat(v["delay"].f32bits())) * ch.tickNs;
-            }
-            for (const JVal& st : v["steps"].a)
-                ch.steps.push_back({st["from"].u32(), st["to"].u32(), st["time"].f32bits(), uint8_t(st["easing"].i())});
+            if (steps) w.imageAnims.insert(img);
+            if (steps || w.imageChains.count(img)) scheduleChain(w.imageChains[img], v, ingestNs_, tickNs(w));
             return;
         }
         if (kind != 2 && kind != 3) return;
         uint32_t key = v["ref"].u32() | (kind == 3 ? kRegistryA : 0u);
         auto it = w.atoms.find(key);
         if (it == w.atoms.end()) return;
-        uint32_t to = v["steps"].at(v["steps"].size() - 1)["to"].u32();
-        if (to == 0) return;
-        if (it->second.appid == 0) bindAppearance(it->second, to);
-        it->second.animating = true;   // Set while an animate() chain is held (never cleared by elapsed time)
-        // The chain: start at ingest-now plus the delay in ticks, with its steps and tick duration. A movable's
-        // chain is REPLACED by every frame (only client.images amend).
-        Atom::Chain& ch = it->second.chain;
-        ch = Atom::Chain{};
-        ch.tickNs = tickNs(w);
-        ch.startNs = ingestNs_ + int64_t(bitsToFloat(v["delay"].f32bits())) * ch.tickNs;   // float32 delay times the tick duration
-        for (const JVal& st : v["steps"].a)
-            ch.steps.push_back({st["from"].u32(), st["to"].u32(), st["time"].f32bits(), uint8_t(st["easing"].i())});
+        if (steps) {
+            uint32_t to = v["steps"].at(v["steps"].size() - 1)["to"].u32();
+            if (to == 0) return;
+            if (it->second.appid == 0) bindAppearance(it->second, to);
+            it->second.animating = true;   // Set while an animate() chain is held (never cleared by elapsed time)
+        }
+        scheduleChain(it->second.chain, v, ingestNs_, tickNs(w));
         return;
     }
     case 0x0071:
         if (!parsed(v)) return;
         // A new own mob starts usr.contents empty. This is order-dependent: the server sends this 0x0071 before the new
         // mob's array-2 pairs, so the clear never removes them.
-        if (w.haveSelf && w.selfRef != v["value"].u32()) w.usrContents.clear();
+        if (w.haveSelf && w.selfRef != v["value"].u32()) { w.usrContents.clear(); w.usrContentsOrder.clear(); }
         w.selfRef = v["value"].u32(); w.haveSelf = true;
         // The stock 0x0071 handler builds the mob record when it is absent, and a new mob record is
         // marked for the resync poll. So the client's first word about its own mob is c2s 0x000b [it]. A held record is not marked.
@@ -929,7 +920,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
         // Keyed by the window= param. Close removes the window and its place in the arrival order; a re-browse
         // of an open window keeps its place.
         if (!parsed(v)) return;
-        std::string params = v["params"].bytesOrStr();
+        std::string params = net::plainText(v["params"].bytesOrStr());   // as parseBrowseFrame: stock drops the markers
         std::string name = browserWindowName(params);
         if (v["close"].b) {
             w.browsers.erase(name);
@@ -937,7 +928,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
                 if (w.browserOrder[i] == name) { w.browserOrder.erase(w.browserOrder.begin() + long(i)); break; }
         } else {
             if (!w.browsers.count(name)) w.browserOrder.push_back(name);
-            w.browsers[name] = {params, v["html"].bytesOrStr()};
+            w.browsers[name] = {params, net::plainText(v["html"].bytesOrStr())};
         }
         return;
     }
@@ -955,6 +946,7 @@ void Session::ingest(uint16_t typ, ByteSpan body) {
             auto b = w.browsers.find(win);
             if (b != w.browsers.end()) { b->second.html = decodeChatHTML(value); return; }   // page replacement
         }
+        if (!control.empty() && control.find(':') == std::string::npos && textTarget_ && !textTarget_(control)) return;
         if (!control.empty()) {
             std::string sw, sfn;
             splitBrowserOutput(control, sw, sfn);

@@ -1,5 +1,6 @@
-// Following a byond:// link to another world. The new run is this run's command line with only the target replaced,
-// so it plays as the same account with the same identity file, state dir and options.
+// The second client a clicked byond:// link opens (a pushed link() joins in the same window, app/sessionworker.cpp). Its
+// command line is this run's with only the target replaced, so it plays as the same account with the same identity file,
+// state dir and options.
 #pragma once
 #include <optional>
 #include <string>

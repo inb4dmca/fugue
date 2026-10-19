@@ -1,0 +1,29 @@
+# Stock DreamSeeker 516 (wine) x stock DreamDaemon 516.1684, world.dme: a left click and a right click at one map pixel per row.
+# x,y: the pixel, 0-based from the 224x224 viewport's bottom-left. atom/loc/params: what the world's Click() logged (its
+# MouseEntered named the same atom), params without left=1;button=left. menu: the right-click menu's rows, top first, '-'
+# where it was not opened.
+# label	x	y	atom	loc	params	menu
+A_q	8	151	obscured		icon-x=9;icon-y=24;vis-x=9;vis-y=152;screen-loc=1:9,5:24	obscured|t_A
+A_tr	24	135	t_A	t_A	icon-x=25;icon-y=8;screen-loc=1:25,5:8	obscured|t_A
+A_rock_q	8	87	obscured		icon-x=9;icon-y=24;vis-x=9;vis-y=88;screen-loc=1:9,3:24	obscured|rock_A|t_A
+A_rock_tr	24	71	rock_A	t_A	icon-x=25;icon-y=8;screen-loc=1:25,3:8	obscured|rock_A|t_A
+A2_q	8	23	s_two		icon-x=9;icon-y=24;vis-x=-23;vis-y=24;screen-loc=1:9,1:24	-
+A2_tr	24	7	t_A	t_A	icon-x=25;icon-y=8;screen-loc=1:25,1:8	-
+A0_q	8	183	s_zero		icon-x=9;icon-y=24;vis-x=-55;vis-y=184;screen-loc=1:9,6:24	-
+B_q	40	151	t_B	t_B	icon-x=9;icon-y=24;screen-loc=2:9,5:24	-
+B_tr	56	135	t_B	t_B	icon-x=25;icon-y=8;screen-loc=2:25,5:8	-
+B_rock_q	40	87	t_B	t_B	icon-x=9;icon-y=24;screen-loc=2:9,3:24	t_B|rock_B
+C_q	72	151	obscured		icon-x=9;icon-y=24;vis-x=73;vis-y=152;screen-loc=3:9,5:24	-
+C_rock_q	72	87	obscured		icon-x=9;icon-y=24;vis-x=73;vis-y=88;screen-loc=3:9,3:24	obscured|rock_C|t_C
+D_q	136	151	obscured		icon-x=9;icon-y=24;vis-x=137;vis-y=152;screen-loc=5:9,5:24	-
+D_tr	152	135	t_D	t_D	icon-x=25;icon-y=8;screen-loc=5:25,5:8	obscured|t_D
+D_rock_tr	152	71	rock_D	t_D	icon-x=25;icon-y=8;screen-loc=5:25,3:8	-
+E_q	168	151	t_E	t_E	icon-x=9;icon-y=24;screen-loc=6:9,5:24	-
+E_rock_q	168	87	t_E	t_E	icon-x=9;icon-y=24;screen-loc=6:9,3:24	-
+F_q	200	151	shown		icon-x=9;icon-y=24;vis-x=9;vis-y=-40;screen-loc=7:9,5:24	-
+F_tr	216	135	t_F	t_F	icon-x=25;icon-y=8;screen-loc=7:25,5:8	-
+G_q	104	23	s_px		icon-x=9;icon-y=24;vis-x=-23;vis-y=-8;screen-loc=4:9,1:24	s_px|t_G
+G_tr	120	7	t_G	t_G	icon-x=25;icon-y=8;screen-loc=4:25,1:8	-
+G9_q	104	151	s_off		icon-x=9;icon-y=24;vis-x=3;vis-y=117;screen-loc=4:9,5:24	s_off|t_G
+G9_tr	120	135	t_G	t_G	icon-x=25;icon-y=8;screen-loc=4:25,5:8	-
+G10_tr	120	167	t_G	t_G	icon-x=25;icon-y=8;screen-loc=4:25,6:8	m_src|t_G

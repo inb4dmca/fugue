@@ -163,7 +163,12 @@ Bytes encodeInputNull(uint32_t id) {
     put32(b, id);
     return b;
 }
-Bytes encodePendingInputExpansionRequest() { return Bytes(9, 0); }
+Bytes encodePendingInputExpansionRequest(uint32_t id) {
+    Bytes b{0};
+    put32(b, id);
+    put32(b, 0);
+    return b;
+}
 
 std::string inputChoiceText(const std::string& choice) {
     std::string t = net::escapeChoiceText(choice);
@@ -204,35 +209,79 @@ const Prompt* PromptBook::find(uint32_t id) const {
     for (const Prompt& p : pending_) if (p.id == id) return &p;
     return nullptr;
 }
-
-void PromptBook::retire(uint32_t id) {
-    for (auto it = pending_.begin(); it != pending_.end(); ++it)
-        if (it->id == id) { pending_.erase(it); return; }
+const Prompt* PromptBook::find(uint32_t id, bool alert) const {
+    for (const Prompt& p : pending_) if (p.id == id && (p.kind == Prompt::Alert) == alert) return &p;
+    return nullptr;
 }
 
-const Prompt* PromptBook::onFrame(uint16_t type, ByteSpan body) {
+void PromptBook::retire(uint32_t id, bool alert) {
+    for (auto it = pending_.begin(); it != pending_.end(); ++it)
+        if (it->id == id && (it->kind == Prompt::Alert) == alert) { pending_.erase(it); return; }
+}
+
+bool parsePromptWithdrawal(ByteSpan b, PromptWithdrawal& out) {
+    if (b.size() != 5 || b[4] > 1) return false;
+    out.id = le32(b.data());
+    out.alert = b[4] == 1;
+    return true;
+}
+
+bool PromptBook::withdraw(const PromptWithdrawal& w) {
+    bool was = false;
+    for (auto it = pending_.begin(); it != pending_.end();)
+        if (it->id == w.id && (it->kind == Prompt::Alert) == w.alert) { it = pending_.erase(it); was = true; }
+        else ++it;
+    if (!withdrawn(w.id, w.alert)) withdrawn_.push_back(w);
+    if (withdrawn_.size() > kCap) withdrawn_.pop_front();
+    return was;
+}
+
+bool PromptBook::withdrawn(uint32_t id, bool alert) const {
+    for (const PromptWithdrawal& w : withdrawn_) if (w.id == id && w.alert == alert) return true;
+    return false;
+}
+
+const Prompt* PromptBook::onFrame(uint16_t type, ByteSpan body, bool* replaced) {
+    if (replaced) *replaced = false;
     Prompt p;
     if (type == kAlertMsg) {
         if (!parseAlertRequest(body, p)) return nullptr;
     } else if (type == kInputMsg) {
         if (!parseInputRequest(body, p)) return nullptr;
     } else if (type == kExpansionReplyMsg) {
-        // The answer to our 0x0064: it belongs to the in-list prompt that asked (BYOND's prompts are modal, so one).
-        std::vector<std::string> ch;
-        for (Prompt& q : pending_)
-            if (q.kind == Prompt::Input && q.inList && !q.choicesKnown) {
-                if (parseExpansionReply(body, ch)) { q.choices = std::move(ch); }
-                q.choicesKnown = true;
-                return &q;
-            }
+        const Prompt* q = needsChoices();
+        return q ? attachChoices(q->id, body) : nullptr;
+    } else if (type == kPromptWithdrawMsg) {
+        PromptWithdrawal w;
+        if (parsePromptWithdrawal(body, w)) withdraw(w);
         return nullptr;
     } else {
         return nullptr;
     }
+    const bool alert = p.kind == Prompt::Alert;
+    for (auto it = withdrawn_.begin(); it != withdrawn_.end(); ++it)
+        if (it->id == p.id && it->alert == alert) { withdrawn_.erase(it); break; }
+    for (auto it = pending_.begin(); it != pending_.end(); ++it)
+        if (it->id == p.id && (it->kind == Prompt::Alert) == alert) {
+            pending_.erase(it);
+            if (replaced) *replaced = true;
+            break;
+        }
     p.seq = total_++;
     pending_.push_back(std::move(p));
     if (pending_.size() > kCap) pending_.pop_front();
     return &pending_.back();
+}
+
+const Prompt* PromptBook::attachChoices(uint32_t id, ByteSpan body) {
+    for (Prompt& q : pending_)
+        if (q.id == id && q.kind == Prompt::Input && q.inList && !q.choicesKnown) {
+            std::vector<std::string> ch;
+            if (parseExpansionReply(body, ch)) q.choices = std::move(ch);
+            q.choicesKnown = true;
+            return &q;
+        }
+    return nullptr;
 }
 
 const Prompt* PromptBook::needsChoices() const {
@@ -240,27 +289,27 @@ const Prompt* PromptBook::needsChoices() const {
         if (p.kind == Prompt::Input && p.inList && !p.choicesKnown) return &p;
     return nullptr;
 }
-void PromptBook::giveUpOnChoices(uint32_t id) {
-    for (Prompt& p : pending_) if (p.id == id) p.choicesKnown = true;
-}
 
 PromptReply PromptBook::answerAlert(uint32_t id, const std::string& button) {
-    retire(id);
+    if (withdrawn(id, true)) return {};
+    retire(id, true);
     return {kAlertMsg, encodeAlertReply(id, button)};
 }
 PromptReply PromptBook::answerInput(uint32_t id, const std::string& text) {
+    if (withdrawn(id, false)) return {};
     Prompt p;
-    if (const Prompt* q = find(id)) p = *q;   // not held: answer as plain text rather than dropping it
+    if (const Prompt* q = find(id, false)) p = *q;   // not held: answer as plain text rather than dropping it
     p.id = id;
-    retire(id);
+    retire(id, false);
     if (p.resolvesThroughServer()) return {kInputResolveMsg, encodeInputResolveRequest(id, text)};
     return {kInputMsg, encodeInputAnswer(p, text)};
 }
 PromptReply PromptBook::resolvedInput(uint32_t id, uint8_t kind, uint32_t value) { return {kInputMsg, encodeInputValue(id, kind, value)}; }
 PromptReply PromptBook::cancel(uint32_t id) {
     // Stock DreamSeeker cannot dismiss an alert() or a non-null input() (Prompt::cancellable), so nothing is sent for one.
+    if (withdrawn(id, false)) return {};
     if (const Prompt* q = find(id); q && !q->cancellable()) return {};
-    retire(id);
+    retire(id, false);
     return {kInputMsg, encodeInputNull(id)};
 }
 

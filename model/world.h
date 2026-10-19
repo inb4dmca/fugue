@@ -5,6 +5,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -55,9 +56,8 @@ struct Atom {
     // Render state behind the two transient flags above (not in the snapshot: wall-clock based).
     // Times are Unix ns on the ingest clock (Session::setIngestClockNs).
     using Glide = GlideMotion;
-    // flags/loop/startNs are filled for animate(client) only: the step's 0x00f0 flags (0x4 ANIMATION_PARALLEL,
-    // 0x40000000 a chain head), its loop count, and, for a step that opens a sequence, when it starts (0 = it follows
-    // the step before it).
+    // flags/loop/startNs: the step's 0x00f0 flags (0x4 ANIMATION_PARALLEL, 0x40000000 a chain head), its loop count,
+    // and, for a step that opens a sequence, when it starts (0 = it follows the step before it).
     struct AnimStep {
         uint32_t from = 0, to = 0; uint32_t timeBits = 0; uint8_t easing = 0;
         uint32_t flags = 0; int32_t loop = 1; int64_t startNs = 0;
@@ -152,9 +152,11 @@ struct World {
     // Tables.
     std::map<uint32_t, Appearance> appearances;
     std::map<uint32_t, Atom> atoms;                         // key = id | registryA bit
-    // flick(): the live one-shot per atom, from 0x00c7 + 0x006c, keyed by AtomLoc.ref (the atoms key for 73/74 refs).
-    // startNs = ingest clock of the latest half.
-    struct Flick { uint32_t appid = 0; bool haveAppid = false; std::string iconState; uint32_t iconResIndex = 0; bool haveRes = false; int64_t startNs = 0; };
+    // Each tile's cell lists as the last relink left them (model/resync.cpp): its placed mobs and its placed objs, bare
+    // ids, in the stock client's order. Key {x, y, z} as Atom carries them. A typed verb's tie-break reads them (srcRank).
+    std::map<std::array<int, 3>, std::vector<uint32_t>> cellMobs, cellObjs;
+    // flick(): the live one-shot per obj, from 0x006c, keyed by its AtomLoc.ref (the obj's atoms key). startNs = its ingest clock.
+    struct Flick { std::string iconState; uint32_t iconResIndex = 0; bool haveRes = false; int64_t startNs = 0; };
     std::map<uint32_t, Flick> flicks;
     std::map<uint32_t, std::vector<uint32_t>> visContents;
     // vis_contents items that are TURFS (item Type 1), per holder key: the turf's flat cell index (x + y*maxx + z*maxx*maxy,
@@ -172,6 +174,7 @@ struct World {
     // Only these ids are admitted by `set src in usr` (verbSrcCandidates). A client.mob switch to a new mob clears the
     // set: that is safe only because the server sends 0x0071 before the new mob's array-2 pairs (world.cpp case 0x0071).
     std::map<uint32_t, uint32_t> usrContents;
+    std::vector<uint32_t> usrContentsOrder;   // the same keys in arrival order (a re-entry keeps its place)
     // The 0x0020 grid: the AREA index of each cell, key (x,y,z) 0-based wire. Stock DreamSeeker sends an area verb as
     // src [04][index of the player's cell]. turfBinds above is the same list.
     std::map<std::array<uint16_t, 3>, uint32_t> areaCells;
@@ -236,15 +239,14 @@ struct World {
     // Inputs to the atom-table resync poll (model/resync.h): written by ingest, drained by ResyncPoller, not in the
     // snapshot. teardowns counts records freed (a Key change on a held slot, s2c 0x006e/0x006f); each arms the sweep.
     // newMobs/newObjs are ids just built and still marked; the client asks the server about each (c2s 0x000b / 0x003d).
-    // relinkObjs/relinkMobs arm the rebuild of cell lists and back-links after a 0x0007/0x0008 parse. objCells and
-    // mobCells are the tiles that held an obj or mob at the last relink, which the sweep's cell test reads.
+    // relinkObjs/relinkMobs arm the rebuild of the cell lists (World::cellMobs / cellObjs) and back-links after a
+    // 0x0007/0x0008 parse.
     struct ResyncEvents {
         uint64_t teardowns = 0;
         std::set<uint32_t> newMobs, newObjs;
         bool relinkObjs = false, relinkMobs = false;
         bool haveOrigin = false;
         uint16_t originX = 0, originY = 0;             // the last 0x0012 / 0x0014 / 0x0061 window origin
-        std::set<std::array<int, 3>> objCells, mobCells;
         uint64_t tick = 0;          // the poller's client-tick count
         uint64_t appearances = 0;   // s2c 0x0026 frames; each builds an appearance record (the stock GC's 500 trigger)
         // Records the stock client's GC would have freed (model/resync.h). The state is kept, since the server does not
@@ -285,7 +287,7 @@ constexpr double kGlideMaxTiles = 2;
 // map content right, +y draws it down (image space). Zero with no glide or once the glide has played out. It starts
 // at the scroll the move left (a whole tile from rest, undoing the snap of the view origin) and slides to zero.
 void eyeScrollOffset(const World& w, int64_t nowNs, int& sx, int& sy);
-// One sequence of World::clientChain: the step that opens it and the steps that follow on, run in turn. Sequences run
+// One sequence of an animate() chain: the step that opens it and the steps that follow on, run in turn. Sequences run
 // concurrently, each from its own start; `loop` repeats the whole sequence (< 1 = forever, endNs = -1).
 struct AnimSeq { size_t first = 0, last = 0; int64_t startNs = 0, durNs = 0, endNs = 0; bool head = false, parallel = false; };
 std::vector<AnimSeq> animSequences(const Atom::Chain& c);
@@ -299,6 +301,7 @@ struct CellGrid {
     bool err = true;
     int w = 0, h = 0, originX = 0, originY = 0;
     int viewZ = 1;   // the refresh grid's z (1-based) when in use, else 1
+    bool haveZ = false;   // viewZ is the refresh grid's
     std::vector<uint32_t> appids;
 };
 
@@ -328,6 +331,9 @@ public:
     // The single writer's handle for client-side state changes (statpanel.h selectStatTab). Session thread only.
     World& worldMut() { return w_; }
     int ingestErrors() const { return decodeErrors_; }   // frames a decoder rejected (informational)
+    // output() text addressed to a bare control name ("win.ctl", no ":function") is chat only when this answers true
+    // for it; stock DreamSeeker prints nothing for a browser control or a control that does not exist. Unset: chat.
+    void setTextTarget(std::function<bool(const std::string& control)> f) { textTarget_ = std::move(f); }
 
 private:
     bool decode(uint16_t typ, ByteSpan body, std::string& jsonOut);
@@ -343,6 +349,7 @@ private:
     mutable proto::State st_;   // snapshot() reads the map-refresh machine through get<>()
     int decodeErrors_ = 0;
     int64_t ingestNs_ = (INT64_MAX / 4);
+    std::function<bool(const std::string&)> textTarget_;
 };
 
 }  // namespace fugue::model

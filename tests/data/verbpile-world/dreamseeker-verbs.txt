@@ -1,0 +1,4 @@
+# Stock DreamSeeker 516.1684 (wine) against stock DreamDaemon 516.1684 running world.dm, the player at 7,7, typed after
+# the last scripted move. Each typed line, then the c2s 0x0002 it sent (verb id, src kind:ref). The world log line follows.
+Hoot	verb=0 src=1:2	# VERB Hoot a 10,10 [0x2000002]
+Toot	verb=3 src=1:1	# VERB Toot b 4,4 [0x2000001]

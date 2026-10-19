@@ -16,18 +16,15 @@
 #include <QThread>
 #include <QTimer>
 #include <signal.h>
-#include <chrono>
 #ifdef _WIN32
 #include <windows.h>
 #else
-#include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
 #endif
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
-#include <thread>
 #include <string>
 #include <vector>
 #include "fugue_env.h"
@@ -45,9 +42,6 @@
 #include "shell/urlopener.h"
 
 int clientMain(int argc, char** argv);   // app/main.cpp
-bool takeRelaunch(std::vector<std::string>* args);   // app/main.cpp
-bool clientInterrupted();                            // app/main.cpp
-bool linkClientSpawned();                            // app/main.cpp
 
 namespace {
 using namespace fugue;
@@ -279,6 +273,9 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     // After a remembered "Play as guest" the window opens on the server list rather than Sign in.
     if (cfg.account.empty() && pager::guestRemembered()) win.setGuestChosen(true);
     win.setAutoSignIn(pager::autoSignIn());
+#ifdef FUGUE_GPU
+    win.setRendererSettings(QString::fromStdString(pager::displaySettingsPath(pager::clientStateDir(o.pass))));
+#endif
     refresh();
     QProcess* child = nullptr;
     auto stopChild = [&] {
@@ -554,7 +551,6 @@ int main(int argc, char** argv) {
     // BYOND's CTRL macros refer to the physical Control key, not Command.
     QCoreApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
 #endif
-    const auto started = std::chrono::steady_clock::now();
     // Mode selection: pager/dsargv.h chooseMode. Installed as dreamseeker (a symlink or copy, any case), the whole
     // command line is DreamSeeker's, so the mode is the client even in a release build.
     std::vector<std::string> args;
@@ -568,24 +564,5 @@ int main(int argc, char** argv) {
     std::vector<char*> cargv{argv[0]};
     for (auto& s : rest) cargv.push_back(s.data());
     cargv.push_back(nullptr);
-    const int rc = clientMain(int(cargv.size()) - 1, cargv.data());
-    std::vector<std::string> next;
-    if (!takeRelaunch(&next)) return rc;
-    // The old window's helper processes are reaped first, or they stay zombies of the new run. Worlds that link to each
-    // other hop this client at most once a second.
-#ifndef _WIN32
-    for (auto until = std::chrono::steady_clock::now() + std::chrono::seconds(2); std::chrono::steady_clock::now() < until;) {
-        pid_t r = ::waitpid(-1, nullptr, WNOHANG);
-        if (r < 0) break;
-        if (r == 0) std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-#endif
-    std::this_thread::sleep_until(started + std::chrono::seconds(1));
-    if (clientInterrupted()) return rc;
-    std::string err;
-    std::vector<std::string> env;
-    if (linkClientSpawned()) env.push_back("FUGUE_LINK_CLIENT=1");   // the cap holds across hops
-    if (fugue::pager::runSelf(argv[0], next, false, &err, env)) return rc;   // Windows starts the next run instead of exec
-    std::fprintf(stderr, "[app] could not join the linked world: %s\n", err.c_str());
-    return rc;
+    return clientMain(int(cargv.size()) - 1, cargv.data());
 }

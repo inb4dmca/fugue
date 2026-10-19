@@ -1,0 +1,20 @@
+# Stock DreamSeeker 516.1684 (wine) against stock DreamDaemon 516.1684 running world.dm, the player at 4,4 (box 5,4).
+# Each typed line, then the c2s 0x0002 it sent (verb id, src kind:ref, arguments). `self` is the own mob; a client src
+# went out with a session ref, not 0. The world log line follows each send.
+Cluck 5	verb=0 src=1:0 args=num:5	# VERB Cluck box 5
+Neigh 5	verb=3 src=2:self args=text:5	# VERB Neigh mob 5
+Calc 5	verb=4 src=2:self args=text:5	# VERB Calc mob 5
+Quack 5	verb=5 src=2:self args=text:5	# VERB Quack mob 5
+Tweet 5	verb=9 src=4:0 args=num:5	# VERB Tweet area 5
+Oink 5	verb=13 src=8:client args=text:5	# VERB Oink client 5
+Spin	verb=10 src=4:0	# VERB Spin area
+Glow	verb=17 src=8:client	# VERB Glow client
+Sniff	verb=16 src=8:client	# VERB Sniff client
+Ping	verb=6 src=2:self	# VERB Ping mob
+Dig	verb=15 src=8:client	# VERB Dig client
+Calc hi	verb=4 src=2:self args=text:hi	# VERB Calc mob hi
+Oink hi	verb=13 src=8:client args=text:hi	# VERB Oink client hi
+Cluck hi	verb=2 src=2:self args=text:hi	# VERB Cluck mob hi
+Neigh hi	verb=3 src=2:self args=text:hi	# VERB Neigh mob hi
+Quack hi	verb=5 src=2:self args=text:hi	# VERB Quack mob hi
+Tweet hi	verb=19 src=3:196611 args=text:hi	# VERB Tweet turf hi

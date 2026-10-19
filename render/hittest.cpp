@@ -80,13 +80,21 @@ bool covers(const HitLayer& l, int px, int py, bool whole) {
 
 void fill(Hit& h, const HitAtom& a, int sx, int sy, const Sprite& sp) {
     h.name = a.name; h.kind = a.kind; h.ref = a.ref; h.worldX = a.worldX; h.worldY = a.worldY; h.screen = a.screen;
-    h.appid = a.appid; h.dir = a.dir; h.wheel = a.wheel;
+    h.byId = a.byId; h.turfId = a.turfId;
+    h.appid = a.appid; h.dir = a.dir; h.wheel = a.wheel; h.hover = a.hover; h.mouseMove = a.mouseMove;
     h.spriteX = sx; h.spriteY = sy; h.spriteW = sp.w; h.spriteH = sp.h;
 }
 
-// Visits client.screen entries in `ord` order: a later entry (and a later dest of one entry) beats an earlier one.
-// allowBBox=false withholds mouse_opacity 2's widening.
-bool hudScan(const HitScene& s, const std::vector<size_t>& ord, int px, int py, bool allowBBox, Hit& out, double& plane) {
+// Does layer `l` (plane, key) draw over the layer drawn before it at (plane, key)? A later layer wins a tie.
+bool drawsOver(double plane, const DrawKey& key, double bestPlane, const DrawKey& bestKey) {
+    return plane != bestPlane ? plane > bestPlane : !(key < bestKey);
+}
+
+// Visits client.screen entries in `ord` order, a later entry (and a later dest of one entry) beating an earlier one:
+// keyed, the topmost layer by plane and draw key; otherwise the last one that covers. allowBBox=false withholds
+// mouse_opacity 2's widening.
+bool hudScan(const HitScene& s, const std::vector<size_t>& ord, int px, int py, bool allowBBox, bool keyed, Hit& out,
+             double& plane, DrawKey& key) {
     bool found = false;
     for (size_t i : ord) {
         const HitHud& hu = s.hud[i];
@@ -97,36 +105,26 @@ bool hudScan(const HitScene& s, const std::vector<size_t>& ord, int px, int py, 
         for (const auto& d : hu.dests) {
             int lx = px - d.x, ly = py - d.y;
             if (lx < 0 || ly < 0 || lx >= hu.tileW || ly >= hu.tileH) continue;
-            const HitLayer* best = nullptr;
-            for (const HitLayer& l : hu.layers)
-                if (covers(l, lx, ly, whole)) best = &l;
-            if (!best) continue;
-            fill(out, a, d.x + hu.originX, d.y + hu.originY - best->sprite->h, *best->sprite);
-            plane = best->plane;
-            found = true;
+            for (const HitLayer& l : hu.layers) {
+                if (l.footprint || !covers(l, lx, ly, whole)) continue;
+                if (found && keyed && !drawsOver(l.plane, l.key, plane, key)) continue;
+                fill(out, a, d.x + hu.originX, d.y + hu.originY - l.sprite->h, *l.sprite);
+                plane = l.plane;
+                key = l.key;
+                found = true;
+            }
         }
     }
     return found;
 }
 
-// client.screen order only. hitAt itself uses hudTop; a test-only hook uses this rule.
+// client.screen order only. hitAt itself goes by the draw key; a test-only hook uses this rule.
 bool hudPass(const HitScene& s, int px, int py, bool allowBBox, Hit& out) {
     std::vector<size_t> ord(s.hud.size());
     for (size_t i = 0; i < ord.size(); i++) ord[i] = i;
     double plane = 0;
-    return hudScan(s, ord, px, py, allowBBox, out, plane);
-}
-
-// The topmost client.screen atom at (px,py) in DreamSeeker's HUD draw order: plane, then layer, then client.screen
-// order (later on top). Each atom covers by its own mouse_opacity (2 = its whole rectangle). See hittest.h.
-bool hudTop(const HitScene& s, int px, int py, Hit& out, double& plane) {
-    std::vector<size_t> ord(s.hud.size());
-    for (size_t i = 0; i < ord.size(); i++) ord[i] = i;
-    std::stable_sort(ord.begin(), ord.end(), [&](size_t a, size_t b) {
-        if (s.hud[a].plane != s.hud[b].plane) return s.hud[a].plane < s.hud[b].plane;
-        return s.hud[a].layer < s.hud[b].layer;
-    });
-    return hudScan(s, ord, px, py, /*allowBBox=*/true, out, plane);
+    DrawKey key;
+    return hudScan(s, ord, px, py, allowBBox, /*keyed=*/false, out, plane, key);
 }
 
 }  // namespace
@@ -135,22 +133,26 @@ bool hitAt(const HitScene& s, int px, int py, Hit& out) {
     if (s.cols <= 0 || s.rows <= 0 || px < 0 || py < 0 || px >= s.pixW() || py >= s.pixH()) return false;
     Hit h;
     double hudPlane = 0;
+    DrawKey hudKey;
     bool hud = false;
     if (g_mutation == 5) {
         // test-only hook: a HUD atom wins outright where it paints, in client.screen order.
         if (hudPass(s, px, py, /*allowBBox=*/false, h)) { out = h; return true; }
     } else {
-        hud = hudTop(s, px, py, h, hudPlane);
+        // The topmost client.screen layer, each atom covering by its own mouse_opacity (2 = its whole rectangle).
+        std::vector<size_t> ord(s.hud.size());
+        for (size_t i = 0; i < ord.size(); i++) ord[i] = i;
+        hud = hudScan(s, ord, px, py, /*allowBBox=*/true, /*keyed=*/true, h, hudPlane, hudKey);
     }
     const HitLayer* best = nullptr;
     for (const HitLayer& l : s.world) {
         if (l.atom < 0 || size_t(l.atom) >= s.atoms.size()) continue;
         const HitAtom& a = s.atoms[size_t(l.atom)];
-        if (effOpacity(a.mouseOpacity) == kMouseOpacityNone) continue;
-        if (covers(l, px, py, effOpacity(a.mouseOpacity) >= kMouseOpacityBBox)) best = &l;
+        const int mo = l.passMouse ? kMouseOpacityIcon : effOpacity(a.mouseOpacity);
+        if (l.footprint || mo == kMouseOpacityNone) continue;
+        if (covers(l, px, py, mo >= kMouseOpacityBBox)) best = &l;
     }
-    // A HUD atom is drawn above every map layer of its own plane and below those of a higher one (see hittest.h).
-    if (hud && (!best || hudPlane >= best->plane)) { out = h; return true; }
+    if (hud && (!best || drawsOver(hudPlane, hudKey, best->plane, best->key))) { out = h; return true; }
     if (best) {
         fill(out, s.atoms[size_t(best->atom)], best->x, best->y, *best->sprite);
         out.frame = best->frame;
@@ -165,20 +167,65 @@ bool hitAt(const HitScene& s, int px, int py, Hit& out) {
 std::vector<Hit> hitStack(const HitScene& s, int px, int py) {
     std::vector<Hit> out;
     if (s.cols <= 0 || s.rows <= 0 || s.tileW <= 0 || s.tileH <= 0 || px < 0 || py < 0 || px >= s.pixW() || py >= s.pixH()) return out;
-    Hit hud;
-    if (hudPass(s, px, py, /*allowBBox=*/false, hud)) out.push_back(hud);
-    int fromBottom = s.pixH() - 1 - py;
-    int wx = s.originX + px / s.tileW, wy = s.originY + fromBottom / s.tileH;
     std::vector<bool> seen(s.atoms.size(), false);
-    for (auto it = s.world.rbegin(); it != s.world.rend(); ++it) {   // topmost first
-        const HitLayer& l = *it;
-        if (l.atom < 0 || size_t(l.atom) >= s.atoms.size() || seen[size_t(l.atom)] || !l.sprite) continue;
-        const HitAtom& a = s.atoms[size_t(l.atom)];
-        if (a.screen || a.worldX != wx || a.worldY != wy || effOpacity(a.mouseOpacity) == kMouseOpacityNone) continue;
-        seen[size_t(l.atom)] = true;
+    auto listable = [&](int atom) {
+        if (atom < 0 || size_t(atom) >= s.atoms.size() || seen[size_t(atom)]) return false;
+        const HitAtom& a = s.atoms[size_t(atom)];
+        return !a.name.empty() && effOpacity(a.mouseOpacity) != kMouseOpacityNone;
+    };
+    if (s.secondary) {
+        // No grid: the stack is the cell of the atom under the pointer (a screen object stands alone).
+        Hit top;
+        if (!hitAt(s, px, py, top)) return out;
+        if (top.screen || top.worldX <= 0) { out.push_back(top); return out; }
+        for (auto it = s.world.rbegin(); it != s.world.rend(); ++it) {   // topmost first
+            const HitLayer& l = *it;
+            if (!listable(l.atom) || !l.sprite) continue;
+            const HitAtom& a = s.atoms[size_t(l.atom)];
+            if (a.screen || a.worldX != top.worldX || a.worldY != top.worldY) continue;
+            seen[size_t(l.atom)] = true;
+            Hit h;
+            fill(h, a, l.x, l.y, *l.sprite);
+            h.atom = l.atom;
+            out.push_back(h);
+        }
+        return out;
+    }
+    // Every layer whose rectangle holds the pixel, transparent pixels included, in draw order topmost first: by plane and
+    // draw key, then client.screen order or map draw order. A HUD atom enters at its topmost such layer.
+    struct Cand { double plane; DrawKey key; size_t seq; bool screen; const HitLayer* l; int atom, x, y; };   // x,y: map layer / HUD dest
+    std::vector<Cand> cs;
+    for (size_t i = 0; i < s.hud.size(); i++) {
+        const HitHud& hu = s.hud[i];
+        for (const auto& d : hu.dests) {
+            const HitLayer* top = nullptr;
+            for (const HitLayer& l : hu.layers)
+                if (covers(l, px - d.x, py - d.y, /*whole=*/true) && (!top || drawsOver(l.plane, l.key, top->plane, top->key))) top = &l;
+            if (top) cs.push_back({top->plane, top->key, i, true, top, hu.atom, d.x, d.y});
+        }
+    }
+    for (size_t i = 0; i < s.world.size(); i++) {
+        const HitLayer& l = s.world[i];
+        if (covers(l, px, py, /*whole=*/true)) cs.push_back({l.plane, l.key, i, false, &l, l.atom, l.x, l.y});
+    }
+    std::stable_sort(cs.begin(), cs.end(), [](const Cand& a, const Cand& b) {
+        if (a.plane != b.plane) return a.plane > b.plane;
+        if (a.key != b.key) return b.key < a.key;
+        if (a.screen != b.screen) return a.screen;
+        return a.seq > b.seq;
+    });
+    for (const Cand& c : cs) {
+        if (!listable(c.atom)) continue;
+        seen[size_t(c.atom)] = true;
+        const HitAtom& a = s.atoms[size_t(c.atom)];
         Hit h;
-        fill(h, a, l.x, l.y, *l.sprite);
-        h.atom = l.atom;
+        if (c.screen) {
+            const HitHud& hu = s.hud[c.seq];
+            fill(h, a, c.x + hu.originX, c.y + hu.originY - c.l->sprite->h, *c.l->sprite);
+        } else {
+            fill(h, a, c.x, c.y, *c.l->sprite);
+        }
+        h.atom = c.atom;
         out.push_back(h);
     }
     return out;
@@ -197,12 +244,14 @@ bool nameMouse(const HitScene& s, int px, int py, Naming& n) {
     if (!hitAt(s, px, py, h)) return false;
 
     n = Naming{};
-    n.screenX = tx + 1; n.screenY = ty + 1;
+    n.screenX = tx + 1 + s.screenX0; n.screenY = ty + 1 + s.screenY0;
     n.screenPX = px % s.tileW + 1; n.screenPY = fromBottom % s.tileH + 1;
     n.iconX = n.screenPX; n.iconY = n.screenPY;
     n.overKind = 3; n.overX = n.locX = std::max(1, s.originX + tx); n.overY = n.locY = std::max(1, s.originY + ty);
     if (h.kind == kAtomTurf) {
-        // no movable answered: the turf under the cursor is the atom
+        // no movable answered: the turf under the cursor is the atom (on a secondary map, the vis_contents turf drawn there)
+        if (s.secondary && h.worldX > 0 && h.worldY > 0) { n.overX = n.locX = h.worldX; n.overY = n.locY = h.worldY; }
+        if (s.secondary && h.byId) { n.overKind = 7; n.overRef = h.turfId; }
     } else if (h.screen) {
         n.overKind = h.kind == kAtomMob ? 2 : 1; n.overRef = h.ref;
         n.locNull = true;                                    // a client.screen atom has no turf
@@ -217,6 +266,11 @@ bool nameMouse(const HitScene& s, int px, int py, Naming& n) {
     } else if (h.spriteW > 0 && h.spriteH > 0) {
         n.iconX = px - h.spriteX + 1;
         n.iconY = (h.spriteY + h.spriteH - 1) - py + 1;
+    }
+    if (h.frame.hasVisOrigin) {
+        n.visX = px - h.frame.visLeft + 1;
+        n.visY = h.frame.visBottom - py;
+        n.hasVis = n.visX != n.iconX || n.visY != n.iconY;
     }
     if (!n.hasVis) { n.visX = n.iconX; n.visY = n.iconY; }
     n.hit = std::move(h);

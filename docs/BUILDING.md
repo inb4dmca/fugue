@@ -87,7 +87,8 @@ out, and on Linux/macOS the client disables core dumps (and refuses ptrace on Li
 | `-DFUGUE_OPENMPT=AUTO\|ON\|OFF` | tracker-module playback via libopenmpt. `AUTO` (default) uses it when found; `ON` makes it required. A libopenmpt in a private prefix is found with `-DCMAKE_PREFIX_PATH=<prefix>`. |
 | `-DFUGUE_RELEASE=ON` | the release build described above |
 | `-DFUGUE_HEADLESS_ONLY=ON` | only the Qt-light modules, tools and tests; no window binary and no WebEngine |
-| `-DFUGUE_COMPILE_JOBS=N` | cap on concurrent compile jobs (default 6). A Qt-heavy translation unit can use about 300 MB, so lower this on small machines. |
+| `-DFUGUE_COMPILE_JOBS=N` | cap on concurrent compile jobs. The default is one per GiB of memory available when CMake configures, at most one per core: a Qt-heavy translation unit can use about 860 MB. |
+| `-DFUGUE_BUILD_GPU=ON` | the experimental GPU renderer and its tests; needs Qt 6.7+ with its Gui private headers and Shader Tools ([rendergpu/README.md](../rendergpu/README.md)) |
 
 ## macOS
 

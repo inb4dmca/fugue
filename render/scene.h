@@ -66,10 +66,35 @@ struct SceneStats {
     int masters = 0;          // informational: plane masters collected from client.screen
     int unappliedFilters = 0;   // informational: master filters that are not built (counted, never invented)
     bool eyeScroll = false;   // an eye scroll is in flight at the render clock (modelled)
+    uint64_t appearanceParses = 0, appearanceCacheHits = 0; // distinct appearance lookups, excluding within-call reuse
+    bool profilePreparation = false; // opt-in phase clocks; counters above are always available
+    double appearanceBuildMs = 0; // JSON decoding and conversion to renderer fields
     bool anyUnmodeled() const {
         return maptext || animatedAtoms || images;
     }
     std::string summary() const;
+};
+
+// Optional, session-thread-owned cache of parsed appearance fields (NOT assembled scenes or resources).
+// Exact JSON comparisons detect replacement/recycled IDs. Entry and payload limits bound retained history;
+// defaults: 16384 appearances / 16 MiB accounted payload, excluding allocator/container overhead. A recorded vg round's
+// working set is about 4100-4600 appearances and under 8 MiB; at 4096 entries the cache thrashed (51% hits).
+class SceneCache {
+public:
+    struct Impl;
+    explicit SceneCache(size_t maxBytes = 16 * 1024 * 1024, size_t maxEntries = 16384);
+    ~SceneCache();
+    SceneCache(const SceneCache&) = delete;
+    SceneCache& operator=(const SceneCache&) = delete;
+    void clear();
+    size_t retainedBytes() const;
+    size_t entries() const;
+private:
+    std::unique_ptr<Impl> impl_;
+    friend bool assembleMapControl(const model::Session&, ResStore&, int64_t, DrawList&, SceneStats&, std::string*,
+                                   bool, std::string_view, SceneCache*);
+    friend bool assembleSecondaryMap(const model::Session&, ResStore&, int64_t, std::string_view, DrawList&, SceneStats&,
+                                     std::string*, std::string_view, SceneCache*, bool);
 };
 
 struct L3Frame {
@@ -85,14 +110,15 @@ struct L3Frame {
 // mapStyle is the default map control's `style` param (the skin's), the sheet maptext is laid out against - the same
 // one MeasureText merges in (render/dsmaptext.h). Empty: DreamSeeker's bare defaults.
 bool assembleMapControl(const model::Session& session, ResStore& res, int64_t clockNs, DrawList& out, SceneStats& stats, std::string* err,
-                        bool withHit = false, std::string_view mapStyle = {});
+                        bool withHit = false, std::string_view mapStyle = {}, SceneCache* cache = nullptr);
 
 // A secondary map control by its id (a runtime `winset parent=... type=map` control, such as tgui's ByondUi): the
 // client.screen objects whose screen_loc names `mapName` ("name:x,y") and their vis_contents, under the plane masters
 // assigned to that map. The list covers the objects' bounding box at the world's icon size; the map control scales it to
-// fit (shell/mapwidget.h). No hit scene.
+// fit (shell/mapwidget.h). withHit fills out.hit, a HitScene with `secondary` set (render/hittest.h).
 bool assembleSecondaryMap(const model::Session& session, ResStore& res, int64_t clockNs, std::string_view mapName, DrawList& out,
-                          SceneStats& stats, std::string* err, std::string_view mapStyle = {});
+                          SceneStats& stats, std::string* err, std::string_view mapStyle = {}, SceneCache* cache = nullptr,
+                          bool withHit = false);
 
 // The right-click menu's icon for one atom (HitAtom::appid / dir; dir -1 = the appearance's own facing): straight RGBA at
 // the size of the atom's icon. false when the appearance or every icon in it is not here yet (the row then has no icon).

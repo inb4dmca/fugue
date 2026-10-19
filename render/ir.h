@@ -128,6 +128,9 @@ RgbaImage execute(const DrawList& dl, ExecStats* stats = nullptr);
 // colour matrices by value, since the assembler builds fresh ones every frame). `hit` is not compared. A field added
 // to the IR must be added here, or a change to it alone would leave a stale frame on screen.
 bool sameDrawList(const DrawList& a, const DrawList& b);
+// Compares a plane's own inputs by value, with the same immutable-pointer fast paths as sameDrawList.
+// Does not resolve relay names: callers caching pixels must also compare resolved source dependencies and dimensions.
+bool samePlanePass(const PlanePass& a, const PlanePass& b);
 
 // Test-only hooks; 0 is the shipped behaviour.
 void setExecutorMutation(int m);

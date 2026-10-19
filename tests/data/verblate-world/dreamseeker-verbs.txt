@@ -1,0 +1,5 @@
+# Stock DreamSeeker 516.1684 (wine) against stock DreamDaemon 516.1684 running world.dm, the player at 6,6, typed after
+# drum l and horn h moved. Each typed line, then the c2s 0x0002 it sent (verb id, src kind:ref). The world log line follows.
+Drum	verb=0 src=1:0	# VERB Drum l 8,8
+Horn	verb=3 src=1:3	# VERB Horn h 4,8
+Boom	verb=4 src=1:4	# VERB Boom a 6,9

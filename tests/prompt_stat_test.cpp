@@ -295,7 +295,7 @@ private slots:
         const Prompt* p = b.onFrame(kInputMsg, inputReq("t", "", "m", 0, 0, kInputFilterList, 0));
         QVERIFY(p && p->inList && !p->choicesKnown);
         QVERIFY(b.needsChoices());
-        QCOMPARE(QString::fromStdString(hs(encodePendingInputExpansionRequest())), QString("000000000000000000"));  // nine zero bytes
+        QCOMPARE(QString::fromStdString(hs(encodePendingInputExpansionRequest(p->id))), QString("000000000000000000"));  // [00][id 0][0]
         Bytes reply; putLe16(reply, 3); cs(reply, "alpha"); cs(reply, "beta"); cs(reply, "gamma");
         const Prompt* q = b.onFrame(kExpansionReplyMsg, reply);
         QVERIFY(q && q->choicesKnown);

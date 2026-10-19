@@ -10,6 +10,7 @@ struct SessionEnding {
     bool accepted = false;       // the server made this client a /client (0x0071)
     bool reboot = false;         // the world rebooted (0x001e)
     bool afterReboot = false;    // this session was the login again after a reboot
+    bool afterLink = false;      // this session was the join a link() started
     bool refused = false;        // the server said why it ended the session (0x0000)
     std::string why;
 };
@@ -22,8 +23,9 @@ struct ReconnectStep {
 
 // As stock DreamSeeker: `manual` (.reconnect) connects at once, and a world reboot logs in again at once on the same
 // connection, both silently. A session that got into the world and then lost its connection without a reason is
-// retried once, 10 s later. A session the server ended with a reason (a kick, a timeout), a first login that never got
-// in, and a failed retry are not retried.
+// retried once, 10 s later, and so is the join a link() started, when its handshake fails (vg links every client back
+// to itself and then reboots). A session the server ended with a reason (a kick, a timeout), a first
+// login that never got in, a join that found no server, and a failed retry are not retried.
 ReconnectStep reconnectStep(const SessionEnding& e, bool first, bool manual);
 
 }  // namespace fugue::net

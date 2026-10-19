@@ -279,12 +279,15 @@ bool sameMaster(const PlaneMasterSpec& a, const PlaneMasterSpec& b) {
 }
 }  // namespace
 
+bool samePlanePass(const PlanePass& a, const PlanePass& b) {
+    return a.plane == b.plane && samePtr(a.master, b.master, sameMaster) && sameLayers(a.layers, b.layers);
+}
+
 bool sameDrawList(const DrawList& a, const DrawList& b) {
     if (a.outW != b.outW || a.outH != b.outH || a.groundBlack != b.groundBlack || a.planes.size() != b.planes.size() || a.hud.size() != b.hud.size())
         return false;
     for (size_t i = 0; i < a.planes.size(); i++) {
-        const PlanePass &p = a.planes[i], &q = b.planes[i];
-        if (!(p.plane == q.plane) || !samePtr(p.master, q.master, sameMaster) || !sameLayers(p.layers, q.layers)) return false;
+        if (!samePlanePass(a.planes[i], b.planes[i])) return false;
     }
     for (size_t i = 0; i < a.hud.size(); i++) {
         const HudPass &p = a.hud[i], &q = b.hud[i];

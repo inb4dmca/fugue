@@ -1,4 +1,5 @@
 #include "shell/skinwindow.h"
+#include "shell/displaysettings.h"
 #include "shell/macrodialog.h"
 #include <algorithm>
 #include <cctype>
@@ -129,6 +130,7 @@ private:
 constexpr int kStatusBarH = 18;
 
 SkinWindow::SkinWindow(QWidget* parent) : QWidget(parent), live_(std::make_shared<skin::LiveSkin>()) {
+    display_ = new DisplaySettings(this);
     setObjectName("skinwindow");
     setAutoFillBackground(true);
     setWindowIcon(fugueIcon());   // until the world names an icon (setSkinIcon)
@@ -190,6 +192,9 @@ void SkinWindow::clearWidgets() {
     widgets_.clear(); types_.clear(); outputs_.clear(); infos_.clear(); browsers_.clear();
     map_ = nullptr;
     lastMapSignalled_ = nullptr;
+    for (const std::string& k : dmfAux_) auxMaps_.erase(k);
+    dmfAux_.clear();
+    pendingMaps_.clear();
 }
 
 int SkinWindow::menuBarHeight() const { return bar_ && !bar_->isHidden() ? bar_->height() : 0; }
@@ -198,6 +203,7 @@ int SkinWindow::statusBarHeight() const { return status_ && !status_->isHidden()
 skin::Rect SkinWindow::clientRect() const { return {0, 0, width(), std::max(0, height() - chromeHeight())}; }
 
 namespace {
+std::string lowerKey(const std::string& s) { std::string o = s; for (char& c : o) c = char(std::tolower(static_cast<unsigned char>(c))); return o; }
 // The main window's `statusbar` setting comes from the skin file, whose default is true. Nothing at runtime reads a winset of it.
 bool wantsStatusBar(const skin::SkinSnapshot& s) {
     if (s.file)
@@ -257,11 +263,23 @@ QString SkinWindow::loadSkin(const std::string& dmf) {
 QWidget* SkinWindow::makeWidget(const skin::Control& c) {
     QWidget* w = nullptr;
     if (c.type == "MAP") {
-        if (map_) return nullptr;   // the first .dmf map only; winset-created maps are built by syncRuntimeMaps
-        map_ = new MapWidget(this);
-        map_->setControlId(c.window + "." + c.name);
-        connect(map_, &MapWidget::hoverChanged, this, [this](const QString& name) { if (status_) status_->setText(name); });
-        w = map_;
+        // The default map (LiveSkin::defaultMapId) is map(); every other .dmf map is a secondary map, fed like a runtime
+        // one (setAuxMapFrame) under its elem name. Winset-created maps are built by syncRuntimeMaps.
+        const std::string id = c.window + "." + c.name;
+        auto* mw = new MapWidget(this);
+        mw->setControlId(id);
+        if (!map_ && id == live_->defaultMapId()) {
+            map_ = mw;
+            connect(map_, &MapWidget::hoverChanged, this, [this](const QString& name) { if (status_) status_->setText(name); });
+        } else {
+            const std::string key = lowerKey(c.name);
+            auxMaps_[key] = mw;
+            dmfAux_.insert(key);
+            if (auto img = auxImg_.find(key); img != auxImg_.end()) mw->setFrame(img->second, auxHit_[key]);
+            pendingMaps_.push_back(mw);
+            emit auxMapBuilt(QString::fromStdString(c.name));
+        }
+        w = mw;
     } else if (c.type == "INFO") {
         auto* sp = new StatPanelWidget(this);
         sp->setControlId(QString::fromStdString(c.window + "." + c.name));
@@ -389,10 +407,10 @@ void SkinWindow::applyProps(const skin::Control& c, QWidget* w, const skin::Skin
         }
     } else if (auto* l = qobject_cast<QLabel*>(w)) {
         if (prop("text", v)) l->setText(QString::fromStdString(v));
-    } else if (c.type == "MAP" && map_ == w) {
+    } else if (auto* mw = qobject_cast<MapWidget*>(w)) {
         bool rc = c.elem ? c.elem->boolv("right-click", false) : false;
         if (s.props.controlProp(c.window, c.name, "right-click", v)) rc = skin::winsetBool(v);
-        map_->setRightClickToWire(rc);
+        mw->setRightClickToWire(rc);
         // Scaling: the live overlay (a runtime winset, such as vg's "Stretch to fit" setting icon-size=0) wins over the
         // file. Setting zoom or icon-size clears the other.
         std::string zs, is, lb, zm;
@@ -404,7 +422,7 @@ void SkinWindow::applyProps(const skin::Control& c, QWidget* w, const skin::Skin
         if (s.props.controlProp(c.window, c.name, "letterbox", lb)) letterbox = skin::winsetBool(lb);
         std::string mode = c.elem ? c.elem->str("zoom-mode", "normal") : "normal";
         if (s.props.controlProp(c.window, c.name, "zoom-mode", zm)) mode = zm;
-        map_->setMapScale(zoom, icon, letterbox, mode);
+        mw->setMapScale(zoom, icon, letterbox, mode);
     }
     if (c.type == "BUTTON" || c.type == "LABEL" || c.type == "INPUT" || c.type == "INFO") {
         std::string fam, size, style;
@@ -449,6 +467,7 @@ void SkinWindow::apply(const skin::SkinSnapshot& s) {
             QWidget* w = makeWidget(c);
             if (!w) continue;
             w->setObjectName(QString::fromStdString(key));
+            w->setProperty("fugueControl", QString::fromStdString(key));   // MapWidget::targetAt
             widgets_[key] = w;
             types_[key] = c.type;
             it = widgets_.find(key);
@@ -463,6 +482,8 @@ void SkinWindow::apply(const skin::SkinSnapshot& s) {
     // A control that left the layout is hidden, not destroyed, so its content survives.
     for (auto& [key, w] : widgets_)
         if (!placed.count(key)) w->hide();
+    for (auto& [key, w] : widgets_)
+        if (auto* mw = qobject_cast<MapWidget*>(w)) mw->clipExternalView();
 
     // The CHILD dividers the layout placed (none for show-splitter=false or a cleared side).
     std::set<std::string> dividers;
@@ -535,7 +556,7 @@ void SkinWindow::rebuildMenu(const skin::Menu& m) {
         sysBtn_->setIcon(windowIcon());
         auto* sys = new QMenu(sysBtn_);
         sys->setFont(skinMenuFont());
-        addSystemMenuItems(sys, [this](const QString& c) { emit menuCommand(c); });
+        addSystemMenuItems(sys, [this](const QString& c) { emit menuCommand(c); }, display_);
         sysBtn_->setMenu(sys);
         connect(this, &QWidget::windowIconChanged, sysBtn_, &QToolButton::setIcon);
         // The button must not make the bar taller, or every skin's client area would shrink. QMenuBar pads a corner
@@ -637,6 +658,8 @@ void SkinWindow::syncFromLive() {
     markMapShown();
     markInfoShown();
     if (map_ != lastMapSignalled_) { lastMapSignalled_ = map_; if (map_) emit mapReady(map_); }
+    for (QPointer<MapWidget>& mw : pendingMaps_) if (mw) emit mapReady(mw.data());
+    pendingMaps_.clear();
     if (QSize cl(s.client.dx(), s.client.dy()); cl != lastClient_ && cl.width() > 0 && cl.height() > 0) { lastClient_ = cl; emit clientResized(cl); }
     if (s.macro != lastMacro_ || s.macroGen != lastMacroGen_) {
         bool first = lastMacro_.empty();
@@ -654,10 +677,6 @@ void SkinWindow::syncFromLive() {
     syncRuntimeMaps(s);
     syncing_ = false;
 }
-
-namespace {
-std::string lowerKey(const std::string& s) { std::string o = s; for (char& c : o) c = char(std::tolower(static_cast<unsigned char>(c))); return o; }
-}  // namespace
 
 // The runtime MAP controls (skin::SkinSnapshot::runtime) inside their browse() popups. pos is in the popup's client area.
 // tgui's ByondUi sends pos/size in device pixels (which may be fractional), so they are divided by the popup's
@@ -678,9 +697,11 @@ void SkinWindow::syncRuntimeMaps(const skin::SkinSnapshot& s) {
         if (!mw) {
             mw = new MapWidget(popup);
             mw->setObjectName(QString::fromStdString(rc.name));
+            mw->setControlId(rc.parent + "." + rc.name);   // stock's full id: popup.control
             auto img = auxImg_.find(key);
-            if (img != auxImg_.end()) mw->setFrame(img->second);
+            if (img != auxImg_.end()) mw->setFrame(img->second, auxHit_[key]);
             emit auxMapBuilt(QString::fromStdString(rc.name));
+            emit mapReady(mw.data());
         }
         std::string v;
         double x = 0, y = 0, w = popup->width(), h = popup->height();
@@ -697,21 +718,38 @@ void SkinWindow::syncRuntimeMaps(const skin::SkinSnapshot& s) {
         mw->raise();   // above the popup's page
     }
     for (auto it = auxMaps_.begin(); it != auxMaps_.end();) {
-        if (live.count(it->first)) { ++it; continue; }
+        if (live.count(it->first) || dmfAux_.count(it->first)) { ++it; continue; }
         if (it->second) delete it->second.data();
         auxImg_.erase(it->first);
+        auxHit_.erase(it->first);
+        emit auxMapRemoved(QString::fromStdString(it->first));
         it = auxMaps_.erase(it);
     }
 }
 
-void SkinWindow::setAuxMapFrame(const QString& id, const QImage& img) {
+void SkinWindow::setAuxMapFrame(const QString& id, const QImage& img, HitPtr hit) {
     std::string key = lowerKey(id.toStdString());
     auxImg_[key] = img;
+    auxHit_[key] = hit;
     // No widget yet (its popup is not open, or its parent is a skin window): the picture is held for the widget
     // syncRuntimeMaps builds when the popup opens (showBrowse) or the control changes (syncFromLive).
     auto it = auxMaps_.find(key);
     if (it == auxMaps_.end() || !it->second) return;
-    it->second->setFrame(img);
+    it->second->setFrame(img, std::move(hit));
+}
+
+void SkinWindow::setAuxMapHit(const QString& id, HitPtr hit) {
+    std::string key = lowerKey(id.toStdString());
+    auxHit_[key] = hit;
+    auto it = auxMaps_.find(key);
+    if (it != auxMaps_.end() && it->second) it->second->setHit(std::move(hit));
+}
+
+QList<MapWidget*> SkinWindow::mapWidgets() const {
+    QList<MapWidget*> out;
+    if (map_) out << map_;
+    for (const auto& [k, mw] : auxMaps_) if (mw) out << mw.data();
+    return out;
 }
 
 MapWidget* SkinWindow::auxMap(const QString& id) const {
@@ -764,16 +802,34 @@ void SkinWindow::resizeEvent(QResizeEvent* e) {
 }
 
 void SkinWindow::setMapFrame(const QImage& img, HitPtr hit) {
+    hasMapFrame_ = !img.isNull();
     mapImg_ = img;
     markMapShown();
     if (map_) map_->setFrame(img, std::move(hit));
+}
+
+void SkinWindow::setMapExternalFrame(QSize size, HitPtr hit, std::function<QImage()> snapshot) {
+    hasMapFrame_ = !size.isEmpty();
+    mapImg_ = {};
+    markMapShown();
+    if (map_) map_->setExternalFrame(size, std::move(hit), std::move(snapshot));
+}
+
+QPixmap SkinWindow::grabWithMaps() {
+    QPixmap result = grab();
+    QPainter painter(&result);
+    for (auto* map : findChildren<MapWidget*>()) {
+        if (map->hasExternalFrame() && map->isVisibleTo(this))
+            painter.drawImage(map->mapTo(this, QPoint()), map->viewSnapshot());
+    }
+    return result;
 }
 
 // The map pane is shown once the map has a picture, since stock runs the pane's on-show only from then on. This is
 // keyed on the picture, not the widget, because the side is empty until then. The pane is the window of the skin's
 // default MAP, or its first.
 void SkinWindow::markMapShown() {
-    if (mapPaneShown_ || mapImg_.isNull() || !snap_.file) return;
+    if (mapPaneShown_ || !hasMapFrame_ || !snap_.file) return;
     std::string first, def;
     for (const skin::Block& b : snap_.file->blocks)
         if (b.kind == "window")

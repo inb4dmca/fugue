@@ -1,0 +1,5 @@
+# Stock DreamSeeker 516.1684 (wine) against stock DreamDaemon 516.1684 running world.dm, the player (mob 0) at 6,6 with
+# bound_x -64 and bound_width 96. Each typed line, then the c2s 0x0002 it sent (verb id, src kind:ref, arguments). `self`
+# is the own mob. The world log line follows.
+Yelp	verb=1 src=1:1	# VERB Yelp b 3,6
+aim pad	verb=2 src=2:self args=obj:3	# VERB Aim 3,7

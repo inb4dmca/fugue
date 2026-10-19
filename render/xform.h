@@ -17,6 +17,7 @@ struct Mat {
 enum class Sampling { Nearest, Bilinear };
 
 Mat matMul(const Mat& m, const Mat& n);   // Apply n first, then m
+bool invertMat(const Mat& m, Mat& out);   // false when singular
 // dmMatrixToImage: the wire matrix (DM, +y up, six float32 cells) -> the raster (+y down) matrix.
 Mat dmMatrixToImage(const std::array<float, 6>& t);
 // applyTransform: resample `src` (w x h straight-alpha RGBA8) about its centre; the output canvas is the

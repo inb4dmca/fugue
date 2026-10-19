@@ -8,6 +8,8 @@
 //     cancelled (Cancel, Escape or the window close box all give null). An alert() and a non-null input() have no
 //     Cancel, and ignore Escape and the close box until answered (see model::Prompt::cancellable).
 //     The session thread turns the outcome into the reply; this class never touches a socket.
+//   * A prompt the server withdraws (s2c 0x009d) is closed, or dropped from the queue, with no outcome, as stock
+//     DreamSeeker closes it; the next one then opens.
 //   * Modality is one dialog at a time, in arrival order. The map stays interactive because each dialog is its own
 //     top-level window, so the dialogs are not application-modal.
 // GUI thread only.
@@ -44,6 +46,7 @@ public:
     explicit PromptHost(QWidget* anchor, QObject* parent = nullptr);
     ~PromptHost() override;
     void present(const PromptRequest& r);    // queue (or show if idle)
+    void withdraw(quint32 id, bool alert);   // a world prompt the server dropped: closed or unqueued, no outcome
     bool busy() const { return !cur_.isNull(); }
     int queued() const { return int(queue_.size()); }
     QDialog* current() const { return cur_; }   // the live dialog, reached through its named children
@@ -61,7 +64,7 @@ private:
     std::deque<PromptRequest> queue_;
     QPointer<QDialog> cur_;
     quint32 curId_ = 0;
-    bool curAlert_ = false, curDone_ = false;
+    bool curAlert_ = false, curVerbArg_ = false, curDone_ = false;
 };
 
 }  // namespace fugue::shell

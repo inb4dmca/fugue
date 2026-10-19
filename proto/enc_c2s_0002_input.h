@@ -1,6 +1,6 @@
 // c2s 0x0002: the unified input command (sub-typed by body[0]) and c2s 0x0081 Topic. ENCODERS only.
 //
-// Byte layouts follow stock DreamSeeker 516. Subs: 0 move, 2 verb, 3-6 mouse, 7 extended mouse.
+// Byte layouts follow stock DreamSeeker 516. Subs: 0 move, 2 verb, 3-6 mouse, 7 extended mouse, 8 hover.
 // Bodies are PLAINTEXT; net::Session body-ciphers them with K_login.
 #pragma once
 #include <cstdint>
@@ -14,7 +14,7 @@ constexpr uint16_t kClientCmd = 0x0002;
 constexpr uint16_t kTopicMsg = 0x0081;
 
 // 0x0002 mouse subs
-constexpr uint8_t kMouseClick = 0x03, kMouseDblClick = 0x04, kMouseUp = 0x05, kMouseDown = 0x06, kMouseExt = 0x07;
+constexpr uint8_t kMouseClick = 0x03, kMouseDblClick = 0x04, kMouseUp = 0x05, kMouseDown = 0x06, kMouseExt = 0x07, kMouseHover = 0x08;
 constexpr uint16_t kMouseEventDrop = 0x0092, kMouseEventDrag = 0x0093, kMouseEventWheel = 0x010a;
 constexpr uint8_t kVerbSrcMob = 0x02, kVerbSrcClient = 0x08;
 
@@ -37,6 +37,9 @@ struct ClickCmd {
     uint8_t sub = kMouseClick;
     AtomRef over, loc = nullRef();
     std::string control = "mapwindow.map";
+    // A secondary map control: loc is this string instead (the control's short or full id), and screen-loc is prefixed
+    // with screenLocMap (mapIdParam). Both empty on the default map.
+    std::string locStr, screenLocMap;
     int iconX = 16, iconY = 16;      // in the named atom's icon frame, sent unclamped (can be < 1 or > 32 over an overlay)
     // vis-x/vis-y: the cursor in a TRANSFORMED atom's bounding box (render/hittest.h). Sent, unclamped, right after
     // icon-y only when hasVis - stock DreamSeeker's rule (vis pair != icon pair).
@@ -48,7 +51,21 @@ struct ClickCmd {
     Mods mods;
 };
 std::string clickParams(const ClickCmd&);
-Bytes encodeMouseCmd(const ClickCmd&);   // [sub 00 ff ff][over][03 00][loc][02 ctrl\0][02 params\0]
+Bytes encodeMouseCmd(const ClickCmd&);   // [sub 00 ff ff][over][03 00][loc][02 ctrl\0][02 params\0] (loc: [02 locStr\0] when set)
+// The same shape naming nothing: over and loc null atoms (loc [02 locStr\0] when set), control a null atom when empty.
+Bytes encodeMouseNone(uint8_t sub, const std::string& locStr, const std::string& control, const std::string& params);
+// A map id as stock writes it into a params value: [A-Za-z0-9_.-] kept, every other byte %xx (lower-case hex), so
+// camera_[0x3000000]_map becomes camera_%5b0x3000000%5d_map.
+std::string mapIdParam(const std::string& id);
+
+// The hover report (sub 0x08), one shape for all three hover procs: the server runs MouseExited on the atom the previous
+// report named and MouseEntered on this one when they differ, and MouseMove when they are the same.
+// params: hoverParams (clickParams without the button), or "screen-loc=X:PX,Y:PY" alone over the letterbox (over and
+// loc null). locStr: on a secondary map, loc is that string (the control's short id), and screen-loc carries it.
+std::string hoverParams(const ClickCmd&);
+Bytes encodeHover(const AtomRef& over, const AtomRef& loc, const std::string& control, const std::string& params, const std::string& locStr = {});
+// The pointer left the map control: [08 00 ff ff][00 null][03][00 null][00 null][02 ""] - loc AND control are null atoms.
+Bytes encodeHoverLeave();
 ClickCmd turfClick(int worldX, int worldY, int screenCol, int screenRow, int iconX, int iconY, Mods = {});
 
 // A click on an INFO-control (stat panel) row, not the map shape. Stock DreamSeeker 516 sends:
@@ -75,7 +92,10 @@ std::vector<Bytes> clickSequence(ClickCmd, const MouseHooks&);   // Down, Up, Cl
 struct DragCmd {
     bool drop = false;
     AtomRef src, srcLoc = nullRef(), over = nullRef(), overLoc = nullRef();
+    std::string srcLocStr, overLocStr;   // non-empty: that location is this string (a secondary map's id)
     std::string srcControl = "mapwindow.map", overControl = "mapwindow.map", params;
+    bool overLocBlank = false;      // over_location is the string "" (a drag over no map, or the default map's letterbox)
+    bool overControlNull = false;   // over_control is a null atom (a drop over no map)
 };
 Bytes encodeDragCmd(const DragCmd&);   // sub 0x07, event 0x93 (drag) / 0x92 (drop), 7 values
 

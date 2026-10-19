@@ -61,14 +61,16 @@ private slots:
         QVERIFY(frames_.find("ff15" "7370616365") != std::string::npos);
     }
 
-    // The right-click verb menu and the status bar read these names.
+    // The right-click verb menu and the status bar read these names. Stock DreamSeeker 516 lists the iconless player mob too
+    // (an atom that draws nothing holds its own cell): Guest-<n>, Scrubbers pipe, space.
     void hitStackNamesArePlain() {
         int col = 8 - sc_->originX, row = 8 - sc_->originY;  // the pipe's cell (8,8)
         int px = col * sc_->tileW + 16, py = sc_->pixH() - 1 - (row * sc_->tileH + 16);
         std::vector<render::Hit> hits = render::hitStack(*sc_, px, py);
-        QCOMPARE(int(hits.size()), 2);
-        QCOMPARE(hits[0].name, std::string("Scrubbers pipe"));
-        QCOMPARE(hits[1].name, std::string("space"));
+        QCOMPARE(int(hits.size()), 3);
+        QCOMPARE(hits[0].name.rfind("Guest-", 0), size_t(0));
+        QCOMPARE(hits[1].name, std::string("Scrubbers pipe"));
+        QCOMPARE(hits[2].name, std::string("space"));
         render::Hit h;
         QVERIFY(render::hitAt(*sc_, px, py, h));
         QCOMPARE(h.name, std::string("Scrubbers pipe"));

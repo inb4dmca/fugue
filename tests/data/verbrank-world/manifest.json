@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-19",
+  "eye": {"x": 4, "y": 4},
+  "frames": 118,
+  "frames_sha256": "45c583c1e75f4db67f49ad70742bb47be090fda0c055ca04c6aa647e2f2bcca0",
+  "note": "frames.txt = every s2c frame except 0x009f, recorded from a fugue-qt session against stock DD 516.1684 that logged in and stood still. dreamseeker-verbs.txt = what STOCK DreamSeeker 516.1684 (wine) did for each typed line in a fresh session against the same world: the c2s 0x0002 it sent, the listbox it opened, the dialog it asked, and the command bar after a space.",
+  "resources": 0,
+  "source": "stock-DD",
+  "world": "fugue-qt/tests/data/verbrank-world/world.dm",
+  "world_dmb_sha256": "75d54340824e305412676af5fc2dc4ffdc4e61adf8e2262b01a637680cdc6e86"
+}

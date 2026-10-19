@@ -17,8 +17,10 @@
 #include "shell/browsehost.h"
 #include "shell/localorigin.h"
 #include "shell/focusfilter.h"
+#include "shell/skinsync.h"
 #include "shell/skinwindow.h"
 #include "app/renderthread.h"
+#include "skin/skinfeed.h"
 #include "skin/usermacros.h"
 #include "browse_pages.h"
 
@@ -732,6 +734,47 @@ private slots:
         QCOMPARE(evs(p, "document.getElementById('g').textContent"), QString("rolled"));
         win->showOutputFile("mainwindow.nosuch", "<div>x</div>");   // not a browser control of the skin: no window of its own
         QVERIFY(!h->popupFor("mainwindow.nosuch") && !h->paneFor("mainwindow.nosuch"));
+    }
+    // A link() (vg links every client back to its own world and reboots while the credits roll) or a reboot sends the same
+    // skin again. Through the app's skinLoaded handling, stock DreamSeeker keeps the shown control, its running page and
+    // the macro set the world switched to.
+    void theSameSkinAgainKeepsTheWindowsState() {
+        FocusFilter filt;
+        qApp->installEventFilter(&filt);
+        QSignalSpy mac(&filt, &FocusFilter::macroFired);
+        bool sized = true;
+        BrowseHost* h = win->browseHost();
+        win->showOutputFile("mainwindow.ghost", "<div id=g>default</div>");
+        BrowserPane* p = h->paneFor("mainwindow.ghost");
+        QVERIFY(p);
+        QVERIFY(QTest::qWaitFor([&] { return p->ready(); }, 15000));
+        ev(p, "document.getElementById('g').textContent = 'rolling'");
+        win->live()->winset("mainwindow.ghost", "is-visible=true");
+        win->live()->winset("mainwindow", "macro=hotkeymode");
+        fugue::shell::worldSkinLoaded(*win, filt, sized);
+        QCOMPARE(win->controlWidget("mainwindow.ghost"), static_cast<QWidget*>(p));
+        QCOMPARE(win->activeMacro(), QString("hotkeymode"));
+        fugue::skin::SkinFeed feed(win->live());   // the next session's skin frame
+        std::string body = std::string(kDockSkin) + '\0';
+        feed.onFrame(0x00af, fugue::ByteSpan(reinterpret_cast<const uint8_t*>(body.data()), body.size()));
+        QCOMPARE(feed.counters().skinLoads, uint64_t(1));
+        fugue::shell::worldSkinLoaded(*win, filt, sized);
+        std::string v;
+        QVERIFY(win->live()->winget("mainwindow.ghost", "is-visible", v));
+        QCOMPARE(QString::fromStdString(v), QString("true"));
+        QCOMPARE(win->controlWidget("mainwindow.ghost"), static_cast<QWidget*>(p));
+        QVERIFY(!p->isHidden());
+        QCOMPARE(evs(p, "document.getElementById('g').textContent"), QString("rolling"));
+        QCOMPARE(win->activeMacro(), QString("hotkeymode"));
+        auto* bar = new QLineEdit(win);
+        bar->show();
+        bar->setFocus();
+        QVERIFY(QTest::qWaitFor([&] { return qApp->focusWidget() == bar; }));
+        QTest::keyClick(bar, Qt::Key_K, Qt::ControlModifier);   // bound in hotkeymode only
+        QCOMPARE(mac.count(), 1);
+        QCOMPARE(mac.at(0).at(1).toString(), QString("kk"));
+        delete bar;
+        qApp->removeEventFilter(&filt);
     }
     // A hidden 1x1 BROWSER fed by browse() with no window of its own, then driven by output() to SetMusic. The page runs
     // windowless, and its play() starts with no user gesture. The page reports "playing" back as a Topic.

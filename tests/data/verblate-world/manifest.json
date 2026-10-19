@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-19",
+  "eye": {
+    "x": 6,
+    "y": 6
+  },
+  "frames": 50,
+  "frames_sha256": "db81d58401c6f304a04fc9f64fb096baae96fbfe7205a8b2fc8c847e189f5d84",
+  "note": "frames.txt = every s2c frame except 0x009f, recorded from a client session against stock DD 516.1684 that logged in and stood still past the last scripted move. dreamseeker-verbs.txt = what STOCK DreamSeeker 516.1684 (wine) did for each typed line in a fresh session against the same world.",
+  "resources": 0,
+  "source": "stock-DD",
+  "world": "fugue-qt/tests/data/verblate-world/world.dm",
+  "world_dmb_sha256": "53df8d42fa740435f1a8e9d857cba1d2586793f53d2741591d38080b5325289c"
+}

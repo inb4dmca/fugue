@@ -1,0 +1,16 @@
+{
+  "client": "fugue-qt",
+  "date": "2026-10-19T04:40:45Z",
+  "eye": {"x": 8, "y": 8},
+  "frames": 101,
+  "frames_sha256": "b41106930b322073cdeba94f8ff519a3bf990d28328b5a5dc1229657a846e3a1",
+  "note": "frames.txt = every s2c frame except 0x009f; res/<resID %08x> = verified resource bytes (CRC-32/XFER of the bytes == name)",
+  "resource_bytes": 1277,
+  "resource_names": {
+    "5cbca89f": "world.dmf",
+    "6cd19be2": "thing.dmi"
+  },
+  "resources": 2,
+  "source": "live-session",
+  "world": "127.0.0.1:49600"
+}

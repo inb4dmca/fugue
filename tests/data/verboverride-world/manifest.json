@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-19",
+  "eye": {"x": 3, "y": 3},
+  "frames": 53,
+  "frames_sha256": "f4f6f958e3810cf2790547f7264b5616155c0e039337de189743addb94b2c66a",
+  "note": "frames.txt = every s2c frame except 0x009f, recorded from a fugue-qt session against stock DD 516.1684 that logged in as /mob/living/carbon/human, ran become-plain, then become-human, so the verb dictionary holds both Whisper ids (/mob and its /mob/living override) and both Poke ids. dreamseeker-verbs.txt = the c2s 0x0002 frames STOCK DreamSeeker 516.1684 (wine) sent for the same steps against the same DD.",
+  "resources": 0,
+  "source": "stock-DD",
+  "world": "fugue-qt/tests/data/verboverride-world/world.dm",
+  "world_dmb_sha256": "ddeb747e0a38e4b5a3f03c7ae695351bb3e41e715cf93107e764efd6bba20e7e"
+}

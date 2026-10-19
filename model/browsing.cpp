@@ -1,5 +1,6 @@
 #include "model/browsing.h"
 #include "model/htmltext.h"
+#include "net/textmacro.h"
 
 namespace fugue::model {
 namespace {
@@ -149,6 +150,10 @@ bool parseBrowseFrame(ByteSpan body, BrowseFrame& out) {
     size_t p = 0;
     if (!cstr(body, p, out.html) || !cstr(body, p, out.params) || p + 1 != body.size() || body[p] > 1) return false;
     out.close = body[p] == 1;
+    // Stock drops every text-macro marker from both strings before the page is built (an output() to a browser
+    // control keeps them).
+    out.html = net::plainText(out.html);
+    out.params = net::plainText(out.params);
     return true;
 }
 

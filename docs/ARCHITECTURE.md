@@ -9,6 +9,7 @@
 | `model/` | the world model built from decoded messages (map, atoms, appearances, HUD, stat panel, verbs, browsers, chat) |
 | `skin/` | `.dmf` skin parser, layout, `winset` / `winget` rules, macros |
 | `render/` | icon (`.dmi`) decoding and the compositor: planes and layers, overlays, colour and alpha, transforms, animation, maptext, filters |
+| `rendergpu/` | the optional QRhi executor for the same draw list, and its GPU/CPU differential tests (`-DFUGUE_BUILD_GPU=ON`; [README](../rendergpu/README.md)) |
 | `audio/` | sound: Ogg Vorbis (vendored stb_vorbis), WAV, tracker modules (libopenmpt), the channel mixer, and the output sinks (Core Audio on macOS, external PCM players on Linux) |
 | `shell/` | the Qt Widgets/WebEngine window: skin window, map widget, stat panel, input, HTML browser panes and the loopback origin |
 | `account/` | account files, `key.txt` handling, login records, hub primitives |
@@ -31,6 +32,8 @@
   model changes into value-type Qt signals. GUI actions reach it as plain values posted into a mutex-guarded inbox.
 * `RenderThread` executes the draw list on the CPU and hands the GUI a finished image. Its mailbox is latest-wins: if
   rendering falls behind, older lists are dropped.
+  With the GPU renderer selected it hands the list to the GUI thread instead, which records it into each map's own
+  QRhi swapchain; a list the GPU refuses is executed here on the CPU.
 * Audio has a decoder thread and an output thread; neither touches the model or the socket.
 * Sign-in and the hub token mint block on a short hub connection with a deadline, on a worker thread.
 

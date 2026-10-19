@@ -3,10 +3,10 @@
 // dreamseeker                                              (no argument: DreamSeeker's Open Location box)
 //
 // Thread model:
-//   GUI thread     widgets only; MapWidget blits a finished QImage. Never composites.
+//   GUI thread     widgets and direct GPU map presentation; CPU frames are blitted by MapWidget.
 //   SessionWorker  owns net::Session + model::Session + ResStore (single writer AND single reader); assembles
 //                  the DrawList at the map cadence and emits value-type signals.
-//   RenderThread   executes the DrawList (CPU, straight alpha) and emits the finished opaque QImage.
+//   RenderThread   executes CPU lists/fallbacks, or hands lists to per-viewport direct GPU presenters.
 #include <QApplication>
 #include <QIcon>
 #include <QPixmap>
@@ -18,6 +18,7 @@
 #include <QMetaType>
 #include <QCommandLineParser>
 #include <QTimer>
+#include <QSettings>
 #include <QUrl>
 #include <QDateTime>
 #include <QDesktopServices>
@@ -28,6 +29,11 @@
 #include <functional>
 #include <cstdio>
 #include "app/renderthread.h"
+#include "app/rendermonitor.h"
+#include "shell/displaysettings.h"
+#ifdef FUGUE_GPU
+#include "app/gpumapwindow.h"
+#endif
 #include "fugue_version.h"
 #include "app/sessionworker.h"
 #include "shell/browserpane.h"
@@ -42,6 +48,8 @@
 #include "shell/screenshot.h"
 #include "net/guest.h"
 #include "net/input.h"
+#include "shell/serverkey.h"
+#include "shell/skinsync.h"
 #include "shell/skinwindow.h"
 #include "shell/ttmetrics.h"
 #include "skin/usermacros.h"
@@ -72,17 +80,8 @@
 
 bool prefetchMain(int argc, char** argv, int* rc);   // app/prefetchmode.cpp
 
-static volatile sig_atomic_t gInt = 0;       // SIGINT/SIGTERM: quit, and follow no link
-static std::vector<std::string> gRelaunch;   // the next run's arguments when a link() left this world
-bool takeRelaunch(std::vector<std::string>* args) {   // app/launcher.cpp runs it once the window is gone
-    if (gInt || gRelaunch.empty()) return false;
-    *args = std::move(gRelaunch);
-    gRelaunch.clear();
-    return true;
-}
-bool clientInterrupted() { return gInt; }
-static bool gLinkSpawned = false;            // this window, or one before a pushed hop, opened its second client
-bool linkClientSpawned() { return gLinkSpawned; }
+static volatile sig_atomic_t gInt = 0;       // SIGINT/SIGTERM: quit
+static bool gLinkSpawned = false;            // this window opened its second client
 
 int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main() (mode switch)
     { int prc = 0; if (prefetchMain(argc, argv, &prc)) return prc; }   // --prefetch: headless cache warm-up, no QApplication
@@ -166,7 +165,9 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     QCommandLineOption oHub("hub", "the target is hub-registered (accepted; every account login answers a hub-registered server's 0x001c certificate challenge regardless)");
     QCommandLineOption oAudio("audio", "sound output: auto (system output, the default), none, wav:<path> (record the mix), "
                                        "cmd:a,b,c (Linux/macOS: pipe s16le stereo 44.1 kHz to your own player). Empty = $FUGUE_AUDIO, then auto", "spec");
-    cp.addOptions({oConnect, oState, oRsc, oShot, oAfter, oSize, oPace, oAccount, oIdent, oHub, oAudio});
+    QCommandLineOption oRenderer("renderer", "override saved map renderer: cpu or gpu (experimental; unsupported scenes use CPU)",
+                                "cpu|gpu", "cpu");
+    cp.addOptions({oConnect, oState, oRsc, oShot, oAfter, oSize, oPace, oAccount, oIdent, oHub, oAudio, oRenderer});
     // DreamSeeker's own command line is accepted too (pager/dsargv.h), so `dreamseeker "byond://host:port" -pager` works
     // as a launch command. QApplication has already removed Qt's own arguments. When invoked as DreamSeeker, an unknown
     // --word is dropped, as DreamSeeker drops it.
@@ -177,7 +178,7 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     {
         fugue::pager::FugueOptions mine;
         mine.flag = {"help", "help-all"};   // cp.addHelpOption()
-        for (const QCommandLineOption& o : {oConnect, oState, oRsc, oShot, oAfter, oSize, oPace, oAccount, oIdent, oHub, oAudio})
+        for (const QCommandLineOption& o : {oConnect, oState, oRsc, oShot, oAfter, oSize, oPace, oAccount, oIdent, oHub, oAudio, oRenderer})
             for (const QString& n : o.names()) (o.valueName().isEmpty() ? mine.flag : mine.value).insert(n.toStdString());
         if (mine.flag != fopts.flag || mine.value != fopts.value) {
             std::fprintf(stderr, "fugue-qt: internal error: app/main.cpp's options and pager::clientOptions differ\n");
@@ -193,6 +194,23 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
         for (const std::string& a : ds.fugue) own << QString::fromStdString(a);
         cp.process(own);
     }
+#ifdef FUGUE_GPU
+    QSettings displayPrefs(QString::fromStdString(fugue::pager::displaySettingsPath(cp.value(oState).toStdString())), QSettings::IniFormat);
+    QString renderer = cp.isSet(oRenderer) ? cp.value(oRenderer) : displayPrefs.value("renderer", "cpu").toString();
+    if (!cp.isSet(oRenderer) && renderer != "cpu" && renderer != "gpu") renderer = "cpu";
+#else
+    const QString renderer = cp.value(oRenderer);
+#endif
+    if (renderer != "cpu" && renderer != "gpu") {
+        std::fprintf(stderr, "fugue-qt: --renderer must be cpu or gpu\n");
+        return 2;
+    }
+#ifndef FUGUE_GPU
+    if (renderer == "gpu") {
+        std::fprintf(stderr, "fugue-qt: GPU rendering was not built; configure with -DFUGUE_BUILD_GPU=ON\n");
+        return 2;
+    }
+#endif
     for (const std::string& a : ds.dropped) std::fprintf(stderr, "[app] DreamSeeker argument ignored, as DreamSeeker ignores it: %s\n", a.c_str());
     // Accepted with nothing to change in Fugue:
     //   -pager                  Fugue has no splash window and no pager channel.
@@ -272,22 +290,42 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
         std::fprintf(stderr, "[app] %s\n", ad.reason.c_str());
     }
 
-    RenderThread rt;
+    RenderThread rt(renderer == "gpu");
     SessionWorker worker(cfg, &rt);
     fugue::shell::SkinWindow win;
+#ifdef FUGUE_GPU
+    auto* display = win.displaySettings();
+    display->setGpuAvailable(true);
+    display->setUseGpu(renderer == "gpu");
+    display->setPerformanceOverlay(displayPrefs.value("performanceOverlay", false).toBool());
+    display->setPerformanceDetails(displayPrefs.value("performanceDetails", false).toBool());
+    GpuMapController gpuPresenter(rt, win);
+    // Loading preferences / a CLI override does not write them; only an explicit menu change does.
+    auto saveDisplayPreference = [&](const char* key, const QVariant& value) {
+        displayPrefs.setValue(key, value);
+        displayPrefs.sync();
+        if (displayPrefs.status() != QSettings::NoError)
+            std::fprintf(stderr, "[app] could not save display preferences: %s\n", displayPrefs.fileName().toUtf8().constData());
+    };
+    QObject::connect(display, &fugue::shell::DisplaySettings::rendererChanged, &win, [&](bool gpu) {
+        rt.setUseGpu(gpu);
+        saveDisplayPreference("renderer", gpu ? "gpu" : "cpu");
+    });
+    QObject::connect(display, &fugue::shell::DisplaySettings::performanceOverlayChanged, &win, [&](bool enabled) {
+        saveDisplayPreference("performanceOverlay", enabled);
+    });
+    QObject::connect(display, &fugue::shell::DisplaySettings::performanceDetailsChanged, &win, [&](bool enabled) {
+        saveDisplayPreference("performanceDetails", enabled);
+    });
+    RenderMonitor renderMonitor(rt, win);
+#endif
     fugue::shell::FocusFilter filt;
     app.installEventFilter(&filt);
 
     worker.setLiveSkin(win.live());   // wire skin / winset / winget traffic drives the SAME live skin the window paints
     worker.setRscStore(win.rscStore());
     worker.setAudioSpec(cp.value(oAudio).toStdString());   // sound output (audio/sink.h)
-    auto applyMacros = [&] {
-        auto t = win.macros();
-        auto it = t.sets.find(win.activeMacro().toStdString());
-        if (it != t.sets.end()) filt.setMacros(it->second);
-        else if (!t.sets.empty()) filt.setMacros(t.sets.begin()->second);
-        else filt.setMacros(fugue::skin::MacroSet{});   // a skin with no macro set leaves every key unbound, as stock
-    };
+    auto applyMacros = [&] { fugue::shell::applySkinMacros(win, filt); };
     auto loadSkin = [&](const std::string& dmf, const char* why) {
         QString e = win.loadSkin(dmf);
         if (!e.isEmpty()) { std::fprintf(stderr, "[app] skin (%s) rejected: %s\n", why, e.toUtf8().constData()); return false; }
@@ -303,10 +341,14 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
         if (p.size() == 2) win.resize(p[0].toInt(), p[1].toInt());
     }
 
+#ifndef FUGUE_GPU // GPU builds route both CPU and GPU results through the controller to reject stale frames.
     QObject::connect(&rt, &RenderThread::frame, &win, &fugue::shell::SkinWindow::setMapFrame, Qt::QueuedConnection);
     QObject::connect(&rt, &RenderThread::sceneOnly, &win, &fugue::shell::SkinWindow::setMapHit, Qt::QueuedConnection);
     QObject::connect(&rt, &RenderThread::auxFrame, &win, &fugue::shell::SkinWindow::setAuxMapFrame, Qt::QueuedConnection);
+    QObject::connect(&rt, &RenderThread::auxSceneOnly, &win, &fugue::shell::SkinWindow::setAuxMapHit, Qt::QueuedConnection);
+#endif
     QObject::connect(&win, &fugue::shell::SkinWindow::auxMapBuilt, &win, [&rt](const QString& id) { rt.forgetAux(id.toStdString()); });
+    QObject::connect(&win, &fugue::shell::SkinWindow::auxMapRemoved, &win, [&rt](const QString& id) { rt.removeAux(id.toStdString()); });
 
     // ---- input: the GUI thread posts each action to the session thread; it never writes to the socket.
     auto selectMacroSet = [&](const std::string& name) {
@@ -348,7 +390,7 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     };
     // The player's own macros (skin/usermacros.h), kept under the state dir: one list per server address, and a global one.
     const std::string macroDir = cfg.stateDir.empty() ? fugue::net::defaultStateDir() : cfg.stateDir;
-    const std::string gameMacrosPath = fugue::skin::userMacrosPath(macroDir, fugue::skin::worldKeyFor(cfg.host, cfg.port));
+    std::string gameMacrosPath = fugue::skin::userMacrosPath(macroDir, fugue::skin::worldKeyFor(cfg.host, cfg.port));
     const std::string globalMacrosPath = fugue::skin::userMacrosPath(macroDir, "");
     fugue::skin::MacroSet userGame = fugue::skin::loadUserMacros(gameMacrosPath), userGlobal = fugue::skin::loadUserMacros(globalMacrosPath);
     filt.setUserMacros(userGame, userGlobal);
@@ -379,7 +421,7 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     };
     auto openOptions = [&] {
         if (!optionsWin) {
-            optionsWin = new fugue::shell::OptionsWindow(&win);
+            optionsWin = new fugue::shell::OptionsWindow(&win, win.displaySettings());
             QObject::connect(optionsWin, &fugue::shell::OptionsWindow::command, &win, [&](const QString& c) { routeAndRunRef(c.toStdString(), "", false); });
         }
         optionsWin->show();
@@ -462,17 +504,22 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
         if (pick) { std::fprintf(stderr, "[app] AUTO-PICK %s\n", autoPick.toUtf8().constData()); QTimer::singleShot(0, pick, &QAction::trigger); return; }
         verbMenu->popup(g);
     });
+    bool popupMenus = true;   // client.show_popup_menus
+    QObject::connect(&worker, &SessionWorker::popupMenus, &win, [&](bool shown) {
+        popupMenus = shown;
+        for (fugue::shell::MapWidget* mw : win.mapWidgets()) mw->setPopupMenus(shown);
+    });
     std::function<void(fugue::shell::MapWidget*)> wireMapWidget = [&](fugue::shell::MapWidget* mw) {
+        mw->setPopupMenus(popupMenus);
         QObject::connect(mw, &fugue::shell::MapWidget::pointer, &win, [&, mw](const fugue::shell::MapPointer& p) {
-            if (p.kind == fugue::shell::MapPointer::Wheel) worker.postMouse(p, mw->rightClickToWire(), mw->controlId());
-            else worker.postMouse(p, mw->rightClickToWire());
+            worker.postMouse(p, mw->rightClickToWire());
         });
         QObject::connect(mw, &fugue::shell::MapWidget::localMenuPointer, &win, [&](const QPoint& g, const fugue::shell::MapPointer& p) {
             worker.postMenuQuery(p, g);
         });
     };
     QObject::connect(&win, &fugue::shell::SkinWindow::mapReady, &win, wireMapWidget);
-    if (win.map()) wireMapWidget(win.map());
+    for (fugue::shell::MapWidget* mw : win.mapWidgets()) wireMapWidget(mw);
     QObject::connect(&win, &fugue::shell::SkinWindow::macroChanged, &win, [&](const QString& name) {
         std::fprintf(stderr, "[app] active macro set -> %s\n", name.toUtf8().constData());
         applyMacros();
@@ -497,13 +544,10 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
         std::fprintf(stderr, "[app] %s\n", err.isEmpty() ? "logged in" : ("LOGIN FAILED: " + err.toStdString()).c_str());
         if (!err.isEmpty()) QTimer::singleShot(0, &app, [&] { app.exit(3); });
     });
+    bool skinSized = false;
     QObject::connect(&worker, &SessionWorker::skinLoaded, &win, [&] {
-        // The session thread has already put the skin into the live skin; bring the window up to date.
-        win.syncFromLive();
-        static bool sized = false;   // a reboot or reconnect keeps the player's window size
-        if (!sized) { win.resize(win.designSize()); sized = true; }
+        fugue::shell::worldSkinLoaded(win, filt, skinSized);
         std::fprintf(stderr, "[app] skin loaded (from world): %d controls\n%s", win.controlCount(), win.describe().toUtf8().constData());
-        applyMacros();
     });
     QObject::connect(&worker, &SessionWorker::chatLines, &win, &fugue::shell::SkinWindow::appendChat);
     // INFO control: tab, row and verb clicks are posted to the session thread.
@@ -520,6 +564,7 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     // alert()/input() go through one PromptHost (shell/prompthost.h). Every request ends in exactly one reply.
     fugue::shell::PromptHost prompts(&win);
     QObject::connect(&worker, &SessionWorker::promptRequested, &prompts, &fugue::shell::PromptHost::present);
+    QObject::connect(&worker, &SessionWorker::promptWithdrawn, &prompts, &fugue::shell::PromptHost::withdraw);
     QObject::connect(&prompts, &fugue::shell::PromptHost::accepted, &win, [&](quint32 id, bool alert, const QString& t) { worker.postPromptAnswer(id, alert, t); });
     QObject::connect(&prompts, &fugue::shell::PromptHost::cancelled, &win, [&](quint32 id, bool alert) { worker.postPromptCancel(id, alert); });
     QObject::connect(&prompts, &fugue::shell::PromptHost::argAccepted, &win, [&](quint32 id, const QString& t) { worker.postArgAnswer(id, t); });
@@ -548,21 +593,17 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
         std::fprintf(stderr, "[app] TOPIC %s\n", u.toString().left(200).toUtf8().constData());
         worker.postTopic(QString::fromUtf8(u.toEncoded()));   // raw encoding: toString() would decode %20 and friends
     });
-    // Stock DreamSeeker leaves this world for a link() to another one, and opens a second client for a clicked one.
-    // A page can click without the player, so one window opens at most one more, and that one opens none.
+    // A link() the world pushes joins the target in this window (SessionWorker). A clicked one opens a second client, as
+    // stock DreamSeeker does; a page can click without the player, so one window opens at most one more, and that one
+    // opens none.
     const std::string argv0 = argv[0];
-    bool leaving = false;
     gLinkSpawned = qEnvironmentVariableIsSet("FUGUE_LINK_CLIENT");
-    auto followWorld = [&](const QString& url, bool pushed) {
+    auto followWorld = [&](const QString& url) {
         std::string why;
         auto args = fugue::pager::worldLinkArgs(preQtArgs, hostTaken, asDreamSeeker, url.toStdString(), &why);
-        std::fprintf(stderr, "[app] world link %s: %s\n", url.left(200).toUtf8().constData(), !args ? why.c_str() : pushed ? "leaving for it" : "opening it in a second client");
+        std::fprintf(stderr, "[app] world link %s: %s\n", url.left(200).toUtf8().constData(), !args ? why.c_str() : "opening it in a second client");
         if (!args) {
             win.appendChat(QStringList{"<font color=\"red\">" + ("Link not followed: " + QString::fromStdString(why)).toHtmlEscaped() + "</font>"});
-            return;
-        }
-        if (pushed) {
-            if (!leaving) { leaving = true; gRelaunch = std::move(*args); app.quit(); }
             return;
         }
         if (gLinkSpawned) {
@@ -572,15 +613,26 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
         gLinkSpawned = true;
         if (!fugue::pager::runSelf(argv0, *args, true, &why, {"FUGUE_LINK_CLIENT=1"})) std::fprintf(stderr, "[app] %s\n", why.c_str());
     };
-    QObject::connect(&worker, &SessionWorker::worldLink, &win, [&](const QString& u) { followWorld(u, true); });
+    // The player's per-server macro list follows the window to a linked server, and stays across a link to the same one.
+    fugue::shell::ServerKey serverKey(QString::fromStdString(cfg.host), cfg.port);
+    QObject::connect(&worker, &SessionWorker::worldAddress, &serverKey, &fugue::shell::ServerKey::moved);
+    QObject::connect(&serverKey, &fugue::shell::ServerKey::changed, &win, [&](const QString& host, quint16 port) {
+        gameMacrosPath = fugue::skin::userMacrosPath(macroDir, fugue::skin::worldKeyFor(host.toStdString(), port));
+        userGame = fugue::skin::loadUserMacros(gameMacrosPath);
+        filt.setUserMacros(userGame, userGlobal);
+        std::fprintf(stderr, "[app] user macros: %zu for this game (%s)\n", userGame.entries.size(), gameMacrosPath.c_str());
+    });
+    QObject::connect(&serverKey, &fugue::shell::ServerKey::kept, &win, [&](const QString& host, quint16 port) {
+        std::fprintf(stderr, "[app] user macros: %s:%u is the same server, kept %s\n", host.toUtf8().constData(), port, gameMacrosPath.c_str());
+    });
     // A byond:// link opened while the game runs is a clicked link.
-    auto openLink = [&](const QUrl& u) { followWorld(u.toString(QUrl::FullyEncoded), false); };
+    auto openLink = [&](const QUrl& u) { followWorld(u.toString(QUrl::FullyEncoded)); };
 #ifdef Q_OS_MACOS
     fugue::shell::UrlOpener urlOpener(&app, openLink);
 #else
     (void)openLink;
 #endif
-    QObject::connect(&win, &fugue::shell::SkinWindow::worldLink, &win, [&](const QString& u) { followWorld(u, false); });
+    QObject::connect(&win, &fugue::shell::SkinWindow::worldLink, &win, [&](const QString& u) { followWorld(u); });
     QObject::connect(&worker, &SessionWorker::externalLink, &win, [](const QString& u) {
         if (!QDesktopServices::openUrl(QUrl(u, QUrl::TolerantMode))) std::fprintf(stderr, "[app] no handler opened %s\n", u.left(200).toUtf8().constData());
     });
@@ -627,7 +679,7 @@ int clientMain(int argc, char** argv) {   // called by app/launcher.cpp's main()
     if (cp.isSet(oShot)) {
         QString out = cp.value(oShot);
         QTimer::singleShot(int(cp.value(oAfter).toDouble() * 1000), &app, [&, out] {
-            QPixmap pm = win.grab();
+            QPixmap pm = win.grabWithMaps();
             bool ok = pm.save(out, "PNG");
             QRect mr = win.mapControlRect();
             QRect ir = win.map() ? win.map()->imageRect() : QRect();

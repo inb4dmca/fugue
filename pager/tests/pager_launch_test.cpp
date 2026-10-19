@@ -1,6 +1,7 @@
 // pager/launch: the argv a join runs, the scrubbed child environment, the desktop entry and its install.
 #include <QtTest>
 #include <QDir>
+#include <QSettings>
 #include <QTemporaryDir>
 #include "account/store.h"
 #include "pager/cache.h"
@@ -47,6 +48,36 @@ private slots:
         QVERIFY(!pager::autoSignIn());   // survived Clear cache
         QVERIFY2(pager::setAutoSignIn(true, &e), e.c_str());
         QVERIFY(pager::autoSignIn());
+    }
+    // The renderer setting is the client's own display.ini: the --state-dir the join passes on, else ~/.fugue. Other keys the
+    // client keeps there survive a write.
+    void rendererSettingIsTheClientsDisplayIni() {
+        QTemporaryDir home;
+        qputenv("HOME", home.path().toUtf8());
+        QCOMPARE(pager::clientStateDir({}), std::string());
+        QCOMPARE(pager::displaySettingsPath(""), (home.path() + "/.fugue/display.ini").toStdString());
+        QCOMPARE(pager::clientStateDir({"--no-pacing", "--state-dir", "/a", "--state-dir=/b"}), std::string("/b"));
+        QCOMPARE(pager::clientStateDir({"--state-dir", "/a", "--", "--state-dir=/b"}), std::string("/b"));
+        QCOMPARE(pager::clientStateDir({"--state-dir="}), std::string());   // empty: the client uses its default too
+        const std::string ini = pager::displaySettingsPath(pager::clientStateDir({"--state-dir", (home.path() + "/alt").toStdString()}));
+        QCOMPARE(ini, (home.path() + "/alt/display.ini").toStdString());
+        QVERIFY(!pager::savedRendererGpu(ini));   // no file: CPU
+        {
+            QSettings c(QString::fromStdString(ini), QSettings::IniFormat);
+            c.setValue("performanceOverlay", true);
+            c.setValue("renderer", "GPU");   // not the client's spelling: CPU
+        }
+        QVERIFY(!pager::savedRendererGpu(ini));
+        std::string e;
+        QVERIFY2(pager::setSavedRenderer(ini, true, &e), e.c_str());
+        QVERIFY(pager::savedRendererGpu(ini));
+        QSettings c(QString::fromStdString(ini), QSettings::IniFormat);
+        QCOMPARE(c.value("renderer").toString(), QString("gpu"));
+        QCOMPARE(c.value("performanceOverlay").toBool(), true);
+        QVERIFY2(pager::setSavedRenderer(ini, false, &e), e.c_str());
+        c.sync();
+        QCOMPARE(c.value("renderer").toString(), QString("cpu"));
+        QVERIFY(!QFile::exists(home.path() + "/.fugue/display.ini"));   // the default dir was not touched
     }
     void buildArgsNeverCarriesASecret() {
         QTemporaryDir home;

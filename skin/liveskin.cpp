@@ -601,19 +601,44 @@ std::string LiveSkin::wingetParams(const std::string& control, const std::string
     return out;
 }
 
-std::string LiveSkin::defaultMapStyle() const {
-    std::lock_guard<std::mutex> g(mu_);
+// From the FILE, not the laid-out tree: a headless session (no client size, no layout) measures text too.
+std::string LiveSkin::defaultMapIdLocked() const {
     if (!file_) return "";
-    // From the FILE, not the laid-out tree: a headless session (no client size, no layout) measures text too.
     std::vector<std::string> maps;
     for (const Block& b : file_->blocks)
         if (b.kind == "window")
             for (const Elem* e : b.controls())
                 if (e->type() == "MAP") maps.push_back(b.name + "." + e->name);
     if (maps.empty()) return "";
-    std::string pick = maps.front(), v;
+    std::string v;
     for (const std::string& id : maps)
-        if (wingetLocked(id, "is-default", v) && v == "true") { pick = id; break; }
+        if (wingetLocked(id, "is-default", v) && v == "true") return id;
+    return maps.front();
+}
+
+std::string LiveSkin::defaultMapId() const {
+    std::lock_guard<std::mutex> g(mu_);
+    return defaultMapIdLocked();
+}
+
+std::vector<std::string> LiveSkin::secondaryMaps() const {
+    std::lock_guard<std::mutex> g(mu_);
+    std::vector<std::string> out;
+    if (file_) {
+        const std::string def = defaultMapIdLocked();
+        for (const Block& b : file_->blocks)
+            if (b.kind == "window")
+                for (const Elem* e : b.controls())
+                    if (e->type() == "MAP" && b.name + "." + e->name != def) out.push_back(e->name);
+    }
+    for (const RuntimeCtl& r : runtime_) if (r.type == "MAP") out.push_back(r.name);
+    return out;
+}
+
+std::string LiveSkin::defaultMapStyle() const {
+    std::lock_guard<std::mutex> g(mu_);
+    std::string pick = defaultMapIdLocked();
+    if (pick.empty()) return "";
     std::string out, color;
     wingetLocked(pick, "style", out);
     // The control's text-color is maptext's default colour; a `body` rule in its style still beats it.
@@ -627,6 +652,17 @@ std::string LiveSkin::defaultMapStyle() const {
 std::string LiveSkin::wingetType(const std::string& control) const {
     std::lock_guard<std::mutex> g(mu_);
     nameBlockClobber(nameBlock_);   // winexists() changes the global-winget name block
+    return typeLocked(control);
+}
+
+bool LiveSkin::printsOutput(const std::string& control) const {
+    std::lock_guard<std::mutex> g(mu_);
+    if (!file_) return true;
+    std::string t = typeLocked(control);
+    return t == "OUTPUT";
+}
+
+std::string LiveSkin::typeLocked(const std::string& control) const {
     if (file_) {
         if (const Control* c = tree_.byName(control)) return c->type;
         if (const Elem* e = declaresLocked(control)) return e->type();
@@ -1067,6 +1103,7 @@ std::string LiveSkin::load(const std::string& dmf) {
     {
         std::lock_guard<std::mutex> g(mu_);
         file_ = std::make_shared<const File>(std::move(pr.file));
+        text_ = dmf;
         fileId_++;
         props_.clear();
         splits_.clear();
@@ -1113,6 +1150,7 @@ std::string LiveSkin::load(const std::string& dmf) {
 }
 
 bool LiveSkin::loaded() const { std::lock_guard<std::mutex> g(mu_); return bool(file_); }
+bool LiveSkin::loadedFrom(const std::string& dmf) const { std::lock_guard<std::mutex> g(mu_); return file_ && text_ == dmf; }
 bool LiveSkin::ready() const { std::lock_guard<std::mutex> g(mu_); return file_ && clientSet_; }
 
 void LiveSkin::setClient(int w, int h) {

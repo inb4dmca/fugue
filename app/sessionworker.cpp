@@ -5,15 +5,19 @@
 #include <cstdio>
 #include <deque>
 #include <map>
+#include <optional>
 #include <set>
 #include <cstring>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "app/mapcadence.h"
+#include "app/choicefetches.h"
+#include "app/defaultskin.h"
 #include "app/renderthread.h"
 #include "audio/player.h"
 #include "audio/note.h"
@@ -25,6 +29,7 @@
 #include "model/world.h"
 #include "net/input.h"
 #include "net/reconnect.h"
+#include "pager/target.h"
 #include "proto/enc_c2s_0002_input.h"
 #include "render/mousechain.h"
 #include "render/hittest.h"
@@ -45,11 +50,9 @@ bool mapInMotion(const model::World& w, int64_t now) {
         if (q.endNs < 0 || now < q.endNs + 1) return true;
     for (const auto& [id, a] : w.atoms) {
         if (a.gliding && live(a.glide.startNs, a.glide.durNs)) return true;
-        if (a.animating && !a.chain.steps.empty()) {
-            double ticks = 0;
-            for (const auto& s : a.chain.steps) { float t; std::memcpy(&t, &s.timeBits, 4); ticks += t > 0 ? t : 0; }
-            if (live(a.chain.startNs, int64_t(ticks * double(a.chain.tickNs)) + 1)) return true;
-        }
+        if (a.animating)
+            for (const model::AnimSeq& q : model::animSequences(a.chain))
+                if (q.endNs < 0 || now < q.endNs + 1) return true;
     }
     for (const auto& [id, f] : w.flicks)
         if (f.startNs > 0 && now - f.startNs < int64_t(5e9)) return true;   // 5 s bounds a flick's length
@@ -94,7 +97,7 @@ void SessionWorker::post(Job j) {
     std::lock_guard<std::mutex> g(inMu_);
     if (inbox_.size() < 4096) inbox_.push_back(std::move(j));   // bounded, so a stalled session cannot grow it without limit
 }
-void SessionWorker::postMouse(const fugue::shell::MapPointer& p, bool rightClickToWire, const std::string& control) { post(MouseJob{p, rightClickToWire, control}); }
+void SessionWorker::postMouse(const fugue::shell::MapPointer& p, bool rightClickToWire) { post(MouseJob{p, rightClickToWire}); }
 void SessionWorker::postCommand(const QString& line, bool promptNull) { post(CmdJob{line.toStdString(), promptNull}); }
 void SessionWorker::postStockMove(int dir) { post(MoveJob{dir}); }
 void SessionWorker::postTopic(const QString& href) { post(TopicJob{href.toStdString()}); }
@@ -125,13 +128,32 @@ void SessionWorker::run() {
     }
     auto log = [](const std::string& m) { std::fprintf(stderr, "[session] %s\n", m.c_str()); };
     std::unique_ptr<net::Session> s;
-    bool sameConnection = false;
+    bool sameConnection = false, viaLink = false;
     for (bool first = true;; first = false) {
         reconnect_ = false;
         if (!sameConnection) s = std::make_unique<net::Session>(cfg_, log);
-        const net::SessionEnding e = runSession(*s, first, sameConnection);
+        const auto started = std::chrono::steady_clock::now();
+        net::SessionEnding e = runSession(*s, first, sameConnection);
+        e.afterLink = viaLink;
+        viaLink = !linkTarget_.empty();
         if (stop_) return;
-        const net::ReconnectStep step = net::reconnectStep(e, first, reconnect_);
+        net::ReconnectStep step = net::reconnectStep(e, first, reconnect_);
+        if (viaLink) {   // at most one a second, so worlds linking to each other (or to themselves) cannot spin the client
+            reconnect_ = false;
+            const auto age = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+            step.delayMs = int(std::max<int64_t>(0, 1000 - age));
+            const size_t colon = linkTarget_.rfind(':');
+            const std::string host = linkTarget_.substr(0, colon);
+            const uint16_t port = uint16_t(std::atoi(linkTarget_.c_str() + colon + 1));
+            linkTarget_.clear();
+            if (host != cfg_.host || port != cfg_.port) {
+                cfg_.host = host;
+                cfg_.port = port;
+                std::lock_guard<std::mutex> g(verbsMu_);
+                verbSnap_.reset();   // the old world's verbs, until the new one's 0x0011
+                emit worldAddress(QString::fromStdString(host), port);
+            }
+        }
         sameConnection = step.sameConnection;
         if (!sameConnection) s->close();
         for (const QString& l : QString::fromStdString(step.message).split('\n', Qt::SkipEmptyParts)) emit localOutput(l);
@@ -168,19 +190,13 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
         inbox_.clear();
     }
     s.setManualPrompts(true);       // the GUI's PromptHost answers alert()/input(); never auto-cancel them
-    model::PromptBook prompts;      // pending dialogs
+    PromptFlow promptFlow;          // pending dialogs and the choices request in flight (app/choicefetches.h)
+    model::PromptBook& prompts = promptFlow.book;
     // Missing-verb-argument dialogs held for the GUI, by a client-local id. An entry leaves on the dialog's one outcome
     // and dies with this session.
     std::map<quint32, net::MissingArg> pendingArgs;
     std::map<quint32, net::SrcChoice> pendingSrcs;   // `<Verb> word` src dialogs, same id space and lifetime
     quint32 nextArgId = 1;
-    // Every choices fetch in flight, in SEND order. Both an input() in list and an `in list` verb argument are answered
-    // on s2c 0x003f, whose body ([count u16][cstring]*count) names neither the request nor the prompt. The reply
-    // belongs to the OLDEST outstanding request. Routing by which prompt is waiting swaps the lists.
-    // A fetch that timed out stays queued as `abandoned`, so its late reply is swallowed rather than filling the next
-    // dialog. Abandoned entries are dropped kAbandonedFetchMs after their deadline in case no reply ever comes.
-    struct ChoiceFetch { bool verbArg; quint32 id; std::chrono::steady_clock::time_point deadline; bool abandoned = false; };
-    std::deque<ChoiceFetch> choiceFetches;
     std::map<quint32, shell::PromptRequest> argHeld;   // verb-argument dialogs held for their 0x003f (by pendingArgs id)
     // Verb-argument dialogs whose listbox the 0x003f filled: the listbox shows the choices as model::parseExpansionReply
     // decodes them, and a pick goes back in the 0x0039 as net::listPickText.
@@ -191,7 +207,6 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
     // (model::Prompt::resolvesThroughServer), so it queues here too.
     struct Resolving { net::ListResolve r; std::string line; bool prompt = false; quint32 promptId = 0; };
     std::deque<Resolving> resolving;
-    constexpr int kChoicesWaitMs = 3000, kAbandonedFetchMs = 10000;
     model::Session m;
     // Atom-table resync poll (c2s 0x000b / 0x003d, model/resync.h): after every ingested frame, and from the pump hook.
     model::ResyncPoller resync;
@@ -199,29 +214,81 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
         int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         for (const auto& f : resync.poll(m.worldMut(), now)) s.sendInput(f.type, f.body);
     };
-    s.setPumpHook(pumpResync);
+    std::function<void()> pumpPrompts;   // PromptFlow::pump: once the frames read are handled, and after each answer
+    s.setPumpHook([&] {
+        pumpResync();
+        if (pumpPrompts) pumpPrompts();
+    });
     render::ResStore res;
+    render::SceneCache sceneCache; // main and auxiliary maps share parsed fields, never resolved placements/resources
+    QFile sceneTrace;
+    const auto sceneTracePath = qEnvironmentVariable("FUGUE_SCENE_TRACE");
+    if (!sceneTracePath.isEmpty()) {
+        sceneTrace.setFileName(sceneTracePath);
+        if (sceneTrace.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            sceneTrace.write("map,clock_ns,prepare_ms,appearance_ms,appearance_parses,appearance_hits,width,height,layers,success,cache_bytes,cache_entries\n");
+        else
+            std::fprintf(stderr, "[scene-trace] cannot open %s: %s\n", qPrintable(sceneTracePath), qPrintable(sceneTrace.errorString()));
+    }
+    const bool sceneProfile = qEnvironmentVariableIntValue("FUGUE_SCENE_PROFILE") != 0;
+    const bool profilePreparation = sceneProfile || sceneTrace.isOpen();
+    auto sceneLogAt = std::chrono::steady_clock::now();
+    double scenePrepareSum = 0, sceneAppearanceSum = 0;
+    uint64_t sceneSamples = 0, sceneParses = 0, sceneHits = 0;
+    auto tracePreparation = [&](const std::string& id, int64_t clock, double ms, const render::SceneStats& stats,
+                                const render::DrawList& dl, bool ok) {
+        if (sceneTrace.isOpen()) {
+            QByteArray row = '"' + QByteArray::fromStdString(id).replace("\"", "\"\"") + '"';
+            row += ',' + QByteArray::number(qlonglong(clock));
+            for (double v : {ms, stats.appearanceBuildMs}) row += ',' + QByteArray::number(v, 'f', 6);
+            for (uint64_t v : {stats.appearanceParses, stats.appearanceCacheHits}) row += ',' + QByteArray::number(qulonglong(v));
+            for (int v : {dl.outW, dl.outH, stats.layers, int(ok)}) row += ',' + QByteArray::number(v);
+            for (size_t v : {sceneCache.retainedBytes(), sceneCache.entries()}) row += ',' + QByteArray::number(qulonglong(v));
+            row += '\n';
+            if (sceneTrace.write(row) != row.size()) sceneTrace.close();
+        }
+        if (id.empty()) {
+            scenePrepareSum += ms; sceneAppearanceSum += stats.appearanceBuildMs;
+            ++sceneSamples; sceneParses += stats.appearanceParses; sceneHits += stats.appearanceCacheHits;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (now - sceneLogAt >= std::chrono::seconds(1)) {
+            if (sceneProfile && sceneSamples)
+                std::fprintf(stderr, "[scene-profile] main prepare=%.3fms appearance=%.3fms parses=%.1f hits=%.1f samples=%llu\n",
+                             scenePrepareSum / sceneSamples, sceneAppearanceSum / sceneSamples,
+                             double(sceneParses) / sceneSamples, double(sceneHits) / sceneSamples,
+                             (unsigned long long)sceneSamples);
+            if (sceneTrace.isOpen()) sceneTrace.flush();
+            sceneLogAt = now; scenePrepareSum = sceneAppearanceSum = 0; sceneSamples = sceneParses = sceneHits = 0;
+        }
+    };
     net::InputModel im;              // verbs + the mouse subscription mask (0x0011 / 0x003b), session thread only
     render::MouseChain chain;        // press/drag/double-click state, session thread only
+    render::HoverTracker hover;      // one for every map control, as stock keeps one; session thread only
     // The live skin: skin and winset traffic goes in, and wingets are answered from it. Shared with the GUI.
     std::shared_ptr<skin::LiveSkin> live = live_ ? live_ : std::make_shared<skin::LiveSkin>();
     skin::SkinFeed feed(live);
+    feed.setDefaultSkin(app::kDefaultSkin);   // a world that sends no skin gets this one
 #ifdef FUGUE_RELEASE
     feed.setClientVersion(kVersionRelease);   // winget "fugue-version"
 #endif
     // winget "url" is the address the client dialed, as "IP:port" (stock DreamSeeker 516 does the same).
     live->setClientEnv("url", cfg_.host + ":" + std::to_string(cfg_.port));
+    m.setTextTarget([live](const std::string& c) { return live->printsOutput(c); });
     auto nowMs = [] { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); };
     auto winReply = [&](uint32_t reqId, const std::string& v) {
         s.replyWinget(reqId, v);
         std::fprintf(stderr, "[skin] winget req %u -> \"%s\"\n", reqId, v.substr(0, 120).c_str());
     };
     std::map<std::string, std::string> lastBrowse;   // window -> the html the GUI was last sent
-    std::set<std::string> fileBrowse;                // windows opened by a browse_file offer (never seen as 0x009f)
+    // Windows opened by a browse_file offer (never seen as 0x009f), and the popups still open when the last session ended:
+    // stock DreamSeeker keeps them open across a reconnect, a reboot and a link().
+    std::set<std::string> fileBrowse = openPopups_;
     std::vector<model::RscRecord> rscUnresolved;     // 0x00fe records whose ordinal is not yet in the 0x000e list
     auto syncBrowseNames = [&] {
         std::set<std::string> names = fileBrowse;
         for (const auto& [n, b] : m.world().browsers) names.insert(n);
+        openPopups_ = names;
         feed.setBrowseNames(std::move(names));
     };
     // A browse_rsc file that a page is about to load jumps the declaration queue: stock DreamSeeker 516 answers a 0x00fe
@@ -272,42 +339,39 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
     MapCadence mapPace;
     s.setObserver([&](uint16_t type, ByteSpan body) {
         if (type == 0x009f) return;   // resource-pump frames are not model input
-        if (type == model::kAlertMsg || type == model::kInputMsg || type == model::kExpansionReplyMsg) {
-            // alert()/input() requests, and the 0x003f answer to our 0x0064 for an `in list` input. A list prompt is held
-            // until its choices arrive (or the wait times out) so the dialog opens complete.
-            bool forBook = true;   // false when a 0x003f reply was consumed by a verb-argument or abandoned fetch
-            if (type == model::kExpansionReplyMsg && !choiceFetches.empty()) {
-                ChoiceFetch f = choiceFetches.front();
-                choiceFetches.pop_front();
-                if (f.abandoned) {
-                    forBook = false;
-                    std::fprintf(stderr, "[prompt] late 0x003f for timed-out %s id=%u - dropped\n", f.verbArg ? "verb-argument" : "input", f.id);
-                } else if (f.verbArg) {
-                    forBook = false;
-                    auto it = argHeld.find(f.id);
-                    if (it != argHeld.end()) {
-                        shell::PromptRequest r = std::move(it->second);
-                        argHeld.erase(it);
-                        std::vector<std::string> ch;
-                        if (model::parseExpansionReply(body, ch)) for (const std::string& c : ch) r.choices << QString::fromStdString(c);
-                        argServerLists.insert(r.id);
-                        std::string raw;
-                        for (const std::string& c : ch) raw += (raw.empty() ? "" : "|") + c;
-                        std::fprintf(stderr, "[prompt] verb-argument id=%u: %d choices from 0x003f (%s)\n", r.id, int(r.choices.size()), raw.substr(0, 200).c_str());
-                        emit promptRequested(r);
-                    }
+        if (type == model::kAlertMsg || type == model::kInputMsg || type == model::kExpansionReplyMsg || type == model::kPromptWithdrawMsg ||
+            type == ChoiceFetches::kEchoMsg) {
+            // alert()/input() requests, 0x009d withdrawals, the 0x003f answer to a choices request and the 0x0090 echo
+            // behind it. Dialogs open and requests go out from pumpPrompts.
+            PromptFlow::Step st = promptFlow.onFrame(type, body);
+            if (st.replaced) emit promptWithdrawn(st.id, st.alert);
+            switch (st.kind) {
+            case PromptFlow::Step::Withdraw:
+                std::fprintf(stderr, "[prompt] %s id=%u withdrawn by the server (0x009d)\n", st.alert ? "alert" : "input", st.id);
+                emit promptWithdrawn(st.id, st.alert);
+                break;
+            case PromptFlow::Step::Dropped:
+                if (st.abandoned) std::fprintf(stderr, "[prompt] late 0x003f for timed-out verb-argument id=%u - dropped\n", st.id);
+                else std::fprintf(stderr, "[prompt] 0x003f for no in-list prompt of ours - dropped\n");
+                break;
+            case PromptFlow::Step::VerbArgChoices:
+                if (auto it = argHeld.find(st.id); it != argHeld.end()) {
+                    shell::PromptRequest r = std::move(it->second);
+                    argHeld.erase(it);
+                    std::vector<std::string> ch;
+                    if (model::parseExpansionReply(body, ch)) for (const std::string& c : ch) r.choices << QString::fromStdString(c);
+                    argServerLists.insert(r.id);
+                    std::string raw;
+                    for (const std::string& c : ch) raw += (raw.empty() ? "" : "|") + c;
+                    std::fprintf(stderr, "[prompt] verb-argument id=%u: %d choices from 0x003f (%s)\n", r.id, int(r.choices.size()), raw.substr(0, 200).c_str());
+                    emit promptRequested(r);
                 }
-            }
-            const model::Prompt* p = forBook ? prompts.onFrame(type, body) : nullptr;
-            if (p && p->kind == model::Prompt::Input && p->inList && !p->choicesKnown) {
-                choiceFetches.push_back({false, p->id, std::chrono::steady_clock::now() + std::chrono::milliseconds(kChoicesWaitMs)});
-                s.sendInput(model::kPendingInputExpansionMsg, model::encodePendingInputExpansionRequest());
-                std::fprintf(stderr, "[prompt] input id=%u is `in list`: asked for its choices (0x0064)\n", p->id);
-            } else if (p) {
-                emitPrompt(*p);
+                break;
+            default: break;
             }
         }
         im.onFrame(type, body);
+        if (type == 0x003b) emit popupMenus(im.showPopupMenus());
         if (type == 0x0011) {
             auto snap = std::make_shared<const net::InputModel>(im);
             std::lock_guard<std::mutex> g(verbsMu_);
@@ -348,8 +412,17 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                     std::fprintf(stderr, "[link] open %s\n", lf.url.substr(0, 200).c_str());
                     emit externalLink(QString::fromStdString(lf.url));
                 } else if (lf.kind == model::LinkFrame::World) {
-                    std::fprintf(stderr, "[link] world %s\n", lf.url.substr(0, 200).c_str());
-                    emit worldLink(QString::fromStdString(lf.url));
+                    // Stock DreamSeeker joins the linked world in the same window, whichever world it is (pager/target.h
+                    // refuses a hub name or a missing port). An identical skin keeps every control's state across it.
+                    std::string why;
+                    std::optional<std::string> t = pager::parseTarget(lf.url, &why);
+                    std::fprintf(stderr, "[link] world %s: %s\n", lf.url.substr(0, 200).c_str(), t ? ("joining " + *t + " in this window").c_str() : why.c_str());
+                    if (!t) {
+                        emit localOutput(QString::fromStdString("Link not followed: " + why));
+                    } else {
+                        linkTarget_ = *t;
+                        reconnect_ = true;
+                    }
                 } else {
                     std::fprintf(stderr, "[link] scheme not opened: %s\n", lf.url.substr(0, 200).c_str());
                 }
@@ -429,7 +502,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
 
     uint64_t skinLoadsSeen = 0;
     uint64_t chatSeen = 0;
-    shell::StatView lastStatView;
+    std::optional<shell::StatView> lastStatView;   // none yet: a session's first view replaces the last session's panel
     QString lastName;
     int64_t lastTickNs = 0, lastFrameNs = 0;
     std::string lastAssembleErr;
@@ -451,9 +524,9 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
     auto srcFor = [&](uint16_t id) {
         std::vector<net::SrcCandidate> out;
         const model::World& w = m.world();
-        for (const model::VerbSrcCandidate& c : model::verbSrcCandidates(w, id)) {
+        for (const model::VerbSrcCandidate& c : model::verbSrcCandidates(w, id, true)) {
             bool own = c.src.kind == proto::enc::kVerbSrcClient || (c.src.kind == proto::enc::kVerbSrcMob && w.haveSelf && c.src.ref == w.selfRef);
-            out.push_back({{c.src.kind, c.src.ref}, c.name, !own});
+            out.push_back({{c.src.kind, c.src.ref}, c.name, !own, std::nullopt, c.rank.dist, c.rank.cell, c.rank.carried});
         }
         return out;
     };
@@ -463,7 +536,11 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
         model::VerbArgSpec ma{a.typeMask, a.filter, a.filterKind};
         if (!model::argResolvesLocally(ma)) return std::nullopt;
         std::vector<net::SrcCandidate> out;
-        for (const model::VerbSrcCandidate& c : model::verbArgCandidates(m.world(), ma)) out.push_back({{c.src.kind, c.src.ref}, c.name});
+        const model::World& w = m.world();
+        for (const model::VerbSrcCandidate& c : model::verbArgCandidates(w, ma)) {
+            bool own = c.src.kind == proto::enc::kVerbSrcMob && w.haveSelf && c.src.ref == w.selfRef;
+            out.push_back({{c.src.kind, c.src.ref}, c.name, !own, std::nullopt, c.rank.dist, c.rank.cell, c.rank.carried});
+        }
         return out;
     };
     auto sendBodies = [&](const char* what, const std::vector<Bytes>& bodies) {
@@ -524,12 +601,10 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
             std::fprintf(stderr, "[input] command \"%s\": argument %zu missing - prompting \"%s\"\n", line.c_str(), r.missing->index + 1, ap.title.c_str());
             if (pr.inList && !r.missing->atoms) {
                 // The listbox is filled by a 0x003f round trip addressed by the argument's ordinal. The dialog is held until
-                // it answers (or kChoicesWaitMs passes), so it opens complete, as an input() in list does.
-                bool ok = s.sendInput(net::kVerbExpansionMsg, net::encodeVerbExpansionRequest(*r.missing));
-                std::fprintf(stderr, "[input] verb expansion ordinal %u src %02x:%u: 0x003f %s\n", ap.ordinal, r.missing->src.kind, r.missing->src.ref,
-                             ok ? "sent" : "NOT SENT");
+                // it answers (or ChoiceFetches::kWait passes), so it opens complete, as an input() in list does.
+                std::fprintf(stderr, "[input] verb expansion ordinal %u src %02x:%u: 0x003f queued\n", ap.ordinal, r.missing->src.kind, r.missing->src.ref);
                 argHeld[pr.id] = pr;
-                choiceFetches.push_back({true, pr.id, std::chrono::steady_clock::now() + std::chrono::milliseconds(kChoicesWaitMs)});
+                promptFlow.askVerbArg(pr.id, net::kVerbExpansionMsg, net::encodeVerbExpansionRequest(*r.missing), std::chrono::steady_clock::now());
             } else {
                 emit promptRequested(pr);
             }
@@ -561,15 +636,24 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 // missing one can break the world.
                 env.hooks = im.haveMouseSubs() ? im.hooks() : proto::enc::allMouseHooks();
                 env.rightClickToWire = mj->rightClick;
-                env.control = mj->control;
+                env.control = mj->p.control;
+                env.offMap = mj->p.offMap;
                 env.clientWheel = !im.haveMouseSubs() || im.clientWheel();
+                env.clientHover = im.clientHover();
+                env.clientMove = im.clientMove();
                 std::vector<Bytes> fr;
                 using K = fugue::shell::MapPointer;
                 if (mj->p.kind == K::Wheel) {
                     sendBodies("mouse-wheel", render::wheelFrames(mj->p.ev, env, mj->p.wheelX, mj->p.wheelY));
                     continue;
                 }
-                if (mj->p.kind == K::Press) fr = chain.press(mj->p.ev, env);
+                if (mj->p.kind == K::Hover || mj->p.kind == K::Leave) {
+                    fr = mj->p.kind == K::Hover ? hover.at(mj->p.ev, env, mj->p.motion) : hover.leave();
+                    for (const Bytes& b : fr)   // unlogged when sent: a MouseMove world reports every pixel step
+                        if (!s.sendInput(proto::enc::kClientCmd, b)) std::fprintf(stderr, "[input] mouse-hover: len=%zu NOT SENT\n", b.size());
+                    continue;
+                }
+                if (mj->p.kind == K::Press) { hover.forget(); fr = chain.press(mj->p.ev, env); }
                 else if (mj->p.kind == K::Move) fr = chain.move(mj->p.ev, env);
                 else fr = chain.release(mj->p.ev, env);
                 std::string what = std::string("mouse-") + (mj->p.kind == K::Press ? "press" : mj->p.kind == K::Move ? "move" : "release") + "(" + chain.note() + ")";
@@ -608,8 +692,8 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 runResult(miss.line + " <- \"" + aj->text + "\"", net::InputModel::completeArg(miss, value, m.world().haveSelf, argAtoms));
             } else if (auto* qj = std::get_if<MenuJob>(&j)) {
                 // Right-click verb menu: hit-test the scene the player saw, then apply the model's eligibility rules
-                // (model/verbmenu.h). One row per atom on the clicked tile, topmost first, each with its icon and a
-                // submenu of that atom's verbs.
+                // (model/verbmenu.h). One row per atom under the pointer (render::hitStack), topmost first, each with its
+                // icon and a submenu of that atom's verbs.
                 std::vector<render::Hit> hits;
                 if (qj->p.scene) hits = render::hitStack(*qj->p.scene, qj->p.ev.imgX, qj->p.ev.imgY);
                 if (hits.empty()) { std::fprintf(stderr, "[menu] no atom under the cursor\n"); continue; }
@@ -679,8 +763,9 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 model::PromptReply rep = pj->cancel ? prompts.cancel(pj->id)
                                        : pj->alert  ? prompts.answerAlert(pj->id, pj->text)
                                                     : prompts.answerInput(pj->id, pj->text);
-                if (rep.type == 0) {   // not cancellable (model::Prompt::cancellable): the prompt stays pending
-                    std::fprintf(stderr, "[input] prompt %u cancel refused - not cancellable, nothing sent\n", pj->id);
+                if (rep.type == 0) {   // withdrawn by the server, or a cancel stock refuses (model::Prompt::cancellable)
+                    std::fprintf(stderr, "[input] prompt %u %s - nothing sent\n", pj->id,
+                                 prompts.withdrawn(pj->id, pj->alert) ? "withdrawn by the server" : "cancel refused, not cancellable");
                     continue;
                 }
                 bool ok = s.sendInput(rep.type, rep.body);
@@ -736,6 +821,10 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
             Resolving rv = std::move(resolving.front());
             resolving.pop_front();
             std::fprintf(stderr, "[input] command \"%s\": 0x0039 answered %02x:%u\n", rv.line.c_str(), kind, value);
+            if (rv.prompt && prompts.withdrawn(rv.promptId, false)) {
+                std::fprintf(stderr, "[input] prompt %u withdrawn by the server - answer not sent\n", rv.promptId);
+                continue;
+            }
             if (rv.prompt) {
                 model::PromptReply rep = model::PromptBook::resolvedInput(rv.promptId, kind, value);
                 bool ok = s.sendInput(rep.type, rep.body);
@@ -745,8 +834,29 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
             runResult(rv.line, net::InputModel::completeResolve(rv.r, kind, value, m.world().haveSelf, argAtoms));
         }
     };
+    pumpPrompts = [&] {
+        for (PromptFlow::Step& st : promptFlow.pump(std::chrono::steady_clock::now())) {
+            switch (st.kind) {
+            case PromptFlow::Step::Show:
+                if (st.gaveUp) std::fprintf(stderr, "[prompt] input id=%u: no choices came - typed text only\n", st.id);
+                emitPrompt(*st.prompt);
+                break;
+            case PromptFlow::Step::Send: {
+                bool ok = s.sendInput(st.type, st.body);
+                std::fprintf(stderr, "[prompt] id=%u: 0x%04x %s\n", st.id, st.type, ok ? "sent" : "NOT SENT");
+                break;
+            }
+            case PromptFlow::Step::VerbArgGaveUp:
+                std::fprintf(stderr, "[prompt] verb-argument id=%u: no choices came - typed text only\n", st.id);
+                if (auto it = argHeld.find(st.id); it != argHeld.end()) { emit promptRequested(it->second); argHeld.erase(it); }
+                break;
+            default: break;
+            }
+        }
+    };
     while (!stop_ && !reconnect_ && !s.stats().serverClosed && !s.stats().rebootRequested) {
         drainInbox();
+        pumpPrompts();
         drainListReplies();
         for (size_t i = 0; i < rscUnresolved.size();) { if (declareRsc(rscUnresolved[i])) rscUnresolved.erase(rscUnresolved.begin() + long(i)); else i++; }
         if (!rscWanted.empty()) { s.resources().prioritize(rscWanted); rscWanted.clear(); }
@@ -770,7 +880,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
             }
             // Map: assemble on this thread (the model's only thread), execute on RenderThread.
             render::DrawList dl;
-            render::SceneStats ss;
+            render::SceneStats ss; ss.profilePreparation = profilePreparation;
             std::string aerr;
             int64_t clockNs = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
             if (res.refusedRecipes().size() != refusedLogged) {
@@ -790,22 +900,35 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 refusedLogged = res.refusedRecipes().size();
             }
             // The default map's style is the maptext sheet (.maptext, .center, .black_outline), shared with MeasureText.
-            bool assembled = render::assembleMapControl(m, res, clockNs, dl, ss, &aerr, /*withHit=*/true, feed.live().defaultMapStyle());
+            const auto prepareStart = std::chrono::steady_clock::now();
+            bool assembled = render::assembleMapControl(m, res, clockNs, dl, ss, &aerr, /*withHit=*/true, feed.live().defaultMapStyle(), &sceneCache);
+            const double prepareMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - prepareStart).count();
+            if (profilePreparation) tracePreparation({}, clockNs, prepareMs, ss, dl, assembled);
+            const bool clientHover = im.clientHover() || im.clientMove();   // the map widgets post button-less motion only then (MapWidget::wantsHover)
+            // The scene is this thread's own until it is submitted.
+            if (assembled && dl.hit) std::const_pointer_cast<render::HitScene>(dl.hit)->clientHover = clientHover;
             s.resources().prioritize(res.takeWanted());   // what this frame could not draw loads first
             if (assembled) {
                 if (!dlLogged) { dlLogged = true; log("first draw list " + std::to_string(dl.outW) + "x" + std::to_string(dl.outH) + " unmodeled=" + ss.summary()); }
-                rt_->submit(std::move(dl));
+                rt_->submit(std::move(dl), prepareMs);
             } else if (aerr != lastAssembleErr) {
                 lastAssembleErr = aerr;
                 log("assemble: " + aerr);
             }
-            // The secondary map controls a winset created (vg's camera console): one list each, same clock.
-            for (const std::string& id : feed.live().runtimeMaps()) {
+            // The secondary map controls (a .dmf's other MAPs, and the ones a winset created: vg's camera console): one list
+            // each, same clock.
+            for (const std::string& id : feed.live().secondaryMaps()) {
                 render::DrawList al;
-                render::SceneStats as;
+                render::SceneStats as; as.profilePreparation = profilePreparation;
                 std::string e2;
-                if (render::assembleSecondaryMap(m, res, clockNs, id, al, as, &e2, feed.live().defaultMapStyle())) {
-                    rt_->submitAux(id, std::move(al));
+                const auto auxStart = std::chrono::steady_clock::now();
+                const bool auxAssembled = render::assembleSecondaryMap(m, res, clockNs, id, al, as, &e2, feed.live().defaultMapStyle(), &sceneCache,
+                                                                       /*withHit=*/true);
+                const double auxMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - auxStart).count();
+                if (profilePreparation) tracePreparation(id, clockNs, auxMs, as, al, auxAssembled);
+                if (auxAssembled) {
+                    if (al.hit) std::const_pointer_cast<render::HitScene>(al.hit)->clientHover = clientHover;
+                    rt_->submitAux(id, std::move(al), auxMs);
                     lastAuxErr.erase(id);
                 } else if (auto& last = lastAuxErr[id]; e2 != last) {   // said once per new error, as the main map's
                     last = e2;
@@ -850,22 +973,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
             }
         }
         int64_t statClock = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        if (shell::StatView sv = buildStatView(m, res, statClock); !(sv == lastStatView)) { lastStatView = sv; emit statView(sv); }
-        for (ChoiceFetch& f : choiceFetches) {   // no choices in time: the dialog still accepts typed text
-            if (f.abandoned || now <= f.deadline) continue;
-            f.abandoned = true;   // stays queued so a late reply is swallowed
-            std::fprintf(stderr, "[prompt] %s id=%u: choices fetch timed out - typed text only\n", f.verbArg ? "verb-argument" : "input", f.id);
-            if (f.verbArg) {
-                auto it = argHeld.find(f.id);
-                if (it != argHeld.end()) { emit promptRequested(it->second); argHeld.erase(it); }
-            } else if (const model::Prompt* p = prompts.find(f.id); p && p->inList && !p->choicesKnown) {
-                prompts.giveUpOnChoices(f.id);
-                emitPrompt(*prompts.find(f.id));
-            }
-        }
-        while (!choiceFetches.empty() && choiceFetches.front().abandoned &&
-               now > choiceFetches.front().deadline + std::chrono::milliseconds(kAbandonedFetchMs))
-            choiceFetches.pop_front();
+        if (shell::StatView sv = buildStatView(m, res, statClock); !lastStatView || !(sv == *lastStatView)) { lastStatView = sv; emit statView(sv); }
         for (const auto& [name, b] : w.browsers) {
             auto it = lastBrowse.find(name);
             if (it == lastBrowse.end() || it->second != b.html) { lastBrowse[name] = b.html; emit browseHtml(QString::fromStdString(name), QString::fromStdString(b.params), QString::fromStdString(b.html)); }

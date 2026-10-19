@@ -43,9 +43,19 @@ if(FUGUE_HEADLESS_ONLY)
   set(FUGUE_BUILD_SHELL OFF CACHE BOOL "build shell/ and the fugue-qt window binary" FORCE)
 endif()
 
-# Cap build parallelism: compile jobs for QtTest-heavy translation units are large.
-# Override per build with -DFUGUE_COMPILE_JOBS=N.
-set(FUGUE_COMPILE_JOBS 6 CACHE STRING "max concurrent compile jobs (Ninja job pool)")
+# Cap build parallelism: compile jobs for QtTest-heavy translation units are large (the heaviest measured about 860 MiB).
+# The default is one job per GiB of memory available at configure time, at most one per core. Override per build with
+# -DFUGUE_COMPILE_JOBS=N.
+cmake_host_system_information(RESULT _fugue_mem_mib QUERY AVAILABLE_PHYSICAL_MEMORY)
+cmake_host_system_information(RESULT _fugue_cores QUERY NUMBER_OF_LOGICAL_CORES)
+math(EXPR _fugue_jobs "${_fugue_mem_mib} / 1024")
+if(_fugue_jobs GREATER _fugue_cores)
+  set(_fugue_jobs ${_fugue_cores})
+endif()
+if(_fugue_jobs LESS 1)
+  set(_fugue_jobs 1)
+endif()
+set(FUGUE_COMPILE_JOBS ${_fugue_jobs} CACHE STRING "max concurrent compile jobs (Ninja job pool)")
 set_property(GLOBAL PROPERTY JOB_POOLS fugue_compile=${FUGUE_COMPILE_JOBS} fugue_link=2)
 set(CMAKE_JOB_POOL_COMPILE fugue_compile)
 set(CMAKE_JOB_POOL_LINK fugue_link)
@@ -71,6 +81,12 @@ foreach(m model skin render audio account pager)
     add_subdirectory(${m})
   endif()
 endforeach()
+
+# Experimental GPU executor and differential tests; never adds GUI dependencies to fugue_render.
+option(FUGUE_BUILD_GPU "build the experimental QRhi executor (Qt 6.7+, Gui private headers and ShaderTools)" OFF)
+if(FUGUE_BUILD_GPU)
+  add_subdirectory(rendergpu)
+endif()
 
 # shell/ + app/ (Qt Widgets + WebEngine) are REQUIRED unless you opt out: -DFUGUE_HEADLESS_ONLY=ON (or -DFUGUE_BUILD_SHELL=OFF)
 # builds just the headless modules, tools and tests, which need no WebEngine.

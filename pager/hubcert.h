@@ -35,6 +35,8 @@ std::optional<HubCertIdentity> hubCertIdentityFor(const account::AccountLogin& a
 // Arms cfg.hubCertAnswer / cfg.hubRekey for this account login. false (cfg untouched, *why set) when hubCertIdentityFor
 // fails. A non-hub server never sends 0x001c, so arming it costs nothing there. Mints are spaced by HubThrottle
 // (kHubMintGap, growing after failures), so a server that repeats its challenge cannot make the client hammer the hub.
+// The answer outlives one session (a link() joins the next world with the same cfg): a challenge that comes inside
+// kHubMintGap of the last mint blocks until the gap has passed; one with more than kHubMintGap still to wait is refused.
 bool wireHubCert(net::SessionConfig& cfg, const account::AccountLogin& al, std::string* why, const std::string& hubAddr = kHubLinkAddr,
                  int timeoutMs = kHubCertTimeoutMs);
 

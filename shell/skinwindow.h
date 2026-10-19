@@ -3,6 +3,7 @@
 //   MAP -> MapWidget      OUTPUT -> QTextBrowser (chat)   INFO -> StatPanelWidget (tabs and rows)
 //   INPUT -> QLineEdit    BROWSER -> BrowserPane          BUTTON and LABEL -> plain widgets (text from the overlay)
 //   everything else (TAB, GRID, BAR, GAUGE...) -> an empty placeholder frame; CHILD and MAIN -> nothing.
+//   The default MAP is map(); every other MAP is a secondary map (setAuxMapFrame).
 //   The skin's `menu` -> a QMenuBar. A command is emitted as menuCommand and routed like a macro. Its top-left
 //   corner holds the system-menu entries (Options & Messages, Client) behind a button showing the window icon, as
 //   stock puts them under the caption icon (shell/macrodialog.h).
@@ -28,6 +29,8 @@
 #include <QWidget>
 #include <map>
 #include <memory>
+#include <set>
+#include <vector>
 #include "shell/browsehost.h"
 #include "shell/mapwidget.h"
 #include "shell/statpanelwidget.h"
@@ -45,6 +48,7 @@ class QLabel;
 namespace fugue::shell {
 
 class BrowserPane;
+class DisplaySettings;
 
 class SkinWindow : public QWidget {
     Q_OBJECT
@@ -77,6 +81,8 @@ public:
     void setSpaceCompleter(SpaceCompleter c) { spaceCompleter_ = std::move(c); }
 
     void setMapFrame(const QImage& img, HitPtr hit = {});
+    void setMapExternalFrame(QSize size, HitPtr hit, std::function<QImage()> snapshot);
+    QPixmap grabWithMaps(); // QWidget::grab plus native map presenters, which QWidget cannot capture itself
     // The render thread skipped an unchanged list: the frame on screen stands and only the hit scene is replaced.
     // A map widget built since the last frame gets that frame, so it never waits for the picture to change.
     void setMapHit(HitPtr hit);
@@ -84,8 +90,12 @@ public:
     // popup - vg's security camera console, tgui's ByondUi (`winset id parent=<popup>;type=map;pos=x,y;size=WxH`). The
     // widget lives in the popup at the control's pos/size (skin/liveskin.h runtime_) and auto-fits the picture
     // like the default map (render/scene.h assembleSecondaryMap). `parent=` (ByondUi's unmount) destroys it.
-    void setAuxMapFrame(const QString& id, const QImage& img);
+    // The .dmf's other MAP controls are secondary maps too, under their elem name. `hit` is the scene the picture was
+    // drawn from (render/scene.h assembleSecondaryMap withHit): the widget takes clicks, drags, the wheel and hover on it.
+    void setAuxMapFrame(const QString& id, const QImage& img, HitPtr hit = {});
+    void setAuxMapHit(const QString& id, HitPtr hit);   // the render thread skipped an unchanged list
     MapWidget* auxMap(const QString& id) const;   // nullptr when no such control is built
+    QList<MapWidget*> mapWidgets() const;         // the default map and every secondary map built
     void appendChat(const QStringList& html);
     void setStat(const QString& html);   // HTML stat text; the INFO control uses setStatView()
     void setStatView(const StatView& v);   // the model's tab strip + rows (shell/statpanelwidget.h)
@@ -100,6 +110,7 @@ public:
     bool declaresBrowser(const QString& name) const;   // does the skin file declare a BROWSER control by this name?
     bool declaresHiddenBrowser(const QString& name) const;   // ... and declare it `is-visible = false`?
 
+    DisplaySettings* displaySettings() const { return display_; }
     MapWidget* map() const { return map_; }
     // The map control's rectangle inside this widget (for screenshot cropping).
     QRect mapControlRect() const { return map_ ? map_->geometry() : QRect(); }
@@ -125,7 +136,7 @@ signals:
     void buttonCommand(const QString& command); // a skin BUTTON's `command`: routed exactly like a macro's
     void menuCommand(const QString& command);   // a menu item's `command`: ditto
     void macroChanged(const QString& name);     // the active macro set, or a set's bindings, differs from the last sync's
-    void mapReady(fugue::shell::MapWidget* map);// the map widget was (re)created: connect its pointer signals
+    void mapReady(fugue::shell::MapWidget* map);// a map widget (default or secondary) was (re)created: connect its pointer signals
     void clientResized(const QSize& client);    // the skin's client area changed size (the app fires the skin's on-size)
     void byondLink(const QUrl& url);
     void worldLink(const QString& url);         // a page link to another world
@@ -136,6 +147,7 @@ signals:
     // A secondary map's widget was (re)built: the render thread must draw that map's next list even when it is
     // unchanged (app/renderthread.h forgetAux), so a remounted widget always gets a frame.
     void auxMapBuilt(const QString& id);
+    void auxMapRemoved(const QString& id);
 protected:
     void resizeEvent(QResizeEvent*) override;
     void moveEvent(QMoveEvent*) override;
@@ -144,6 +156,7 @@ protected:
     // and the popups that close with it run no on-close.
     void closeEvent(QCloseEvent* e) override;
 private:
+    DisplaySettings* display_ = nullptr;
     SpaceCompleter spaceCompleter_;
     QString worldName_, skinTitle_;
     bool skinIcon_ = false;
@@ -178,8 +191,12 @@ private:
     MapWidget* lastMapSignalled_ = nullptr;
     std::map<std::string, QPointer<MapWidget>> auxMaps_;   // runtime MAP controls by lower-case id (syncRuntimeMaps)
     std::map<std::string, QImage> auxImg_;                 // their latest pictures, for a widget built after its frame
+    std::map<std::string, HitPtr> auxHit_;                 // ... and the scenes they were drawn from
+    std::set<std::string> dmfAux_;                         // the auxMaps_ keys that are .dmf controls (built by makeWidget)
+    std::vector<QPointer<MapWidget>> pendingMaps_;         // .dmf secondary maps built in this sync: mapReady after it
     bool mapPaneShown_ = false, infoPaneShown_ = false;   // LiveSkin::setPaneShown sent (per skin load)
-    QImage mapImg_;   // the last frame handed to the map (implicitly shared with the widget's copy)
+    QImage mapImg_;   // the last CPU frame handed to the map (implicitly shared with the widget's copy)
+    bool hasMapFrame_ = false;
     QSize lastClient_;
     QMenuBar* bar_ = nullptr;
     QToolButton* sysBtn_ = nullptr;
