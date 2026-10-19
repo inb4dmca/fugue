@@ -74,6 +74,8 @@ modules:
       - -DFUGUE_RELEASE=ON
       # a release must play tracker modules: fail the build rather than ship one that refuses them
       - -DFUGUE_OPENMPT=ON
+      # the experimental GPU renderer, off until the pager's "Use GPU rendering" option turns it on
+      - -DFUGUE_BUILD_GPU=ON
     sources:
       - type: dir
         path: ../..

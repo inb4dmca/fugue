@@ -50,9 +50,10 @@
   <releases>
     <release version="0.5.4" date="2026-10-19">
       <description>
-        <p>Sends typed verbs to the source DreamSeeker picks (/vg/station's Whisper), draws the AI's camera static, keeps
-        round-end credits rolling through a reboot, and fixes right-click on equipped items, flick() on other z-levels,
-        chained animate() timing, hover and secondary-map input, and odd characters in browse() windows.</p>
+        <p>Adds an experimental GPU renderer, off until the pager's "Use GPU rendering" option turns it on. Sends typed
+        verbs to the source DreamSeeker picks (/vg/station's Whisper), draws the AI's camera static, keeps round-end
+        credits rolling through a reboot, and fixes right-click on equipped items, flick() on other z-levels, chained
+        animate() timing, hover and secondary-map input, and odd characters in browse() windows.</p>
       </description>
     </release>
     <release version="0.5.3" date="2026-10-18">
