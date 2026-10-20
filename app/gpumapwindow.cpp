@@ -94,7 +94,12 @@ void GpuMapWindow::reject(const QString& reason, bool terminal) {
     if (terminal) p.failure = reason;
     if (p.pending && p.rejected != p.pending) {
         p.rejected = p.pending;
-        std::fprintf(stderr, "[gpu-present] CPU fallback: %s\n", qPrintable(reason));
+        size_t worldLayers = 0, hudLayers = 0;
+        for (const auto& plane : p.pending->planes) worldLayers += plane.layers.size();
+        for (const auto& hud : p.pending->hud) hudLayers += hud.layers.size();
+        std::fprintf(stderr, "[gpu-present] CPU fallback: %s (view=%s size=%dx%d planes=%zu world-layers=%zu hud-layers=%zu)\n",
+                     qPrintable(reason), p.id.isEmpty() ? "main" : qPrintable(p.id), p.pending->outW, p.pending->outH,
+                     p.pending->planes.size(), worldLayers, hudLayers);
         emit rejected(p.pending, reason);
     }
 }

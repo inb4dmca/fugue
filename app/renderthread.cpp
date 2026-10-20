@@ -132,6 +132,8 @@ void RenderThread::requestStop() {
 
 void RenderThread::run() {
     bool useGpu = false;
+    const bool profile = qEnvironmentVariableIntValue("FUGUE_GPU_PROFILE") != 0;
+    auto lastCpuProfile = std::chrono::steady_clock::time_point{};
     GpuDrawList lastDirectList;
     std::set<std::string> invalidAux;
     auto execute = [&](const fugue::render::DrawList& dl, const std::string& id, std::string reason = {}) {
@@ -142,7 +144,16 @@ void RenderThread::run() {
             if (reason.empty()) reason = "GPU support was not built";
         }
         auto image = fugue::render::execute(dl);
-        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        const auto finished = std::chrono::steady_clock::now();
+        const double ms = std::chrono::duration<double, std::milli>(finished - start).count();
+        if (profile && finished - lastCpuProfile >= std::chrono::seconds(1)) {
+            size_t layers = 0;
+            for (const auto& plane : dl.planes) layers += plane.layers.size();
+            for (const auto& hud : dl.hud) layers += hud.layers.size();
+            std::fprintf(stderr, "[render-cpu] map=%s size=%dx%d layers=%zu execute=%.3fms fallback=%d\n",
+                         main ? "main" : id.c_str(), dl.outW, dl.outH, layers, ms, int(useGpu));
+            lastCpuProfile = finished;
+        }
         {
             std::lock_guard<std::mutex> g(metricsMu_);
             (main ? metrics_.mainFrames : metrics_.auxFrames)++;

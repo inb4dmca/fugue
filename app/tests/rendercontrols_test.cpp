@@ -236,6 +236,23 @@ private slots:
         QCOMPARE(map.grab().toImage(), plain);
     }
 
+    void overlayLayoutStaysInsideTheMap() {
+        MapWidget map;
+        map.resize(640, 180);
+        map.setPerformanceText("main | GPU\n" + QString(300, 'W') + QString("\nPrepare  1.00  2.00").repeated(40));
+        auto overlay = map.overlayImage();
+        QVERIFY(!overlay.isNull());
+        const qreal dpr = overlay.devicePixelRatio();
+        auto alpha = [&](int x, int y) { return overlay.pixelColor(int(x * dpr), int(y * dpr)).alpha(); };
+        QVERIFY(alpha(25, 25) > 0);
+        QCOMPARE(alpha(440, 25), 0); // capped panel width, even for long device/error strings
+        QCOMPARE(alpha(2, 2), 0);
+        QCOMPARE(alpha(25, 178), 0); // vertical clipping leaves the map's margin untouched
+        map.resize(20, 20);
+        overlay = map.overlayImage();
+        QCOMPARE(overlay.pixelColor(10, 10).alpha(), 0); // no illegible panel on tiny auxiliary maps
+    }
+
     void monitorIsOptInAndSurvivesMapReplacement() {
         RenderThread thread;
         SkinWindow window;
@@ -245,11 +262,11 @@ private slots:
         QVERIFY(!monitor.active()); QVERIFY(!monitor.probing()); QVERIFY(window.map()->performanceText().isEmpty());
         window.displaySettings()->setPerformanceOverlay(true);
         QVERIFY(monitor.active()); QVERIFY(monitor.probing());
-        QVERIFY(window.map()->performanceText().contains("waiting for frame"));
-        QVERIFY(window.map()->performanceText().contains("Scene updates/s: 0.0"));
-        QVERIFY(window.map()->performanceText().contains("Scene prepare: unavailable"));
+        QVERIFY(window.map()->performanceText().contains("Waiting for frame"));
+        QVERIFY(window.map()->performanceText().contains("Scene updates: 0.0/s"));
+        QVERIFY(window.map()->performanceText().simplified().contains("Prepare n/a n/a"));
         QVERIFY(window.loadSkin(skin).isEmpty());
-        QVERIFY(window.map()->performanceText().contains("waiting for frame"));
+        QVERIFY(window.map()->performanceText().contains("Waiting for frame"));
         window.displaySettings()->setPerformanceOverlay(false);
         QVERIFY(!monitor.active()); QVERIFY(!monitor.probing()); QVERIFY(window.map()->performanceText().isEmpty());
         monitor.refresh();
@@ -272,11 +289,13 @@ private slots:
         thread.reportSubmission("camera", 99, -1, "test camera");
         settings->setPerformanceOverlay(true);
         auto text = window.map()->performanceText();
-        QVERIFY(text.contains("Map: main"));
-        QVERIFY(text.contains("Scene prepare: 2.00 / 2.00 ms"));
-        QVERIFY(text.contains("Render CPU (submit): 10.00 / 10.00 ms"));
-        QVERIFY(text.contains("GPU: 6.00 / 6.00 ms"));
-        QVERIFY(!text.contains("99.00")); QVERIFY(!text.contains("Preflight / acquire"));
+        QVERIFY(text.startsWith("main | GPU\n"));
+        QVERIFY(text.simplified().contains("Prepare 2.00 2.00"));
+        QVERIFY(text.simplified().contains("CPU submit 10.00 10.00"));
+        QVERIFY(text.simplified().contains("GPU (delayed) 6.00 6.00"));
+        QVERIFY(!text.contains("99.00")); QVERIFY(!text.contains("Acquire"));
+        QVERIFY(text.count('\n') < 9); // the default panel should remain compact
+        QVERIFY(!text.contains("requested")); // don't repeat an identical requested/actual renderer
         window.live()->setPopups({"cameras"});
         window.showBrowse("cameras", "window=cameras;size=420x260", "<div>camera</div>");
         window.live()->winset("camera", "parent=cameras;type=map;size=420x260;pos=0,0");
@@ -284,27 +303,34 @@ private slots:
         QVERIFY(window.auxMap("camera"));
         monitor.refresh();
         text = window.auxMap("camera")->performanceText();
-        QVERIFY(text.contains("Map: camera"));
-        QVERIFY(text.contains("Scene prepare: 20.00 / 20.00 ms"));
-        QVERIFY(text.contains("Render CPU (submit): 99.00 / 99.00 ms"));
-        QVERIFY(text.contains("GPU: unavailable"));
+        QVERIFY(text.startsWith("camera | GPU\n"));
+        QVERIFY(text.simplified().contains("Prepare 20.00 20.00"));
+        QVERIFY(text.simplified().contains("CPU submit 99.00 99.00"));
+        QVERIFY(text.simplified().contains("GPU (delayed) n/a n/a"));
         settings->setPerformanceDetails(true);
         text = window.map()->performanceText();
-        QVERIFY(text.contains("Preflight / acquire: 1.00 / 1.00 ms"));
-        QVERIFY(text.contains("Plan / upload prep: 0.20 / 0.20 ms"));
-        QVERIFY(text.contains("n=1"));
-        QVERIFY(text.contains("not paired with CPU"));
-        QVERIFY(window.auxMap("camera")->performanceText().contains("Preflight / acquire: unavailable"));
+        QVERIFY(text.simplified().contains("Acquire 1.00 1.00 1"));
+        QVERIFY(text.simplified().contains("Plan / uploads 0.20 0.20 1"));
+        QVERIFY(text.contains("  Plan / uploads")); // visibly nested within recording
+        QVERIFY(text.simplified().contains("avg p95 n"));
+        QVERIFY(text.contains("CPU and GPU overlap"));
+        QVERIFY(text.count('\n') < 28);
+        QVERIFY(window.auxMap("camera")->performanceText().simplified().contains("Acquire n/a n/a 0"));
         // A zero-update interval reports zero, without treating retained timings as fresh work.
         monitor.refresh();
-        QVERIFY(window.map()->performanceText().contains("Scene updates/s: 0.0"));
-        QVERIFY(window.map()->performanceText().contains("Last scene render sample:"));
+        QVERIFY(window.map()->performanceText().contains("Scene updates: 0.0/s"));
+        QVERIFY(window.map()->performanceText().contains("Age (s): prep"));
         QTest::qWait(60); // establish the GUI probe, then deliberately block this thread
         QThread::msleep(140);
         QTest::qWait(10);
         monitor.refresh();
-        QVERIFY(!window.map()->performanceText().contains("stalls >=50 ms: 0"));
-        QVERIFY(window.map()->performanceText().contains("GUI lag p95:"));
+        QVERIFY(!window.map()->performanceText().contains("UI stalls >=50ms: 0"));
+        QVERIFY(window.map()->performanceText().contains("UI delay"));
+        settings->setPerformanceDetails(false);
+        QTest::qWait(1100);
+        monitor.refresh();
+        QVERIFY(window.map()->performanceText().contains("Render age:"));
+        QVERIFY(!window.map()->performanceText().contains("CPU submit breakdown"));
         settings->setPerformanceOverlay(false);
         QVERIFY(!monitor.active()); QVERIFY(!monitor.probing());
         QVERIFY(window.map()->performanceText().isEmpty());
@@ -348,13 +374,14 @@ private slots:
         QCOMPARE(qvariant_cast<HitPtr>(frames.back()[1]), dl.hit);
         monitor.refresh();
         QVERIFY(settings->useGpu()); // fallback does not change the preference or radio selection
-        QVERIFY(window.map()->performanceText().contains("Requested: GPU"));
-        QVERIFY(window.map()->performanceText().contains("CPU fallback: GPU support was not built"));
+        QVERIFY(window.map()->performanceText().startsWith("main | CPU (GPU requested)\n"));
+        QVERIFY(window.map()->performanceText().contains("Fallback: GPU support was not built"));
+        QVERIFY(!window.map()->performanceText().contains("GPU (delayed)"));
         settings->findChild<QAction*>("rendererCpu")->trigger();
         QTRY_COMPARE(frames.size(), 3); QTRY_COMPARE(aux.size(), 3);
         monitor.refresh();
-        QVERIFY(window.map()->performanceText().contains("Requested: CPU"));
-        QVERIFY(!window.map()->performanceText().contains("CPU fallback:"));
+        QVERIFY(window.map()->performanceText().startsWith("main | CPU\n"));
+        QVERIFY(!window.map()->performanceText().contains("Fallback:"));
         QVERIFY(thread.metrics().fallbackReason.empty());
         QCOMPARE(thread.metrics().cpuFrames, uint64_t(6));
         QCOMPARE(thread.metrics().fallbacks, uint64_t(2));

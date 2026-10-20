@@ -20,6 +20,10 @@ affine transforms, legacy HUD passes and the black-ground flatten. The CPU execu
   out beneath them (`MapWidget::clipExternalView`, run whenever the skin places its controls).
 * `supports()` refuses a list over the `Limits` (4096 px per side, 128 MiB of textures per list, capped counts of planes,
   layers, filters and passes) or that needs a missing device feature; the caller then draws it on the CPU.
+  The layer limit is 65,536; pass admission accounts for batching instead of treating every layer as a pass.
+  A separate 256 Mi clipped-layer-pixel budget bounds overdraw; HUD coverage uses its canvas dimensions.
+* Disjoint compatibility layers share a destination snapshot, with a pixel-occupancy bitmap tracking overlap instead
+  of a capped rectangle list. Draw-plan capacity is reused between recordings without reusing old resource handles.
 * `Features` turns off the optimizations (pass fusion, packed uniforms, instanced sprites, plane caching); the tests use
   that unoptimized executor as the reference the optimized one must match byte for byte.
 * Shaders compute in float32, the CPU in float64. The tests require exact bytes for most fixtures and allow 1-2 for some
@@ -39,4 +43,16 @@ QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ctest --test-dir build -
 
 `FUGUE_GPU_BENCHMARK=1` enables the benchmark cases. In the client, `FUGUE_GPU_PROFILE=1` logs per-map submission
 phases once a second and `FUGUE_GPU_TRACE=<path>` writes them as CSV; `FUGUE_GPU_VERIFY=1` compares a GPU frame
-against the CPU executor once a second.
+against the CPU executor once a second. Verification adds synchronous readback and CPU comparison; disable it for
+performance comparisons. `zoomBenchmark` exercises large synthetic views with output checks outside timing:
+
+```sh
+FUGUE_GPU_BENCHMARK=1 build/rendergpu/gpu_executor_test zoomBenchmark -o -,txt
+```
+
+Fallback logs include viewport and layer counts; budget failures include requested counts/bytes and limits.
+`FUGUE_GPU_PROFILE=1` also logs sampled CPU execution time during CPU rendering/fallback, excluding preparation and
+presentation. Direct traces use `<path>.present.csv` for the main map and `<path>.view-N.present.csv` for secondary
+views. They record changed-scene submissions, not overlay repaints; CPU submission and delayed GPU observations are
+not paired frame timings or input latency. Recording subphases are nested within recording time.
+See [Usage](../docs/USAGE.md#performance-overlay) for overlay definitions.

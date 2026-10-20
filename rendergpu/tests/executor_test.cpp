@@ -313,8 +313,8 @@ private slots:
         auto dl = list(520, 1, {});
         for (int i = 0; i < 260; ++i) dl.planes[0].layers.push_back(layer(translucent, i * 2));
         compare(dl);
-        QCOMPARE(executor_->stats().renderPasses, uint64_t(5)); // two bounded batches, not 260 passes
-        QCOMPARE(executor_->stats().regionDraws, uint64_t(258));
+        QCOMPARE(executor_->stats().renderPasses, uint64_t(4)); // one snapshot beyond the old 256-rectangle ceiling
+        QCOMPARE(executor_->stats().regionDraws, uint64_t(259));
         auto optimized = last_.px;
         Executor compatibility(*rhi_, {}, {false, false});
         compare(dl, 0, nullptr, &compatibility);
@@ -324,11 +324,85 @@ private slots:
         auto opaque = solid(1, 1, {210, 50, 90, 255});
         for (int i = 1; i <= 260; ++i) dl.planes[0].layers.push_back(layer(opaque, i));
         dl.planes[0].layers.push_back(layer(translucent, 260));
-        compare(dl, 1); // exceeding the tracking budget must invalidate, not forget older dirty rectangles
+        compare(dl, 1); // direct overwrites beyond the old ceiling must still invalidate the snapshot
         QCOMPARE(executor_->stats().regionDraws, uint64_t(0));
         optimized = last_.px;
         compare(dl, 1, nullptr, &compatibility);
         QCOMPARE(last_.px, optimized);
+    }
+
+    void zoomLayerAdmissionAndOverlap() {
+        // More than the old 4096 layers, with non-word-aligned rows and clipping at the right edge.
+        auto translucent = solid(1, 1, {20, 70, 230, 127});
+        auto dl = list(257, 33, {});
+        for (int y = 0; y < 33; ++y) for (int x = 0; x < 257; ++x)
+            dl.planes[0].layers.push_back(layer(translucent, x, y));
+        std::mt19937 rng(42);
+        std::shuffle(dl.planes[0].layers.begin(), dl.planes[0].layers.end(), rng);
+        compare(dl);
+        QCOMPARE(executor_->stats().renderPasses, uint64_t(4));
+        QCOMPARE(executor_->stats().regionDraws, uint64_t(257 * 33 - 1));
+        // A multiword rectangle spanning bits 63/64 and 127/128 overlaps the snapshot's first batch.
+        dl.planes[0].layers.push_back(layer(solid(67, 2, {100, 40, 210, 127}), 63, 31));
+        dl.planes[0].layers.push_back(layer(solid(4, 3, {40, 90, 110, 127}), 255, 32));
+        compare(dl, 1);
+        QCOMPARE(executor_->stats().renderPasses, uint64_t(5)); // final rectangle is disjoint from the preceding one
+        // Revisit a pixel from the old batch; it is clean in the new snapshot (reset clears old occupancy).
+        dl.planes[0].layers.push_back(layer(translucent, 0, 0));
+        compare(dl, 1);
+        QCOMPARE(executor_->stats().renderPasses, uint64_t(5));
+
+        dl.planes[0].layers.resize(65537, layer(translucent));
+        std::string reason;
+        QVERIFY(!executor_->supports(dl, &reason));
+        QVERIFY(reason.find("layer count") != std::string::npos);
+    }
+
+    void passBudgetCountsBatchesNotLayers() {
+        auto s = solid(1, 1, {100, 90, 70, 127});
+        auto dl = list(257, 65, {}); dl.groundBlack = false;
+        for (int y = 0; y < dl.outH; ++y) for (int x = 0; x < dl.outW; ++x)
+            dl.planes[0].layers.push_back(layer(s, x, y));
+        fugue::rendergpu::Limits limits; limits.maxRenderPasses = 4;
+        Executor gpu(*rhi_, limits);
+        compare(dl, 0, nullptr, &gpu);
+        QCOMPARE(gpu.stats().renderPasses, uint64_t(4));
+        QCOMPARE(gpu.stats().regionDraws, uint64_t(257 * 65 - 1));
+        std::string error;
+        Executor unbatched(*rhi_, limits, {false, true, true});
+        QVERIFY(!unbatched.supports(dl, &error));
+        QVERIFY(error.find("render pass") != std::string::npos);
+        // An opaque write dirties the snapshot even though it needs no pass itself.
+        dl.planes[0].layers.push_back(layer(solid(1, 1, {90, 20, 100, 255})));
+        dl.planes[0].layers.push_back(layer(s));
+        QVERIFY(!gpu.supports(dl, &error));
+        QVERIFY(error.find("render pass") != std::string::npos);
+        // Offscreen layers remain validated but consume no composition passes.
+        dl.planes[0].layers.pop_back(); dl.planes[0].layers.back().x = 10000;
+        compare(dl, 0, nullptr, &gpu);
+    }
+
+    void layerWorkBudgetUsesClippedCoverage() {
+        fugue::rendergpu::Limits limits; limits.maxLayerPixels = 5;
+        Executor gpu(*rhi_, limits);
+        auto s = solid(4, 4, {100, 90, 70, 255});
+        auto dl = list(4, 4, {layer(s, -2, -2), layer(s, 3, 3), layer(s, 10000, 0)});
+        compare(dl, 0, nullptr, &gpu); // 4 + 1 + 0 covered pixels, not three full canvases
+        std::string error;
+        dl.planes[0].layers.push_back(layer(s));
+        QVERIFY(!gpu.supports(dl, &error)); // opaque overwrites need no passes but still have work
+        QVERIFY(error.find("layer pixel work") != std::string::npos);
+        dl.planes.clear();
+        HudPass h; h.tileW = h.tileH = 1; h.layers = {layer(s)}; h.dests = {{0, 0}};
+        dl.hud = {h};
+        compare(dl, 0, nullptr, &gpu); // HUD coverage uses the canvas, not the viewport
+        dl.hud.clear();
+        auto relay = layer({}); relay.relay = "missing"; relay.relayBottomY = 4;
+        dl.planes.push_back({0, {relay}, {}});
+        QVERIFY(!gpu.supports(dl, &error)); // conservatively budget unresolved slates too
+        QVERIFY(error.find("layer pixel work") != std::string::npos);
+        dl.planes[0].layers[0].relayBottomY = std::numeric_limits<int>::min();
+        QVERIFY(gpu.supports(dl, &error)); // far-offscreen relay arithmetic must not overflow
     }
 
     void matrixCutouts() {
@@ -1243,6 +1317,70 @@ private slots:
         };
         benchmark(uncached, false); benchmark(cached, true);
         benchmark(cached, true); benchmark(uncached, false);
+    }
+
+    void zoomBenchmark() {
+        if (!qEnvironmentVariableIntValue("FUGUE_GPU_BENCHMARK")) QSKIP("Set FUGUE_GPU_BENCHMARK=1 for zoom measurements");
+        // Synthetic tile layers, not a captured SS13 session. Force changing-list execution (no plane cache).
+        for (int tiles : {15, 31, 45, 65}) {
+            DrawList dl; dl.outW = dl.outH = tiles * 32;
+            for (int p = 0; p < 3; ++p) {
+                PlanePass plane;
+                auto sprite = solid(32, 32, {uint8_t(90 + p * 40), 170, 110, uint8_t(p ? 127 : 255)});
+                for (int y = 0; y < tiles; ++y) for (int x = 0; x < tiles; ++x) {
+                    auto l = layer(sprite, x * 32, y * 32);
+                    if (p == 2) l.blend = kBlendMultiply;
+                    plane.layers.push_back(l);
+                }
+                dl.planes.push_back(std::move(plane));
+            }
+            std::string reason;
+            const bool admitted = executor_->supports(dl, &reason);
+            const auto admissionReason = QString::fromStdString(reason);
+            // Also measure the GPU with only the old layer ceiling relaxed, to separate admission from cost.
+            fugue::rendergpu::Limits limits; limits.maxLayers = 16384;
+            fugue::rendergpu::Options options; options.profileRecording = true;
+            Executor gpu(*rhi_, limits, options);
+            QElapsedTimer cpuTimer; cpuTimer.start();
+            const auto cpu = execute(dl);
+            const double cpuMs = cpuTimer.nsecsElapsed() / 1e6;
+            std::vector<double> times;
+            double recordMs = 0, finishMs = 0;
+            std::array<double, 5> phases{};
+            constexpr int warmups = 8, frames = 60;
+            for (int frame = 0; frame < warmups + frames; ++frame) {
+                QElapsedTimer timer; timer.start();
+                QRhiCommandBuffer* cb = nullptr;
+                QCOMPARE(rhi_->beginOffscreenFrame(&cb), QRhi::FrameOpSuccess);
+                auto* texture = gpu.record(dl, *cb, &reason);
+                if (!texture) { rhi_->endOffscreenFrame(); QFAIL(reason.c_str()); }
+                const double recorded = timer.nsecsElapsed() / 1e6;
+                QRhiReadbackResult result;
+                auto* updates = rhi_->nextResourceUpdateBatch();
+                updates->readBackTexture(QRhiReadbackDescription(texture), &result); cb->resourceUpdate(updates);
+                QCOMPARE(rhi_->endOffscreenFrame(), QRhi::FrameOpSuccess);
+                const double finished = timer.nsecsElapsed() / 1e6;
+                QCOMPARE(size_t(result.data.size()), cpu.px.size());
+                const auto* pixels = reinterpret_cast<const uint8_t*>(result.data.constData());
+                for (size_t i = 0; i < cpu.px.size(); ++i) {
+                    if (std::abs(int(pixels[i]) - int(cpu.px[i])) > 1) QFAIL("zoom pixels differ from CPU");
+                }
+                if (frame >= warmups) {
+                    recordMs += recorded; finishMs += finished - recorded; times.push_back(finished);
+                    const auto s = gpu.stats();
+                    for (size_t i = 0; i < phases.size(); ++i) phases[i] += s.recordWallMs[i];
+                }
+            }
+            std::sort(times.begin(), times.end());
+            const auto s = gpu.stats();
+            qInfo().nospace() << "zoom tiles=" << tiles << " layers=" << 3 * tiles * tiles << " admitted=" << admitted
+                << " cpu-ms=" << cpuMs << " record-ms=" << recordMs / frames << " finish-readback-ms=" << finishMs / frames
+                << " total-p95-ms=" << times[size_t(std::ceil(frames * 0.95)) - 1]
+                << " passes=" << s.renderPasses << " full-draws=" << s.fullSurfaceDraws
+                << " region-draws=" << s.regionDraws << " instanced-sprites=" << s.instancedSprites
+                << " plan-ms=" << phases[1] / frames << " bindings-ms=" << phases[2] / frames
+                << " encode-ms=" << phases[3] / frames << " rejection=" << admissionReason;
+        }
     }
 
     void spriteBatchBenchmark() {

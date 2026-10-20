@@ -48,6 +48,38 @@ in the state directory (`~/.fugue`, or `--state-dir`); `--renderer` overrides th
 the GPU cannot draw is drawn on the CPU. Recording the GPU commands runs on the GUI thread, so a heavy scene can delay
 input. A build without GPU support refuses `--renderer=gpu`.
 
+### Performance overlay
+
+In GPU-enabled builds, **Client > Performance metrics** shows a separate panel on each map; **Detailed performance
+metrics** adds sample counts, sample ages, frame/drop counters and nested CPU submission phases. Panels update twice
+per second, cap their width, elide long rows and indicate vertical clipping on small maps.
+
+The timing columns show rolling average/p95 over up to 120 observations per metric:
+
+* **Prepare:** session-thread scene assembly, including unchanged or dropped scenes; excludes network work.
+* **CPU submit:** GUI-thread GPU command preparation/submission, including driver or swapchain waits, not GPU completion.
+* **CPU render:** worker-thread CPU rasterization, including fallback, separate from GPU submission.
+* **GPU (delayed):** the last available GPU timestamp, not necessarily for the current scene. Missing values show `n/a`.
+* **UI delay:** scheduling delay beyond a 50 ms GUI timer interval. A stall is at least 50 ms of excess delay.
+
+**Scene updates** counts changed-scene submissions or CPU executions, not display FPS or input latency. Samples persist
+while idle; sample age identifies stale observations. CPU and GPU work overlap and their timing streams are not paired:
+do not add them together. Detailed recording phases are nested, not additional work, and their clocks are enabled only
+with detailed metrics or GPU profiling/tracing. The UI probe runs only while metrics are enabled and resets on re-enable.
+Map screenshots exclude the overlay; whole-window captures include it. The overlay does not intercept input.
+
+### Scene preparation profiling
+
+Scene assembly reuses bounded parsed appearance fields across frames; it still rebuilds placement, animation and hit
+scenes. This optimization applies to both CPU and GPU rendering, separately from GPU plane-output reuse.
+
+Set `FUGUE_SCENE_PROFILE=1` at launch for one-second `[scene-profile]` main-map averages: preparation wall time,
+appearance decoding/build time, cache hits and parse counts. Set `FUGUE_SCENE_TRACE=/path/to/prepare.csv` for per-map,
+per-attempt CSV timings and counters, including viewport size, world-layer count, success and retained cache payload.
+The main map has an empty `map` field. The file is overwritten per session and grows until exit; use a separate path
+per client. Trace writes/logging happen after the preparation timer; opt-in appearance clocks add overhead. These
+measure assembly, not network work, GPU submission, FPS or input-to-display latency.
+
 ## For server operators
 
 Fugue announces itself in two ways. Its `client.computer_id` always satisfies `text2num(computer_id) % 1000 == 523`, and

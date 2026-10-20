@@ -2,14 +2,30 @@
 #include "app/renderthread.h"
 #include "shell/displaysettings.h"
 #include "shell/skinwindow.h"
+#include <QStringList>
 
 using fugue::app::TimingSummary;
 namespace {
-QString timing(const TimingSummary& value, bool details) {
-    if (!value.samples) return "unavailable";
-    auto text = QString("%1 / %2 ms").arg(value.average, 0, 'f', 2).arg(value.p95, 0, 'f', 2);
-    if (details) text += QString(" (n=%1, last %2)").arg(qulonglong(value.samples)).arg(value.last, 0, 'f', 2);
-    return text;
+QString timing(const QString& label, const TimingSummary& value, bool details) {
+    const auto number = [&](double ms) { return (value.samples ? QString::number(ms, 'f', 2) : QString("n/a")).rightJustified(8); };
+    QString row = label.leftJustified(18) + number(value.average) + number(value.p95);
+    if (details) row += QString::number(qulonglong(value.samples)).rightJustified(6);
+    return row;
+}
+QString age(const TimingSummary& value) {
+    return value.samples ? QString::number(value.ageMs / 1000, 'f', 1) : QString("n/a");
+}
+QStringList warningLines(const std::string& reason) {
+    // Keep the explanation readable without making the numeric table wrap or expand to the map width.
+    QStringList lines;
+    QString line = "Fallback:";
+    for (const auto& word : QString::fromStdString(reason).simplified().split(' ', Qt::SkipEmptyParts)) {
+        if (line.size() + word.size() + 1 > 46) { lines << line; line.clear(); }
+        if (!line.isEmpty()) line += ' ';
+        line += word;
+    }
+    if (!line.isEmpty()) lines << line;
+    return lines;
 }
 }
 
@@ -63,52 +79,44 @@ void RenderMonitor::setEnabled(bool enabled) {
 
 QString RenderMonitor::formatMap(const std::string& id, const fugue::app::MapMetrics& m, double rate) const {
     const bool details = window_.displaySettings()->performanceDetails();
-    const QString actual = !m.frames ? "waiting for frame" : m.lastGpu ? "GPU" : "CPU";
-    QString text = QString("Map: %1 | Requested: %2\nRenderer: %3\nScene updates/s: %4\n"
-                           "Timings avg / p95 (last <=120 samples)\nScene prepare: %5\n")
-        .arg(id.empty() ? "main" : QString::fromStdString(id))
-        .arg(window_.displaySettings()->useGpu() ? "GPU" : "CPU").arg(actual).arg(rate, 0, 'f', 1)
-        .arg(timing(m.preparation, details));
-    if (m.lastGpu) {
-        text += "Render CPU (submit): " + timing(m.cpuSubmit, details);
-        text += "\nGPU: " + (m.lastGpuMs >= 0 ? timing(m.gpu, details) : QString("unavailable"));
-    } else {
-        text += "Render CPU (worker): " + timing(m.cpuRender, details);
-        text += "\nGPU: " + QString(m.frames ? "inactive (CPU rendering)" : "unavailable");
-    }
-    const auto& render = m.lastGpu ? m.cpuSubmit : m.cpuRender;
-    if (render.samples) text += QString("\nLast scene render sample: %1 s ago").arg(render.ageMs / 1000, 0, 'f', 1);
+    const bool requestedGpu = window_.displaySettings()->useGpu();
+    const bool gpu = m.frames ? m.lastGpu : requestedGpu;
+    QString status = m.frames ? (gpu ? "GPU" : "CPU") : "Waiting for frame";
+    if (!m.frames || gpu != requestedGpu) status += requestedGpu ? " (GPU requested)" : " (CPU requested)";
+    QStringList lines{QString("%1 | %2").arg(id.empty() ? "main" : QString::fromStdString(id).simplified(), status)};
+    if (!m.fallbackReason.empty()) lines += warningLines(m.fallbackReason);
+    lines << QString("Scene updates: %1/s").arg(rate, 0, 'f', 1);
+    lines << (QString("Time (ms, <=120)").leftJustified(18) + QString("avg").rightJustified(8) +
+              QString("p95").rightJustified(8) + (details ? QString("n").rightJustified(6) : QString()));
+    const auto& render = gpu ? m.cpuSubmit : m.cpuRender;
     const auto lag = health_.lag.summary();
-    text += lag.samples ? QString("\nGUI lag p95: %1 ms | stalls >=50 ms: %2")
-                             .arg(lag.p95, 0, 'f', 1).arg(qulonglong(health_.stalls))
-                        : QString("\nGUI lag: collecting (50 ms probe)");
-    if (!m.fallbackReason.empty()) text += "\nCPU fallback: " + QString::fromStdString(m.fallbackReason);
-    if (!details) return text;
+    lines << timing("Prepare", m.preparation, details)
+          << timing(gpu ? "CPU submit" : "CPU render", render, details);
+    if (gpu) lines << timing("GPU (delayed)", m.lastGpuMs >= 0 ? m.gpu : TimingSummary{}, details);
+    lines << timing("UI delay", lag, details);
+    QString health = QString("UI stalls >=50ms: %1").arg(qulonglong(health_.stalls));
+    if (!details && render.samples && render.ageMs >= 1000) health += " | Render age: " + age(render) + "s";
+    lines << health;
+    if (!details) return lines.join('\n');
 
-    text += "\nCPU wall time; stages may block. No CPU+GPU total.";
-    if (m.lastGpu) {
-        static const char* phases[] = {"Preflight / acquire", "Scene recording", "View composition", "Submit / present"};
+    if (gpu) {
+        lines << "" << "CPU submit breakdown";
+        static const char* phases[] = {"Acquire", "Record", "Compose", "Present"};
+        static const char* recording[] = {"  Setup", "  Plan / uploads", "  Bindings", "  Encode", "  Retire"};
         for (size_t i = 0; i < m.phases.size(); ++i) {
-            text += QString("\n  %1: %2").arg(phases[i], timing(m.phases[i], true));
-            if (i == 1) {
-                static const char* recording[] = {"Setup", "Plan / upload prep", "Uniforms / bindings", "Command encoding", "Resource retirement"};
-                for (size_t j = 0; j < m.recording.size(); ++j)
-                    text += QString("\n    %1: %2").arg(recording[j], timing(m.recording[j], true));
-            }
+            lines << timing(phases[i], m.phases[i], true);
+            if (i == 1) for (size_t j = 0; j < m.recording.size(); ++j)
+                lines << timing(recording[j], m.recording[j], true);
         }
-        text += "\nRecording sub-stages are nested, not additional.";
-        text += "\nGPU samples are delayed observations, not paired with CPU.";
-        if (m.gpu.samples) text += QString("\nLast valid GPU observation: %1 s ago").arg(m.gpu.ageMs / 1000, 0, 'f', 1);
-        if (!m.backend.empty()) text += "\nBackend: " + QString::fromStdString(m.backend);
     }
-    text += "\nPreparation includes unchanged/dropped assemblies.";
-    if (m.preparation.samples) text += QString("\nLast preparation sample: %1 s ago").arg(m.preparation.ageMs / 1000, 0, 'f', 1);
-    text += QString("\nPrepared/rendered: %1 / %2\nGPU/CPU/fallback: %3 / %4 / %5\nDropped handoffs/unchanged: %6 / %7")
-        .arg(m.prepared).arg(m.frames).arg(m.gpuFrames).arg(m.cpuFrames).arg(m.fallbacks).arg(m.dropped).arg(m.unchanged);
-    text += "\nGUI probe: scheduling delay, not UI execution time.";
-    if (lag.samples) text += QString("\nGUI lag avg / p95: %1 | max %2 ms")
-                                .arg(timing(lag, true)).arg(lag.maximum, 0, 'f', 1);
-    return text;
+    lines << QString("Frames: %1 GPU | %2 CPU | %3 fallback").arg(m.gpuFrames).arg(m.cpuFrames).arg(m.fallbacks)
+          << QString("Prepared: %1 | Skipped: %2 | Dropped: %3").arg(m.prepared).arg(m.unchanged).arg(m.dropped)
+          << QString("Age (s): prep %1 | render %2%3").arg(age(m.preparation), age(render), gpu ? " | GPU " + age(m.gpu) : QString());
+    if (lag.samples) lines << QString("UI delay max: %1 ms").arg(lag.maximum, 0, 'f', 1);
+    if (gpu && !m.backend.empty()) lines << "Device: " + QString::fromStdString(m.backend).simplified();
+    lines << "CPU wall time; indented rows are nested.";
+    if (gpu) lines << "CPU and GPU overlap; don't add timings.";
+    return lines.join('\n');
 }
 
 void RenderMonitor::refresh() {

@@ -18,13 +18,14 @@ namespace fugue::rendergpu {
 struct Limits {
     int maxDimension = 4096;
     int maxPlanes = 256;
-    int maxLayers = 4096;
+    int maxLayers = 65536; // logical draws, not physical passes; zoomed-out SS13 maps exceed 16K layers
     int maxFilters = 64;
     int maxFilterRadius = 64;   // shader kernel capacity; values above 64 are capped
     int maxHudPasses = 256;
     int maxHudDestinations = 4096;
     int maxRenderPasses = 16384;
     uint64_t maxFilterSamples = 256 * 1024 * 1024; // conservative texture-tap budget per list
+    uint64_t maxLayerPixels = 256 * 1024 * 1024; // clipped sprite/relay coverage, bounds large opaque overdraw too
     uint64_t maxTextureBytes = 128 * 1024 * 1024;
 };
 

@@ -129,9 +129,46 @@ struct Draw {
 struct LayerBatch {
     Surface* output = nullptr;
     QRhiTexture* destination = nullptr; // immutable snapshot before the first layer in this pass
-    std::vector<QRect> dirty;
+    // Exact pixel occupancy, horizontally packed into words. A rectangle list required O(n^2)
+    // overlap tests and flushed after 256 entries, copying the entire viewport repeatedly when
+    // zoomed out. This costs O(covered rows * covered words), independent of previous layer count.
+    // Allocate lazily (opaque-only planes need none), and clear only words touched by this batch.
+    int stride = 0;
+    std::vector<uint64_t> dirty;
+    std::vector<size_t> touched;
+
+    void reset(QSize size) {
+        if (!stride) {
+            stride = (size.width() + 63) / 64;
+            dirty.resize(size_t(stride) * size.height());
+        }
+        for (size_t index : touched) dirty[index] = 0;
+        touched.clear();
+    }
+    template<class F> bool visit(const QRect& rect, F&& word) const {
+        if (rect.isEmpty()) return false;
+        const int first = rect.left() / 64, last = rect.right() / 64;
+        for (int y = rect.top(); y <= rect.bottom(); ++y) {
+            for (int x = first; x <= last; ++x) {
+                uint64_t mask = ~uint64_t(0);
+                if (x == first) mask &= ~uint64_t(0) << (rect.left() % 64);
+                if (x == last) mask &= ~uint64_t(0) >> (63 - rect.right() % 64);
+                if (word(size_t(y) * stride + x, mask)) return true;
+            }
+        }
+        return false;
+    }
+    bool intersects(const QRect& rect) const {
+        return visit(rect, [&](size_t index, uint64_t mask) { return (dirty[index] & mask) != 0; });
+    }
+    void add(const QRect& rect) {
+        visit(rect, [&](size_t index, uint64_t mask) {
+            if (!dirty[index]) touched.push_back(index);
+            dirty[index] |= mask;
+            return false;
+        });
+    }
 };
-constexpr size_t kMaxBatchRects = 256; // bound overlap checks even on adversarial disjoint lists
 
 struct SpriteTexture {
     std::unique_ptr<QRhiTexture> texture;
@@ -140,7 +177,7 @@ struct SpriteTexture {
     bool binaryAlpha = true;
 };
 
-bool canCopy(const SpriteTexture& sprite, const render::DrawLayer& layer) {
+bool canCopy(bool binaryAlpha, const render::DrawLayer& layer) {
     if (layer.blend != render::kBlendDefault && layer.blend != render::kBlendOver) return false;
     if (layer.cmat) {
         const auto& m = *layer.cmat;
@@ -150,11 +187,11 @@ bool canCopy(const SpriteTexture& sprite, const render::DrawLayer& layer) {
         if (m[15] == 0 && (m[19] <= 0 || m[19] >= 1)) return true; // constant transparent/opaque
         if (m[15] != 1 || m[19] != 0) return false;
     }
-    return layer.alpha <= 0 || (sprite.binaryAlpha && layer.alpha >= 255);
+    return layer.alpha <= 0 || (binaryAlpha && layer.alpha >= 255);
 }
 
-bool fail(std::string* error, const char* message) {
-    if (error) *error = message;
+bool fail(std::string* error, std::string message) {
+    if (error) *error = std::move(message);
     return false;
 }
 
@@ -253,6 +290,9 @@ struct Executor::Impl {
     Options options;
     Features features;
     Stats stats;
+    // Borrowed handles only. Clear before each plan; retain capacity to avoid repeatedly allocating
+    // and copying multi-megabyte Params arrays as a zoomed-out scene grows the vector every frame.
+    std::vector<Draw> drawPlan;
     QSize size;
     // Scene ping-pong, then plane ping-pong. Named slates additionally retain their completed pixels.
     std::array<Surface, 4> surfaces;
@@ -293,13 +333,15 @@ struct Executor::Impl {
         if (limits.maxHudPasses < 0 || dl.hud.size() > size_t(limits.maxHudPasses))
             return fail(error, "HUD pass count exceeds GPU limit");
         const uint64_t pixels = uint64_t(dl.outW) * uint64_t(dl.outH);
-        uint64_t bytes = 0, samples = 0;
+        uint64_t bytes = 0, samples = 0, layerPixels = 0;
         uint64_t passes = 1 + uint64_t(dl.groundBlack);
         size_t layers = 0, filters = 0, destinations = 0;
         bool outline = false, shadow = false;
         const int radiusLimit = std::clamp(limits.maxFilterRadius, 0, kKernelRadius);
         auto memory = [&](uint64_t n, const char* message) {
-            if (n > limits.maxTextureBytes - bytes) return fail(error, message);
+            if (n > limits.maxTextureBytes - bytes)
+                return fail(error, std::string(message) + ": requested " + std::to_string(bytes + n) +
+                                   " bytes, limit " + std::to_string(limits.maxTextureBytes));
             bytes += n;
             return true;
         };
@@ -307,6 +349,16 @@ struct Executor::Impl {
             uint64_t n = pixels * taps;
             if (n > limits.maxFilterSamples - samples) return fail(error, "filter sample work exceeds GPU budget");
             samples += n;
+            return true;
+        };
+        auto layerWork = [&](int64_t x, int64_t y, int w, int h, int width, int height) {
+            const int64_t clippedW = std::max<int64_t>(0, std::min<int64_t>(width, x + w) - std::max<int64_t>(0, x));
+            const int64_t clippedH = std::max<int64_t>(0, std::min<int64_t>(height, y + h) - std::max<int64_t>(0, y));
+            const uint64_t n = uint64_t(clippedW) * uint64_t(clippedH);
+            if (n > limits.maxLayerPixels - layerPixels)
+                return fail(error, "layer pixel work exceeds GPU budget: requested " + std::to_string(layerPixels + n) +
+                                   ", limit " + std::to_string(limits.maxLayerPixels));
+            layerPixels += n;
             return true;
         };
         auto blur = [&](double sigma) {
@@ -317,29 +369,62 @@ struct Executor::Impl {
             return work(uint64_t(2 * (2 * int(std::ceil(sigma * 3)) + 1)));
         };
         if (!memory(pixels * 16, "surface memory exceeds GPU budget")) return false;
-        std::unordered_set<const render::Sprite*> seen;
-        auto checkLayers = [&](const std::vector<render::DrawLayer>& ls) {
+        std::unordered_map<const render::Sprite*, bool> seen; // validated image and binary-alpha classification
+        auto checkLayers = [&](const std::vector<render::DrawLayer>& ls, int width, int height, bool relays) {
+            LayerBatch batch;
+            bool snapshot = false;
             if (limits.maxLayers < 0 || ls.size() > size_t(limits.maxLayers) - layers)
-                return fail(error, "layer count exceeds GPU limit");
+                return fail(error, "layer count exceeds GPU limit: requested at least " +
+                                   std::to_string(layers + ls.size()) + ", limit " + std::to_string(limits.maxLayers));
             layers += ls.size();
-            passes += ls.size();
             for (const auto& l : ls) {
                 if (l.blend > render::kBlendInset) return fail(error, "unknown GPU blend mode");
                 if (!validMatrix(l.cmat)) return fail(error, "colour matrix exceeds GPU numeric limits");
-                if (!l.sprite || !seen.insert(l.sprite.get()).second) continue;
-                const auto& s = *l.sprite;
-                if (s.w <= 0 || s.h <= 0 || s.w > dim || s.h > dim)
-                    return fail(error, "sprite dimensions exceed GPU limits or are not positive");
-                uint64_t n = uint64_t(s.w) * uint64_t(s.h) * 4;
-                if (n != s.px.size()) return fail(error, "sprite byte count does not match dimensions");
-                if (n > std::numeric_limits<quint32>::max()) return fail(error, "sprite upload exceeds GPU limit");
-                if (!memory(n, "sprite memory exceeds GPU budget")) return false;
+                bool binary = false;
+                if (l.sprite) {
+                    auto [it, inserted] = seen.try_emplace(l.sprite.get(), true);
+                    if (inserted) {
+                        const auto& s = *l.sprite;
+                        if (s.w <= 0 || s.h <= 0 || s.w > dim || s.h > dim)
+                            return fail(error, "sprite dimensions exceed GPU limits or are not positive");
+                        uint64_t n = uint64_t(s.w) * uint64_t(s.h) * 4;
+                        if (n != s.px.size()) return fail(error, "sprite byte count does not match dimensions");
+                        if (n > std::numeric_limits<quint32>::max()) return fail(error, "sprite upload exceeds GPU limit");
+                        if (!memory(n, "sprite memory exceeds GPU budget")) return false;
+                        for (size_t i = 3; i < s.px.size(); i += 4)
+                            if (s.px[i] != 0 && s.px[i] != 255) { it->second = false; break; }
+                    }
+                    binary = it->second;
+                }
+                // Count physical passes, not logical sprite draws. This mirrors layer composition before
+                // plane caching/fusion, so it remains an upper bound. Unknown slate footprints conservatively
+                // start a pass and invalidate the snapshot; HUD layers ignore relay names, like recording.
+                if (relays && !l.relay.empty()) {
+                    if (!layerWork(l.x, int64_t(l.relayBottomY) - height, width, height, width, height)) return false;
+                    ++passes; snapshot = false; continue;
+                }
+                if (!l.sprite || !intersects(l.x, l.y, l.sprite->w, l.sprite->h, width, height)) continue;
+                if (!layerWork(l.x, l.y, l.sprite->w, l.sprite->h, width, height)) return false;
+                if (!options.batchSprites) { ++passes; continue; }
+                const int x = std::max(0, l.x), y = std::max(0, l.y);
+                const QRect rect(x, y, int(std::min<int64_t>(width, int64_t(l.x) + l.sprite->w)) - x,
+                                      int(std::min<int64_t>(height, int64_t(l.y) + l.sprite->h)) - y);
+                if (canCopy(binary, l)) {
+                    if (snapshot) batch.add(rect);
+                } else {
+                    if (!snapshot || batch.intersects(rect)) {
+                        ++passes;
+                        batch.reset(QSize(width, height));
+                        snapshot = true;
+                    }
+                    batch.add(rect);
+                }
             }
             return true;
         };
         for (const auto& plane : dl.planes) {
             passes += 2; // clear + scene composite (conservative even for empty/offscreen planes)
-            if (!checkLayers(plane.layers)) return false;
+            if (!checkLayers(plane.layers, dl.outW, dl.outH, true)) return false;
             if (!plane.master) continue;
             const auto& m = *plane.master;
             if (m.blend > render::kBlendInset) return fail(error, "unknown GPU master blend mode");
@@ -396,7 +481,7 @@ struct Executor::Impl {
                 return fail(error, "HUD destination count exceeds GPU limit");
             destinations += h.dests.size();
             passes += 1 + h.dests.size();
-            if (!checkLayers(h.layers)) return false;
+            if (!checkLayers(h.layers, h.tileW, h.tileH, false)) return false;
             if (!memory(uint64_t(h.tileW) * uint64_t(h.tileH) * 8, "HUD canvas memory exceeds GPU budget")) return false;
         }
         if (limits.maxRenderPasses < 0 || passes > uint64_t(limits.maxRenderPasses))
@@ -616,6 +701,8 @@ struct Executor::Impl {
 
     QRhiTexture* record(const render::DrawList& dl, QRhiCommandBuffer& cb, uint64_t textureBytes, bool immutable = false) {
         RecordingProfiler profiler(stats, options.profileRecording);
+        drawPlan.clear();
+        if (!options.reuseResources) std::vector<Draw>().swap(drawPlan);
         // QRhi defers native resource destruction when prior frames still reference them.
         bindings.clear();
         if (!recordComplete) {
@@ -731,7 +818,7 @@ struct Executor::Impl {
             sprites.emplace(hash, std::move(t));
             return result;
         };
-        std::vector<Draw> draws;
+        auto& draws = drawPlan;
         auto clear = [&](Surface* surface) {
             Draw d;
             d.setOutput(surface);
@@ -747,7 +834,7 @@ struct Executor::Impl {
             draws.push_back(d);
         };
         auto spriteCopy = [&](Surface* output, SpriteTexture* sprite, const render::DrawLayer& layer, Params params) {
-            if (!options.batchSprites || !sprite || !canCopy(*sprite, layer)) return false;
+            if (!options.batchSprites || !sprite || !canCopy(sprite->binaryAlpha, layer)) return false;
             // Layer composition starts clear and preserves RGB=0 wherever destination alpha=0. Thus discarding
             // a zero-alpha texel is equivalent to the CPU's transparent-RGB cleanup. Do NOT use this after
             // filters/master colour/warps (those can leave RGB under alpha=0), or for finished-plane/HUD blits.
@@ -773,14 +860,10 @@ struct Executor::Impl {
                             int(std::min<int64_t>(extent.height(), int64_t(p[1]) + p[3])) - y);
             if (spriteCopy(current, sprite, layer, params)) {
                 // Direct overwrites can overlap, but subsequent snapshot-based draws must avoid them too.
-                if (batch.output == current) {
-                    if (batch.dirty.size() < kMaxBatchRects) batch.dirty.push_back(rect);
-                    else batch.output = nullptr;
-                }
+                if (batch.output == current) batch.add(rect);
                 return false;
             }
-            if (options.batchSprites && batch.output == current && batch.dirty.size() < kMaxBatchRects &&
-                std::none_of(batch.dirty.begin(), batch.dirty.end(), [&](const QRect& r) { return r.intersects(rect); })) {
+            if (options.batchSprites && batch.output == current && !batch.intersects(rect)) {
                 // The first layer in this pass copied the entire previous surface. In a region untouched
                 // since then, that immutable snapshot is still the correct destination for ANY blend mode.
                 // Keep order and byte quantization; never sample the attachment being written.
@@ -788,14 +871,16 @@ struct Executor::Impl {
                 d.setOutput(current); d.source = src; d.destination = batch.destination; d.params = params;
                 d.continuePass = true; d.scissored = true;
                 draws.push_back(d);
-                batch.dirty.push_back(rect);
+                batch.add(rect);
                 return false;
             }
             composite(next, src, current->texture.get(), params);
             batch.output = next;
             batch.destination = current->texture.get();
-            batch.dirty.clear();
-            batch.dirty.push_back(rect);
+            if (options.batchSprites) {
+                batch.reset(extent);
+                batch.add(rect);
+            }
             return true;
         };
         struct Slate { Surface* surface; uint64_t generation; };
@@ -1090,7 +1175,8 @@ struct Executor::Impl {
             }
         }
 
-        require(draws.size() <= size_t(limits.maxRenderPasses), "render pass count exceeds GPU limit");
+        require(std::count_if(draws.begin(), draws.end(), [](const Draw& d) { return !d.continuePass; }) <=
+                limits.maxRenderPasses, "render pass count exceeds GPU limit");
         // Atlases are optional duplicate storage. Never exceed preflight's existing texture budget,
         // reject an otherwise supported list, or retain an unbounded historical atlas set.
         batchInstances(draws, *updates, limits.maxTextureBytes - textureBytes - extraPlaneBytes);

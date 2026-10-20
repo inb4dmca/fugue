@@ -140,17 +140,40 @@ QImage MapWidget::viewSnapshot() const {
 }
 
 void MapWidget::paintOverlay(QPainter& p) const {
-    if (!performanceText_.isEmpty() && width() > 24 && height() > 24) {
-        QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-        font.setPointSize(9);
-        p.setFont(font);
-        QRect area = rect().adjusted(12, 12, -12, -12);
-        constexpr int flags = Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap;
-        QRect text = p.boundingRect(area, flags, performanceText_).intersected(area);
-        p.fillRect(text.adjusted(-6, -6, 6, 6), QColor(0, 0, 0, 200));
-        p.setPen(Qt::white);
-        p.drawText(area, flags, performanceText_);
+    if (performanceText_.isEmpty()) return;
+    constexpr int margin = 8, padding = 10, maxWidth = 420;
+    const int availableWidth = std::min(maxWidth, width() - margin * 2);
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    font.setFamilies({"Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", font.family()});
+    font.setPointSize(9);
+    const QFontMetrics metrics(font, p.device());
+    const int lineHeight = metrics.lineSpacing();
+    const int maxLines = (height() - margin * 2 - padding * 2) / lineHeight;
+    if (availableWidth < padding * 2 + metrics.horizontalAdvance("...") || maxLines < 2) return;
+
+    auto lines = performanceText_.split('\n');
+    if (lines.size() > maxLines) {
+        lines = lines.mid(0, maxLines);
+        lines.back() = "... (panel clipped)";
     }
+    int textWidth = 0;
+    for (const auto& line : lines) textWidth = std::max(textWidth, metrics.horizontalAdvance(line));
+    textWidth = std::min(textWidth + 2, availableWidth - padding * 2);
+    const QRect panel(margin, margin, textWidth + padding * 2, int(lines.size()) * lineHeight + padding * 2);
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QColor(255, 255, 255, 35));
+    p.setBrush(QColor(16, 20, 26, 225));
+    p.drawRoundedRect(panel, 6, 6);
+    p.setFont(font);
+    p.setClipRect(panel.adjusted(padding, padding, -padding, -padding));
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        p.setPen(i == 0 ? QColor(160, 210, 255) : QColor(230, 234, 240));
+        // Never wrap a numeric row or let a long device/error string cover the whole viewport.
+        p.drawText(margin + padding, margin + padding + metrics.ascent() + int(i) * lineHeight,
+                   metrics.elidedText(lines[i], Qt::ElideRight, textWidth));
+    }
+    p.restore();
 }
 
 bool MapWidget::toImage(const QPoint& pos, int& ix, int& iy, bool extrapolate) const {
