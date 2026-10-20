@@ -2022,21 +2022,51 @@ void Assembler::placeWarpedScreenObj(const RApp& ra, double anchorX, double anch
     out->w = sx1 - sx0;
     out->h = sy1 - sy0;
     out->px.assign(size_t(out->w) * size_t(out->h) * 4, 0);
-    for (int y = sy0; y < sy1; y++)
-        for (int x = sx0; x < sx1; x++) {
-            double dxImgP = double(x) - centerX - tx;
-            double dyImgP = double(y) - centerY - ty;
-            double dxDmP = dxImgP, dyDmP = -dyImgP;
-            double dxDm = inv00 * dxDmP + inv01 * dyDmP;
-            double dyDm = inv10 * dxDmP + inv11 * dyDmP;
-            double dxImg = dxDm, dyImg = -dyDm;
-            int lx = int(std::floor(halfW + dxImg + 0.5));
-            int ly = int(std::floor(halfH + dyImg + 0.5));
-            if (lx < 0 || ly < 0 || lx >= ow || ly >= oh) continue;
-            const uint8_t* sp = &src[(size_t(ly) * size_t(ow) + size_t(lx)) * 4];
-            if (sp[3] == 0) continue;
-            std::memcpy(&out->px[(size_t(y - sy0) * size_t(out->w) + size_t(x - sx0)) * 4], sp, 4);
+    // Axis-aligned nearest sampling is separable. Large stretched HUDs often map dozens of
+    // output rows to one source row; compute its pixels once, then copy the identical rows.
+    // Keep the scalar formula (no incremental coordinates) so half-pixel ties stay exact.
+    if (b_ == 0 && d_ == 0 && g_sceneMutation != 42) {
+        std::vector<int> columns(size_t(out->w), -1);
+        for (int x = sx0; x < sx1; ++x) {
+            const double dxImgP = double(x) - centerX - tx;
+            const int lx = int(std::floor(halfW + inv00 * dxImgP + 0.5));
+            if (lx >= 0 && lx < ow) columns[size_t(x - sx0)] = lx;
         }
+        int previous = -1;
+        const size_t rowBytes = size_t(out->w) * 4;
+        for (int y = sy0; y < sy1; ++y) {
+            const double dyDmP = -(double(y) - centerY - ty);
+            const int ly = int(std::floor(halfH - inv11 * dyDmP + 0.5));
+            if (ly < 0 || ly >= oh) { previous = -1; continue; }
+            uint8_t* row = out->px.data() + size_t(y - sy0) * rowBytes;
+            if (ly == previous) {
+                std::memcpy(row, row - rowBytes, rowBytes);
+            } else {
+                for (size_t x = 0; x < columns.size(); ++x) {
+                    if (columns[x] < 0) continue;
+                    const uint8_t* sp = src.data() + (size_t(ly) * ow + columns[x]) * 4;
+                    if (sp[3]) std::memcpy(row + x * 4, sp, 4);
+                }
+            }
+            previous = ly;
+        }
+    } else {
+        for (int y = sy0; y < sy1; y++)
+            for (int x = sx0; x < sx1; x++) {
+                double dxImgP = double(x) - centerX - tx;
+                double dyImgP = double(y) - centerY - ty;
+                double dxDmP = dxImgP, dyDmP = -dyImgP;
+                double dxDm = inv00 * dxDmP + inv01 * dyDmP;
+                double dyDm = inv10 * dxDmP + inv11 * dyDmP;
+                double dxImg = dxDm, dyImg = -dyDm;
+                int lx = int(std::floor(halfW + dxImg + 0.5));
+                int ly = int(std::floor(halfH + dyImg + 0.5));
+                if (lx < 0 || ly < 0 || lx >= ow || ly >= oh) continue;
+                const uint8_t* sp = &src[(size_t(ly) * size_t(ow) + size_t(lx)) * 4];
+                if (sp[3] == 0) continue;
+                std::memcpy(&out->px[(size_t(y - sy0) * size_t(out->w) + size_t(x - sx0)) * 4], sp, 4);
+            }
+    }
 
     Placed pl;
     pl.layer.sprite = out;
@@ -2195,8 +2225,17 @@ void Assembler::appendBlackness(std::vector<Placed>& placed, int originX, int or
 }
 
 bool Assembler::run(DrawList& dl, std::string* err) {
+    using Clock = std::chrono::steady_clock;
+    auto phaseStart = st_.profilePreparation ? Clock::now() : Clock::time_point{};
+    auto phase = [&](double& ms) {
+        if (!st_.profilePreparation) return;
+        const auto now = Clock::now();
+        ms += std::chrono::duration<double, std::milli>(now - phaseStart).count();
+        phaseStart = now;
+    };
     int originX = 0, originY = 0, winW = 0, winH = 0, extentW = 0, extentH = 0, a = 0, b = 0;
     if (!buildGrid(originX, originY, winW, winH, extentW, extentH, a, b)) { if (err) *err = err_; return false; }
+    phase(st_.gridMs);
     int tw, th;
     tileSize(tw, th);
     dl.outW = extentW * tw;
@@ -2239,6 +2278,7 @@ bool Assembler::run(DrawList& dl, std::string* err) {
         for (Placed& p : placed) { p.layer.x += dx; p.layer.y += dy; p.layer.relayBottomY += dy; p.frame.x += dx; p.frame.y += dy; }
     }
     st_.layers = int(placed.size());
+    phase(st_.placementMs);
 
     // Masters are collected before anything is composited.
     {
@@ -2257,7 +2297,9 @@ bool Assembler::run(DrawList& dl, std::string* err) {
     placeHud(extentW, extentH, tw, th, placed);
     if (failed_) { if (err) *err = err_; return false; }
 
+    phase(st_.hudMs);
     if (!compositePlanes(placed, dl, th)) { if (err) *err = err_; return false; }
+    phase(st_.planesMs);
 
     if (hit_) {
         hit_->tileW = tw; hit_->tileH = th;

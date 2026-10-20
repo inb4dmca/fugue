@@ -76,6 +76,10 @@ scenes. This optimization applies to both CPU and GPU rendering, separately from
 Set `FUGUE_SCENE_PROFILE=1` at launch for one-second `[scene-profile]` main-map averages: preparation wall time,
 appearance decoding/build time, cache hits and parse counts. Set `FUGUE_SCENE_TRACE=/path/to/prepare.csv` for per-map,
 per-attempt CSV timings and counters, including viewport size, world-layer count, success and retained cache payload.
+Main-map rows also include `grid_ms` (visibility/appearance construction), `placement_ms` (world sprite placement),
+`hud_ms` (plane masters and screen objects), and `planes_ms` (grouping, sorting and hit-layer emission). These phases
+exclude assembler construction/destruction; `appearance_ms` is nested within them, not additional work. Secondary
+maps currently leave these four phase columns at zero. Failed attempts may have only partially populated phases.
 The main map has an empty `map` field. The file is overwritten per session and grows until exit; use a separate path
 per client. Trace writes/logging happen after the preparation timer; opt-in appearance clocks add overhead. These
 measure assembly, not network work, GPU submission, FPS or input-to-display latency.

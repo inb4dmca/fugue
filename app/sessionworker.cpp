@@ -226,7 +226,8 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
     if (!sceneTracePath.isEmpty()) {
         sceneTrace.setFileName(sceneTracePath);
         if (sceneTrace.open(QIODevice::WriteOnly | QIODevice::Truncate))
-            sceneTrace.write("map,clock_ns,prepare_ms,appearance_ms,appearance_parses,appearance_hits,width,height,layers,success,cache_bytes,cache_entries\n");
+            sceneTrace.write("map,clock_ns,prepare_ms,appearance_ms,appearance_parses,appearance_hits,width,height,"
+                             "layers,success,cache_bytes,cache_entries,grid_ms,placement_ms,hud_ms,planes_ms\n");
         else
             std::fprintf(stderr, "[scene-trace] cannot open %s: %s\n", qPrintable(sceneTracePath), qPrintable(sceneTrace.errorString()));
     }
@@ -244,6 +245,8 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
             for (uint64_t v : {stats.appearanceParses, stats.appearanceCacheHits}) row += ',' + QByteArray::number(qulonglong(v));
             for (int v : {dl.outW, dl.outH, stats.layers, int(ok)}) row += ',' + QByteArray::number(v);
             for (size_t v : {sceneCache.retainedBytes(), sceneCache.entries()}) row += ',' + QByteArray::number(qulonglong(v));
+            for (double v : {stats.gridMs, stats.placementMs, stats.hudMs, stats.planesMs})
+                row += ',' + QByteArray::number(v, 'f', 6);
             row += '\n';
             if (sceneTrace.write(row) != row.size()) sceneTrace.close();
         }

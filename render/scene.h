@@ -69,6 +69,8 @@ struct SceneStats {
     uint64_t appearanceParses = 0, appearanceCacheHits = 0; // distinct appearance lookups, excluding within-call reuse
     bool profilePreparation = false; // opt-in phase clocks; counters above are always available
     double appearanceBuildMs = 0; // JSON decoding and conversion to renderer fields
+    // Main-map phases; appearanceBuildMs is nested within these, not additional work.
+    double gridMs = 0, placementMs = 0, hudMs = 0, planesMs = 0;
     bool anyUnmodeled() const {
         return maptext || animatedAtoms || images;
     }
@@ -77,8 +79,7 @@ struct SceneStats {
 
 // Optional, session-thread-owned cache of parsed appearance fields (NOT assembled scenes or resources).
 // Exact JSON comparisons detect replacement/recycled IDs. Entry and payload limits bound retained history;
-// defaults: 16384 appearances / 16 MiB accounted payload, excluding allocator/container overhead. A recorded vg round's
-// working set is about 4100-4600 appearances and under 8 MiB; at 4096 entries the cache thrashed (51% hits).
+// defaults: 16384 appearances / 16 MiB accounted payload, excluding allocator/container overhead.
 class SceneCache {
 public:
     struct Impl;

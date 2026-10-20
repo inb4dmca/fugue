@@ -26,3 +26,18 @@ Notes:
 appearances across frames, keyed by appid and the complete appearance JSON, so a recycled or edited id is a miss. It is an
 LRU bounded by entry count and payload bytes. Placement, resources and hit scenes are rebuilt every frame. `scene_cache`
 replays recorded worlds with and without it and requires identical draw lists, hit scenes and pixels, also under eviction.
+Defaults are 16,384 entries and 16 MiB of accounted payload, excluding allocator/container overhead. The dense-working-set
+regression checks reuse beyond the former entry/byte limits, invalidation, old hit snapshots and clearing.
+Profiling fields are documented under [Scene preparation profiling](../docs/USAGE.md#scene-preparation-profiling).
+
+Axis-aligned transformed screen objects use separable nearest-neighbour sampling: source columns are computed once,
+and consecutive destination rows sampling the same source row are copied. Rotation/shear retain per-pixel sampling;
+no sprites or animation results are retained across assemblies. Rounding, clipping, transparency and mouse masks are
+unchanged. `hudwarp` compares draw lists and pixels against the scalar path, including reflections, fractional
+translations, shrinking, clipping, repeated screen locations and a 71×71-tile viewport.
+
+An optional benchmark times HUD assembly in both orderings, after warmup, with output comparisons outside timing:
+
+```sh
+FUGUE_SCENE_BENCHMARK=1 build/tests/hudwarp_test benchmark -o -,txt
+```

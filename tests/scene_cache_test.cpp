@@ -58,10 +58,13 @@ class SceneCacheTest : public QObject {
     render::SceneStats stats_;
 
     void sameLayer(const render::HitLayer& a, const render::HitLayer& b) {
-        QVERIFY(std::tie(a.x, a.y, a.atom, a.own, a.plane, a.maptext) == std::tie(b.x, b.y, b.atom, b.own, b.plane, b.maptext));
+        QVERIFY(std::tie(a.x, a.y, a.atom, a.own, a.plane, a.maptext, a.footprint, a.key, a.passMouse) ==
+                std::tie(b.x, b.y, b.atom, b.own, b.plane, b.maptext, b.footprint, b.key, b.passMouse));
         const auto &f = a.frame, &g = b.frame;
-        QVERIFY(std::tie(f.x, f.y, f.w, f.h, f.hasXf, f.m.a, f.m.b, f.m.c, f.m.d, f.m.e, f.m.f) ==
-                std::tie(g.x, g.y, g.w, g.h, g.hasXf, g.m.a, g.m.b, g.m.c, g.m.d, g.m.e, g.m.f));
+        QVERIFY(std::tie(f.x, f.y, f.w, f.h, f.hasXf, f.m.a, f.m.b, f.m.c, f.m.d, f.m.e, f.m.f,
+                         f.hasVisOrigin, f.visLeft, f.visBottom) ==
+                std::tie(g.x, g.y, g.w, g.h, g.hasXf, g.m.a, g.m.b, g.m.c, g.m.d, g.m.e, g.m.f,
+                         g.hasVisOrigin, g.visLeft, g.visBottom));
         QCOMPARE(bool(a.sprite), bool(b.sprite));
         if (a.sprite) {
             QCOMPARE(a.sprite->w, b.sprite->w); QCOMPARE(a.sprite->h, b.sprite->h); QCOMPARE(a.sprite->px, b.sprite->px);
@@ -70,13 +73,17 @@ class SceneCacheTest : public QObject {
     void sameHits(const std::shared_ptr<const render::HitScene>& a, const std::shared_ptr<const render::HitScene>& b) {
         QCOMPARE(bool(a), bool(b));
         if (!a) return;
-        QVERIFY(std::tie(a->tileW, a->tileH, a->cols, a->rows, a->originX, a->originY) ==
-                std::tie(b->tileW, b->tileH, b->cols, b->rows, b->originX, b->originY));
+        QVERIFY(std::tie(a->tileW, a->tileH, a->cols, a->rows, a->originX, a->originY,
+                         a->secondary, a->screenX0, a->screenY0, a->anyHover, a->clientHover) ==
+                std::tie(b->tileW, b->tileH, b->cols, b->rows, b->originX, b->originY,
+                         b->secondary, b->screenX0, b->screenY0, b->anyHover, b->clientHover));
         QCOMPARE(a->atoms.size(), b->atoms.size());
         for (size_t i = 0; i < a->atoms.size(); ++i) {
             const auto &x = a->atoms[i], &y = b->atoms[i];
-            QVERIFY(std::tie(x.name, x.mouseOpacity, x.kind, x.ref, x.worldX, x.worldY, x.screen, x.appid, x.dir) ==
-                    std::tie(y.name, y.mouseOpacity, y.kind, y.ref, y.worldX, y.worldY, y.screen, y.appid, y.dir));
+            QVERIFY(std::tie(x.name, x.mouseOpacity, x.kind, x.ref, x.worldX, x.worldY, x.screen, x.appid, x.dir,
+                             x.byId, x.turfId, x.wheel, x.hover, x.mouseMove) ==
+                    std::tie(y.name, y.mouseOpacity, y.kind, y.ref, y.worldX, y.worldY, y.screen, y.appid, y.dir,
+                             y.byId, y.turfId, y.wheel, y.hover, y.mouseMove));
         }
         QCOMPARE(a->world.size(), b->world.size());
         for (size_t i = 0; i < a->world.size(); ++i) sameLayer(a->world[i], b->world[i]);
@@ -99,9 +106,9 @@ class SceneCacheTest : public QObject {
         render::SceneStats before, after;
         std::string e1, e2;
         const bool ok1 = map.empty() ? render::assembleMapControl(w.session, w.resources, clock, reference, before, &e1, hit, style)
-                                    : render::assembleSecondaryMap(w.session, w.resources, clock, map, reference, before, &e1, style);
+                                    : render::assembleSecondaryMap(w.session, w.resources, clock, map, reference, before, &e1, style, nullptr, hit);
         const bool ok2 = map.empty() ? render::assembleMapControl(w.session, w.resources, clock, actual, after, &e2, hit, style, &cache)
-                                    : render::assembleSecondaryMap(w.session, w.resources, clock, map, actual, after, &e2, style, &cache);
+                                    : render::assembleSecondaryMap(w.session, w.resources, clock, map, actual, after, &e2, style, &cache, hit);
         QCOMPARE(ok2, ok1); QCOMPARE(e2, e1);
         QVERIFY(render::sameDrawList(reference, actual));
         QCOMPARE(before.summary(), after.summary());
@@ -142,7 +149,9 @@ private slots:
         auto& appearances = w.session.worldMut().appearances;
         const auto original = appearances.at(id);
         const std::pair<const char*, const char*> changes[] = {
-            {"name", "\"new cached name\""}, {"appearanceFlags", "8192"}, {"pixelX", "7"}, {"pixelY", "-3"},
+            {"name", "\"new cached name\""}, {"appearanceFlags", "8192"}, {"appearanceFlags", "1048576"},
+            {"appearanceFlags", "2048"}, {"appearanceFlags", "524288"}, {"appearanceFlags", "2147483648"},
+            {"pixelX", "7"}, {"pixelY", "-3"},
             {"pixelW", "2"}, {"pixelZ", "-2"}, {"hasColor", "true"}, {"colorR", "77"}, {"colorG", "78"},
             {"colorB", "79"}, {"colorA", "80"}, {"hasPlane", "true"}, {"plane", "5"}, {"dir", "4"},
             {"layer", "{\"f32\":\"0x3f800000\"}"}, {"hasTransform", "true"},
@@ -220,6 +229,42 @@ private slots:
             for (int frame = 0; frame < 3; ++frame) { compare(w, cache); QVERIFY(cache.retainedBytes() <= bytes); }
         }
     }
+    void denseWorkingSetFitsDefaults() {
+        World w;
+        auto& world = w.session.worldMut();
+        world.bounds.have = world.grid.have = true;
+        world.bounds.maxX = world.bounds.winW = world.bounds.viewW = 100;
+        world.bounds.maxY = world.bounds.winH = world.bounds.viewH = 60;
+        // A 6,000-entry working set exceeding 8 MiB must survive warmed assemblies. Iconless
+        // turfs exercise appearance construction and mouse metadata without large rasters.
+        for (uint32_t id = 1; id <= 6000; ++id) {
+            world.grid.cells.push_back(id);
+            world.appearances[id].fieldsJson = "{\"iconResID\":65535,\"name\":\"" +
+                std::string(600, 'a') + std::to_string(id) + "\"}";
+        }
+        render::SceneCache cache;
+        compare(w, cache);
+        QCOMPARE(stats_.appearanceParses, uint64_t(6000));
+        QVERIFY(last_.hit); QCOMPARE(last_.hit->atoms.size(), size_t(6000));
+        QCOMPARE(cache.entries(), size_t(6000));
+        QVERIFY(cache.retainedBytes() > 8 * 1024 * 1024);
+        QVERIFY(cache.retainedBytes() <= 16 * 1024 * 1024);
+        for (int frame = 0; frame < 3; ++frame) {
+            compare(w, cache);
+            QCOMPARE(stats_.appearanceParses, uint64_t(0));
+            QCOMPARE(stats_.appearanceCacheHits, uint64_t(6000));
+        }
+        const auto old = last_;
+        field(world.appearances.at(3000), "name", "\"changed\"");
+        compare(w, cache);
+        QCOMPARE(stats_.appearanceParses, uint64_t(1));
+        QCOMPARE(stats_.appearanceCacheHits, uint64_t(5999));
+        QVERIFY(old.hit->atoms[2999].name != last_.hit->atoms[2999].name);
+        QCOMPARE(last_.hit->atoms[2999].name, std::string("changed"));
+        cache.clear();
+        QCOMPARE(cache.entries(), size_t(0)); QCOMPARE(cache.retainedBytes(), size_t(0));
+        compare(w, cache); QCOMPARE(stats_.appearanceParses, uint64_t(6000));
+    }
     void resourcesAndSecondaryMaps() {
         World w; QVERIFY(load(w, "hudhits-world", "frames-pm.txt", false));
         render::SceneCache cache;
@@ -245,8 +290,10 @@ private slots:
         compare(w, cache);
         compare(w, cache, kClock, false, "camera");
         QVERIFY(last_.outW > 0); QVERIFY(stats_.appearanceCacheHits > 0);
-        compare(w, cache, kClock + 100'000'000, false, "Camera");
+        compare(w, cache, kClock + 100'000'000, true, "Camera");
         QCOMPARE(stats_.appearanceParses, uint64_t(0));
+        QVERIFY(last_.hit && last_.hit->secondary);
+        QVERIFY(!last_.hit->atoms.empty());
         World other; QVERIFY(load(other, "hudoverlay-world", "frames-nopm.txt"));
         compare(other, cache); // same IDs in a different model; content, not ID/address alone, is authoritative
         World again; QVERIFY(load(again, "hudhits-world", "frames-pm.txt"));
