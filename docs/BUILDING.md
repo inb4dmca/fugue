@@ -99,7 +99,7 @@ Run tests:
 $env:QT_QPA_PLATFORM = "offscreen"
 $env:FUGUE_AUDIO = "none"
 $env:QTWEBENGINE_CHROMIUM_FLAGS = "--no-sandbox --disable-gpu"
-ctest --test-dir build/ninja/release -C Release --output-on-failure --timeout 120
+ctest --test-dir build/ninja/release -C Release -LE 'gpu|native' --output-on-failure --timeout 120
 Remove-Item Env:QT_QPA_PLATFORM, Env:FUGUE_AUDIO, Env:QTWEBENGINE_CHROMIUM_FLAGS
 ```
 
@@ -195,7 +195,7 @@ For a single-config `build/` tree:
 
 ```bash
 cmake --build build --parallel 2
-QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+QT_QPA_PLATFORM=offscreen ctest --test-dir build -LE 'gpu|native' --output-on-failure
 QT_QPA_PLATFORM=offscreen ctest --test-dir build -R '^shell_(composition|mapinput|map)$' --output-on-failure
 ```
 
@@ -210,6 +210,38 @@ when optional input is absent. The Core Audio device smoke test is opt-in (it wr
 FUGUE_TEST_COREAUDIO=1 ctest --test-dir build -R '^audio_sink$' --output-on-failure
 ```
 
+### Master-opacity scenario
+
+`masteropacity_test` reuses one set of stock wire, resources, mouse receipts and pixel expectations through three
+CTest entries. The scenario needs no BYOND installation. Each selected profile must execute successfully; unavailable
+capabilities and skipped cases fail that profile.
+
+| CTest entry | Evidence |
+|---|---|
+| `shell_masteropacity_portable` | 45 stock mouse receipts and nine menu stacks, plus Fugue lifetime and fallback bounds |
+| `shell_masteropacity_gpu` | Production QRhi composition compared exactly with the three stock maps |
+| `shell_masteropacity_native` | Exact framebuffer pixels, the same receipts/stacks through Qt events, pending versus rendered frames and warm uploads |
+
+Run one profile or all three with the standard CTest selectors:
+
+```sh
+ctest --test-dir build -R '^shell_masteropacity_portable$' --output-on-failure
+ctest --test-dir build -R '^shell_masteropacity_gpu$' --output-on-failure
+ctest --test-dir build -R '^shell_masteropacity_native$' --output-on-failure
+ctest --test-dir build -L master-opacity --output-on-failure
+```
+
+On Windows, use `--test-dir build/ninja/release -C Release` and put Qt/dependency DLLs on PATH. CTest sets each
+profile's environment: portable uses offscreen Qt; GPU uses software D3D11 on Windows and OpenGL on Linux/macOS;
+native uses the platform window system and requires an interactive desktop. On Linux, a virtual display is sufficient:
+`LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ctest --test-dir build -L master-opacity --output-on-failure`.
+Native checks exercise Qt event delivery and the window renderer; they do not drive desktop mouse input or a live server.
+
+The general suite commands above exclude the explicit `gpu` and `native` labels. Unfiltered CTest runs include them
+and need their capabilities. These labels currently classify master opacity; other tests still have their existing
+offscreen/native behavior. Linux CI runs all three profiles, Windows CI runs portable and GPU, and macOS CI runs portable.
+See the [fixture README](../tests/data/master-opacity-world/README.md) for the retained evidence and its limits.
+
 ### Native Windows MAP checks
 
 Offscreen passes do not establish native rendering/input coverage. On an unlocked
@@ -221,7 +253,7 @@ $env:QT_QPA_PLATFORM = "windows"
 $env:FUGUE_AUDIO = "none"
 $env:QTWEBENGINE_CHROMIUM_FLAGS = "--no-sandbox"
 ./build/ninja/release/shell/Release/map_test.exe `
-  masterOpacityPixelsAndInput positionedMasterPixelsAndInput `
+  positionedMasterPixelsAndInput `
   masterMaterialPixelsAndInput stockOutlinePrecisionAndWorkload `
   stockShadowPixels popupReleaseTiming -o -,txt
 Remove-Item Env:QT_QPA_PLATFORM, Env:FUGUE_AUDIO, Env:QTWEBENGINE_CHROMIUM_FLAGS
@@ -245,7 +277,8 @@ external game checkout, or stop processes by name/port. Close only processes you
 started and can identify; a launcher forwarding to an existing client does not own
 that client. A stock guest-mode request does not itself prove account isolation.
 
-Collection is manual; there is no repository process/capture/comparison runner.
+`tools/stockprobe/stockprobe.py` provides `record`, `pair` and `click` workflows for supported worlds on Windows.
+Other fixtures, including master opacity, retain their documented manual collection procedure.
 Use each world's documented control file and wait for its readiness acknowledgement.
 For worlds reading `probe-request.json`, supply fresh `token`, `phase` and `action`
 fields and inspect the matching PROBE reply. A server acknowledgement is not a GPU

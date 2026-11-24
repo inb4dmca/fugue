@@ -59,6 +59,35 @@ fugue_shell_test(shell_movanim movanim_test)
 fugue_shell_test(shell_visanim visanim_test)
 fugue_shell_test(shell_runechat runechat_test)
 fugue_shell_test(shell_composition composition_test)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/masteropacity_test.cpp)
+  add_executable(masteropacity_test tests/masteropacity_test.cpp)
+  target_link_libraries(masteropacity_test PRIVATE fugue_shell Qt6::Test Qt6::GuiPrivate)
+  target_compile_definitions(masteropacity_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
+  if(WIN32)
+    set(_masteropacity_native_platform windows)
+    set(_masteropacity_gpu_platform offscreen) # software D3D11 needs no window
+  elseif(APPLE)
+    set(_masteropacity_native_platform cocoa)
+    set(_masteropacity_gpu_platform cocoa)
+  else()
+    set(_masteropacity_native_platform xcb)
+    set(_masteropacity_gpu_platform xcb) # OpenGL needs a display, including Xvfb
+  endif()
+  set(_masteropacity_env "FUGUE_AUDIO=none;FUGUE_MAP_OPENGL=0;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox")
+  add_test(NAME shell_masteropacity_portable COMMAND masteropacity_test portable lifetimes -o -,txt)
+  add_test(NAME shell_masteropacity_gpu COMMAND masteropacity_test gpu -o -,txt)
+  add_test(NAME shell_masteropacity_native COMMAND masteropacity_test native -o -,txt)
+  foreach(profile portable gpu native)
+    set_tests_properties(shell_masteropacity_${profile} PROPERTIES
+      LABELS "master-opacity;${profile}" TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:")
+  endforeach()
+  set_tests_properties(shell_masteropacity_portable PROPERTIES
+    ENVIRONMENT "${_masteropacity_env};QT_QPA_PLATFORM=offscreen")
+  set_tests_properties(shell_masteropacity_gpu PROPERTIES
+    ENVIRONMENT "${_masteropacity_env};QT_QPA_PLATFORM=${_masteropacity_gpu_platform}")
+  set_tests_properties(shell_masteropacity_native PROPERTIES RUN_SERIAL TRUE
+    ENVIRONMENT "${_masteropacity_env};QT_QPA_PLATFORM=${_masteropacity_native_platform}")
+endif()
 fugue_shell_test(shell_compositionplan compositionplan_test) # shared model-free graph and admission
 if(TARGET compositionplan_test)
   target_link_libraries(compositionplan_test PRIVATE Qt6::GuiPrivate fugue_proto)

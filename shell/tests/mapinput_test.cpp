@@ -9,7 +9,7 @@
 #include "shell/tests/roottreefixture.h"
 #include "shell/tests/planesourcefixture.h"
 #include "shell/tests/hudrelayfixture.h"
-#include "shell/tests/stockinputfixture.h"
+#include "shell/tests/replayfixture.h"
 #include "shell/compositionplan.h"
 using namespace fugue;
 using namespace fugue::shell;
@@ -336,7 +336,7 @@ private slots:
         int callbacks=0,empty=0;
         for(const auto& value:rows) {
             const auto row=value.toObject();const auto name=row["case"].toString();
-            test::StockInputFixture f;
+            test::ReplayFixture f;
             QVERIFY2(f.load(row["frames"].toString(),"plane-pass-world","stock-shadow-world"),qPrintable(name));
             // Live MAP publishes unified-scene visibility: never synthesize a
             // flattened terrain hit through a captured turf's alpha hole.

@@ -10,13 +10,18 @@ Prerequisites, options and the test command are in [docs/BUILDING.md](docs/BUILD
 `-DFUGUE_RELEASE=ON`) keeps the test hooks. For work that does not touch the window, `-DFUGUE_HEADLESS_ONLY=ON` builds
 only the Qt-light modules and their tests.
 
-Each `tests/*_test.cpp` (and `*/tests/*_test.cpp`) is its own QtTest executable and CTest entry, picked up by a glob:
-add a file, re-run `ninja`, and it exists. Tests must not need the network, a BYOND installation, or files outside
-the repository. Tests that replay a recorded session use data under `tests/data/`; a recording should come from a
-small purpose-written world rather than a real game, so the expected values are understood and the data is ours to
-publish.
+Tests use QtTest and CTest. Core, account and pager test sources are glob-discovered; shell tests are registered in
+`shell/CMakeLists.txt`. A scenario can have separate CTest entries for portable logic, GPU replay and native window
+integration, sharing its inputs and expectations. Master opacity is the first such scenario; see
+[its profiles and commands](docs/BUILDING.md#master-opacity-scenario).
 
-Please run the whole suite before sending a change, and do not report a test as passing if it skipped.
+Tests must not need external network services, a BYOND installation, or files outside the repository. Tests that replay
+a recorded session use data under `tests/data/`; a recording should come from a small purpose-written world rather than
+a real game, so the expected values are understood and the data is ours to publish. Stock observations establish parity;
+explicit Fugue invariants establish requirements such as bounded work and correct lifetimes.
+
+Please run the suite and the affected GPU/native profiles before sending a change. Report unavailable profiles and
+skipped cases separately; they do not establish verification.
 
 ## Adding code
 

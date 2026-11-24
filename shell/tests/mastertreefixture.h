@@ -1,6 +1,6 @@
 #pragma once
 #include "tests/appearancejson.h"
-#include "shell/tests/localrelayfixture.h"
+#include "shell/tests/replayfixture.h"
 #include "shell/mapinput.h"
 #include "model/verbmenu.h"
 #include "model/statpanel.h"
@@ -9,7 +9,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 namespace fugue::shell::test {
-struct MasterTreeFixture : LocalRelayFixture {
+struct MasterTreeFixture : ReplayFixture {
     static QString goldenFile(const QString& file) {
         // Byte-identical independent stock captures share one retained oracle.
         const QStringList aliases{"stock-g-overlay-group-apart-leafplane.png",
@@ -65,7 +65,7 @@ struct MasterTreeFixture : LocalRelayFixture {
     QList<QPoint> points;
     QPoint clickPoint(int i) const { return points.at(i); }
     bool load(const QString& phase) {
-        if (!LocalRelayFixture::load("frames-"+phase+".txt","master-tree-world")) return false;
+        if (!ReplayFixture::load("frames-"+phase+".txt","master-tree-world")) return false;
         QFile file(QString(FUGUE_TEST_DATA_DIR)+"/master-tree-world/"+
             (phase.startsWith("w-") ? "stock-outline-wide-observations.json" :
              phase.startsWith("q-") ? "stock-outline2-observations.json" :

@@ -25,12 +25,10 @@
 #include "shell/tests/affinefixture.h"
 #include "shell/tests/roottreefixture.h"
 #include "shell/tests/planeeffectreference.h"
-#include "shell/tests/localrelayfixture.h"
+#include "shell/tests/replayfixture.h"
 #include "shell/tests/planesourcefixture.h"
-#include "shell/tests/masteropacityfixture.h"
 #include "shell/tests/hudrelayfixture.h"
 #include "shell/tests/mastertreefixture.h"
-#include "shell/tests/stockinputfixture.h"
 #include "shell/tests/masterplacementfixture.h"
 #include "shell/tests/filtertypesfixture.h"
 #include "shell/mapwidget.h"
@@ -1352,63 +1350,6 @@ private slots:
         QVERIFY(mapPointerCurrent(stack[0],w,0));
         events.clear();QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{96,96});QVERIFY(events.empty());
     }
-    void masterOpacityPixelsAndInput_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
-    void masterOpacityPixelsAndInput() {
-        if(QGuiApplication::platformName()=="offscreen") QSKIP("Requires native master opacity input");
-        QFETCH(bool,openGL);
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
-        map.resize(448,448); map.setViewSize({7,7});
-        auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
-        auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
-        QVector<MapPointer> events;
-        map.setInputHandler("main.map",true,[&](const MapPointer& p){events.push_back(p);});
-        map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map));
-        int receipts=0,menus=0;
-        for(const auto& value:test::MasterOpacityFixture::rows()) {
-            const auto row=value.toObject(); const auto name=row["case"].toString();
-            test::MasterOpacityFixture f; QVERIFY(f.load(name));
-            mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,f.sprites);
-            const auto pixels=map.grabFramebuffer(); QVERIFY(!pixels.isNull());
-            const QImage stock(QString(FUGUE_TEST_DATA_DIR)+"/master-opacity-world/stock/"+name+"-map.png");
-            QCOMPARE(stock.size(),QSize(224,224));
-            for(int y=0;y<224;++y) for(int x=0;x<224;++x)
-                QCOMPARE(pixels.pixelColor((2*x+1)*pixels.width()/448,(2*y+1)*pixels.height()/448),stock.pixelColor(x,y));
-            // A newer pending empty scene cannot replace the rendered master/menus.
-            mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,{});
-            for(const auto& av:row["actions"].toArray()) {
-                const auto action=av.toObject(); const auto xy=action["point"].toArray();
-                const QPoint point(xy[0].toInt(),xy[1].toInt());
-                events.clear(); QTest::mouseClick(&map,action["kind"]=="menu" ? Qt::RightButton : Qt::LeftButton,Qt::NoModifier,point*2+QPoint(1,1));
-                if(action["kind"]=="menu") {
-                    const auto click=std::find_if(events.begin(),events.end(),[](const auto& p){return p.kind==MapPointer::Click;});
-                    QVERIFY(click!=events.end()); QCOMPARE(f.menuNames(*click),f.menu(name,point)); ++menus;
-                    for(const auto& entry:mapPointerStack(*click)) QVERIFY(mapPointerCurrent(entry,f.session.world(),0));
-                } else {
-                    int i=0;
-                    for(const auto& event:events) {
-                        if(event.kind==MapPointer::Hover || event.kind==MapPointer::Leave) continue;
-                        const auto expected=action["callbacks"].toArray(); QVERIFY(i<expected.size());
-                        const auto c=expected[i++].toObject();
-                        QCOMPARE(event.kind,c["kind"]=="Down" ? MapPointer::Down : c["kind"]=="Up" ? MapPointer::Up : MapPointer::Click);
-                        const auto error=f.checkClick(event,c); QVERIFY2(error.isEmpty(),qPrintable(name+": "+error));
-                        QVERIFY(mapPointerCurrent(event,f.session.world(),0)); ++receipts;
-                    }
-                    QCOMPARE(i,3);
-                }
-            }
-            // Only an actually rendered replacement may retire the old target.
-            map.grabFramebuffer(); events.clear();
-            QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{121,337});
-            QVERIFY(std::none_of(events.begin(),events.end(),[](const auto& p){return p.masterFallback;}));
-            mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,f.sprites); map.grabFramebuffer();
-            const auto now=MapMetrics::nowNs(); metrics->reset(now+60'000'000'000);
-            map.grabFramebuffer(); QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
-        }
-        QCOMPARE(receipts,45); QCOMPARE(menus,9);
-    }
     void stockOutlinePrecisionAndWorkload_data() {
         QTest::addColumn<bool>("openGL");
         QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
@@ -1440,7 +1381,7 @@ private slots:
         }
         // Fresh stock standalone control: same retained source, removing only
         // blur. Generated ink outside the viewport must survive later ladder steps.
-        test::StockInputFixture edgeOutline;
+        test::ReplayFixture edgeOutline;
         QVERIFY(edgeOutline.load("frames-edge-outline.txt","master-tree-world"));
         for(auto& s:edgeOutline.sprites) if(s.kind==MapSprite::Master && s.planeEffects) {
             auto e=std::make_shared<PlaneEffects>(*s.planeEffects);
@@ -1482,7 +1423,7 @@ private slots:
         // Ordered outline(2)->blur(1): capture, float copy, boundary, two
         // outline steps, two blur axes = seven passes per selected plane.
         // Workload thresholds warn without dropping pixels or input.
-        test::StockInputFixture chain;QVERIFY(chain.load("frames-filtered-input.txt","master-tree-world"));
+        test::ReplayFixture chain;QVERIFY(chain.load("frames-filtered-input.txt","master-tree-world"));
         const auto leaf=std::find_if(chain.sprites.begin(),chain.sprites.end(),[](const auto& s){return s.kind==MapSprite::Screen && !s.image.isNull();});
         const auto master=std::find_if(chain.sprites.begin(),chain.sprites.end(),[](const auto& s){return s.kind==MapSprite::Master;});
         QVERIFY(leaf!=chain.sprites.end() && master!=chain.sprites.end());
@@ -1663,7 +1604,7 @@ private slots:
         QCOMPARE(rows.size(),23);
         for(const auto& value:rows) {
             const auto row=value.toObject();const auto label=row["label"].toString();
-            test::StockInputFixture f;
+            test::ReplayFixture f;
             QVERIFY(f.load("frames-"+label+".txt","master-material-world","local-relay-world"));
             const QImage stock(dir+row["golden"].toString());QCOMPARE(stock.size(),QSize(224,224));
             int64_t start=0;
@@ -2419,11 +2360,11 @@ private slots:
                 sprites.push_back(relay);
             }
             auto raster=floor;auto domain=floor.rect();auto coordinates=geometry;
-            std::unique_ptr<test::StockInputFixture> wire;
+            std::unique_ptr<test::ReplayFixture> wire;
             if(row.contains("frames")) {
-                wire=std::make_unique<test::StockInputFixture>();
+                wire=std::make_unique<test::ReplayFixture>();
                 const auto fixture=QDir(QString(FUGUE_TEST_DATA_DIR)).relativeFilePath(dir);
-                QVERIFY(wire->LocalRelayFixture::load(row["frames"].toString(),fixture));
+                QVERIFY(wire->ReplayFixture::load(row["frames"].toString(),fixture));
                 raster=wire->frame.image;domain=wire->frame.source;coordinates=wire->frame.geometry;sprites=wire->sprites;
                 size_t shadows=0;
                 for(const auto& s:sprites) if(s.kind==MapSprite::Master && s.planeEffects) {
@@ -3592,7 +3533,7 @@ private slots:
     void popupReleaseTiming() {
         if(QGuiApplication::platformName()=="offscreen") QSKIP("Requires native MAP and popup presentation");
         QFETCH(bool,gl);
-        test::StockInputFixture f; QVERIFY(f.load("frames-filtered-input.txt","master-tree-world"));
+        test::ReplayFixture f; QVERIFY(f.load("frames-filtered-input.txt","master-tree-world"));
         SkinWindow window; window.resize(448,448);
         MapWidget map(&window); if(gl) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(448,448); map.setViewSize({7,7});

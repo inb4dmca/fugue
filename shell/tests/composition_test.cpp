@@ -16,9 +16,8 @@
 #include "shell/surfaceplan.h"
 #include "shell/tests/affinefixture.h"
 #include "shell/tests/mastertreefixture.h"
-#include "shell/tests/stockinputfixture.h"
+#include "shell/tests/replayfixture.h"
 #include "shell/tests/masterplacementfixture.h"
-#include "shell/tests/masteropacityfixture.h"
 #include "model/verbmenu.h"
 #include "model/statpanel.h"
 using namespace fugue;
@@ -32,43 +31,15 @@ QList<QList<QByteArray>> rows(const QString& file) {
     }
     return out;
 }
-struct Fixture {
-    model::Session session;
-    TurfMap terrain;
-    EntityMap entities;
-    TurfMap::Frame frame;
-    MapSprites sprites;
+struct Fixture : test::ReplayFixture {
     bool load(const QString& path, const QString& frames = "frames.txt") {
-        const QString dir = QString(FUGUE_TEST_DATA_DIR) + '/' + path;
-        const auto wire = bytes(dir + '/' + frames); if (wire.isEmpty()) return false;
-        for (auto line : wire.split('\n')) {
-            if (!line.startsWith("0x")) continue;
-            const int at = int(line.indexOf(' ',line.indexOf("len=")));
-            const auto body = at < 0 ? QByteArray() : QByteArray::fromHex(line.mid(at+1));
-            session.ingest(uint16_t(line.mid(2,4).toUInt(nullptr,16)),Bytes(body.begin(),body.end()));
-        }
-        std::map<uint32_t,QByteArray> resources;
-        for (const auto& name : QDir(dir+"/res").entryList(QDir::Files)) {
-            const uint32_t id = name.toUInt(nullptr,16); const auto data = bytes(dir+"/res/"+name);
-            resources[id] = data; session.noteResource(id,Bytes(data.begin(),data.end()),"");
-        }
-        auto read = [&](uint32_t id, QByteArray& out) {
-            const auto it=resources.find(id); if(it==resources.end()) return false; out=it->second; return true;
-        };
-        frame = terrain.prepare(session.world(),read,0,false);
-        sprites = entities.prepare(session.world(),frame,read,0,nullptr,true);
-        return !frame.image.isNull() && !sprites.empty();
+        return ReplayFixture::load(frames,path) && !frame.image.isNull();
     }
     std::optional<MapPointer> at(int x,int y) const {
         return mapPointerAt({double(x),double(frame.source.height()-1-y)},frame.source.size(),
             frame.source.size()/frame.geometry.tile,frame.source,frame.geometry,"mapwindow.map",true,sprites);
     }
-    std::string name(const MapPointer& p) const {
-        const auto& ref=p.click.over; const auto& loc=p.click.loc;
-        auto hit=model::targetFromHit(session.world(),ref.kind,ref.ref,int(loc.x)+1,int(loc.y)+1,p.screen);
-        const auto ap=session.world().appearances.find(hit.appid);
-        return ap==session.world().appearances.end() ? "" : model::plainAtomName(model::parseJson(fieldsJson(ap->second))["name"].bytesOrStr());
-    }
+    std::string name(const MapPointer& p) const { return targetName(p); }
     QImage raster() const {
         QImage out(frame.source.size(),QImage::Format_ARGB32_Premultiplied); out.fill(Qt::black);
         QPainter painter(&out);
@@ -83,103 +54,8 @@ struct Fixture {
 class Composition : public QObject {
     Q_OBJECT
 private slots:
-    void stockMasterOpacity() {
-        const auto rows=test::MasterOpacityFixture::rows(); QCOMPARE(rows.size(),3);
-        int clicks=0, menus=0;
-        for (const auto& value:rows) {
-            const auto row=value.toObject(); const auto name=row["case"].toString();
-            test::MasterOpacityFixture f; QVERIFY(f.load(name));
-            for (const auto& av:row["actions"].toArray()) {
-                const auto action=av.toObject(); const auto xy=action["point"].toArray();
-                const QPoint point(xy[0].toInt(),xy[1].toInt());
-                auto hit=f.at(point,f.sprites);
-                QVERIFY(mapPointerCurrent(hit,f.session.world(),0));
-                if (action["kind"]=="menu") {
-                    QCOMPARE(f.menuNames(hit),f.menu(name,point)); ++menus;
-                    for (const auto& entry:mapPointerStack(hit)) {
-                        QVERIFY(!entry.masterFallback); QVERIFY(mapPointerCurrent(entry,f.session.world(),0));
-                    }
-                } else for (const auto& cv:action["callbacks"].toArray()) {
-                    const auto c=cv.toObject();
-                    hit.kind=c["kind"]=="Down" ? MapPointer::Down : c["kind"]=="Up" ? MapPointer::Up : MapPointer::Click;
-                    const auto error=f.checkClick(hit,c); QVERIFY2(error.isEmpty(),qPrintable(name+": "+error));
-                    QVERIFY(mapPointerCurrent(hit,f.session.world(),0)); ++clicks;
-                }
-            }
-        }
-        QCOMPARE(clicks,45); QCOMPARE(menus,9);
-    }
-    void masterOpacityBoundsAndLifetimes() {
-        test::MasterOpacityFixture f; QVERIFY(f.load("two"));
-        auto& w=f.session.worldMut(); const auto original=f.sprites;
-        const auto hit=f.at({60,168},original); QVERIFY(hit.masterFallback && hit.screen);
-        const auto ref=hit.click.over.ref; const auto id=w.hudAppid.at(ref);
-        QVERIFY(mapPointerCurrent(hit,w,0));
-        ++w.hudIdentity.at(ref).membership; QVERIFY(!mapPointerCurrent(hit,w,0)); --w.hudIdentity.at(ref).membership;
-        ++w.hudIdentity.at(ref).key; QVERIFY(!mapPointerCurrent(hit,w,0)); --w.hudIdentity.at(ref).key;
-        const auto hud=w.hud.at(ref); w.hud.erase(ref); QVERIFY(!mapPointerCurrent(hit,w,0)); w.hud[ref]=hud;
-        QVERIFY(!mapPointerCurrent(hit,w,1));
-        auto stale=hit; auto surface=std::make_shared<const uint8_t>(0); stale.surface=surface;
-        QVERIFY(mapPointerCurrent(stale,w,0)); surface.reset(); QVERIFY(!mapPointerCurrent(stale,w,0));
-        for (auto kind:{MapPointer::Hover,MapPointer::Drag,MapPointer::Drop,MapPointer::Wheel,MapPointer::DoubleClick}) {
-            auto gesture=hit; gesture.kind=kind; QVERIFY(!mapPointerCurrent(gesture,w,0));
-        }
-        auto drag=f.at({40,168},original); drag.kind=MapPointer::Drag;
-        drag.source=std::make_shared<MapPointer>(hit); QVERIFY(!mapPointerCurrent(drag,w,0));
-        QVERIFY(!f.at({60,168},original,false).masterFallback);
-        const auto fields=QJsonDocument::fromJson(QByteArray::fromStdString(fieldsJson(w.appearances.at(id)))).object();
-        const auto saved=w.appearances.at(id);
-        for (const QString key:{"filter","transform","target","source","tree","text","offset","placement","alpha","color","group","icon"}) {
-            auto changed=fields;
-            if(key=="filter") changed["filters"]=QJsonArray{QJsonObject{{"type",99}}};
-            if(key=="transform") {changed["hasTransform"]=true;changed["transform"]=QJsonArray{};}
-            if(key=="target") changed["renderTarget"]="*plane";
-            if(key=="source") changed["renderSource"]="*plane";
-            if(key=="tree") changed["overlays"]=QJsonArray{int(id)};
-            if(key=="text") changed["maptext"]="unsupported";
-            if(key=="offset") changed["pixelX"]=7;
-            if(key=="placement") changed["screenLoc"]="2,1";
-            if(key=="alpha") {changed["hasColor"]=true;changed["colorA"]=128;}
-            if(key=="color") {changed["hasColor"]=true;changed["colorR"]=128;}
-            if(key=="group") changed["appearanceFlags"]=double(uint32_t(fields["appearanceFlags"].toDouble()) | 0x04000000u);
-            w.appearances.at(id)=saved;
-            if(key=="icon") w.appearances.at(id).fields.iconResID=1;
-            setFields(w.appearances.at(id), QJsonDocument(changed).toJson(QJsonDocument::Compact).toStdString());
-            f.refresh();
-            QCOMPARE(f.at({60,168},f.sprites).masterFallback,key=="filter");
-            QVERIFY(f.at({60,168},original).masterFallback); // published evidence stays immutable
-        }
-        w.appearances.at(id)=saved; f.refresh(); QVERIFY(f.at({60,168},f.sprites).masterFallback);
-        // No attachment/affine/local relay member silently enables a plane fallback.
-        for (int variant=0;variant<8;++variant) {
-            auto scene=original;
-            auto member=std::find_if(scene.begin(),scene.end(),[](const auto& s){return s.kind==MapSprite::Entity && s.plane==1;});
-            QVERIFY(member!=scene.end());
-            if(variant==0) member->imageIdentity=1;
-            if(variant==1) member->kind=MapSprite::Vis;
-            if(variant==2) member->renderSource="*local";
-            if(variant==3) member->maptext=true;
-            if(variant==4) member->affine=StaticAffine::make({1,0,0,0,1,0},{32,32});
-            if(variant==5) member->mouseOpacity=2;
-            if(variant==6) member->tint[3]=.5f;
-            if(variant==7) member->passMouse=true;
-            QVERIFY(!f.at({60,168},scene).masterFallback);
-        }
-        // Last selected master wins; no borrowing from an earlier admitted master.
-        auto scene=original; auto master=*std::find_if(scene.begin(),scene.end(),[](const auto& s){return s.kind==MapSprite::Master;});
-        master.masterFallback=false; scene.push_back(master); QVERIFY(!f.at({60,168},scene).masterFallback);
-        // Higher-plane ordinary ink remains above the fallback.
-        scene=original; auto member=*std::find_if(scene.begin(),scene.end(),[](const auto& s){return s.kind==MapSprite::Entity && s.plane==1;});
-        member.plane=2; member.position+=QPoint(20,0); scene.push_back(member);
-        QVERIFY(!f.at({60,168},scene).masterFallback);
-        // Geometry translated with a nonzero rendered viewport still reports viewport coordinates.
-        scene=original; const QPoint delta(64,96);
-        for(auto& s:scene) {s.position+=delta;s.iconBottom+=delta;}
-        const auto shifted=mapPointerAt(QPoint(60,168),f.frame.source.size(),{7,7},f.frame.source.translated(delta),f.frame.geometry,"main.map",true,scene);
-        QVERIFY(shifted && shifted->masterFallback); QCOMPARE(shifted->click.iconX,61); QCOMPARE(shifted->click.iconY,56);
-    }
     void stockRotatedPlaneInput() {
-        test::StockInputFixture f; QVERIFY(f.load("frames-plane-rotate.txt","master-tree-world"));
+        test::ReplayFixture f; QVERIFY(f.load("frames-plane-rotate.txt","master-tree-world"));
         auto at=[&](QPoint point,const MapSprites& sprites,QRect source) {
             return *mapPointerAt(point,source.size(),{7,7},source,f.frame.geometry,"main.map",true,sprites);
         };
@@ -413,7 +289,7 @@ private slots:
         large["params"]="01008040";QVERIFY(decode({large}).supported);QVERIFY(omitted({outline,large}));
         blur["params"]="000080bf";QVERIFY(omitted({blur}));
 
-        test::StockInputFixture f; QVERIFY(f.load("frames-filtered-reverse.txt","master-tree-world"));
+        test::ReplayFixture f; QVERIFY(f.load("frames-filtered-reverse.txt","master-tree-world"));
         const auto old=f.sprites;
         auto pick=[&](const MapSprites& sprites) {return mapPointerAt({40,168},f.frame.source.size(),{7,7},f.frame.source,f.frame.geometry,"main.map",true,sprites);};
         const auto hit=pick(old);QVERIFY(hit && hit->screen && hit->filteredPlane);
@@ -440,7 +316,7 @@ private slots:
         QVERIFY(pick(f.sprites)->filteredPlane); // provenance recovery restores the admitted chain
     }
     void localForwardingLifecycle() {
-        test::LocalRelayFixture f;
+        test::ReplayFixture f;
         QVERIFY(f.load("frames-forward.txt"));
         auto validForward=[](const MapSprites& sprites) {
             const LocalTargets plan(sprites); const int i=plan.find("*forward");

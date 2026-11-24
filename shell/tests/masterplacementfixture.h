@@ -1,12 +1,12 @@
 #pragma once
 #include "tests/appearancejson.h"
-#include "shell/tests/stockinputfixture.h"
+#include "shell/tests/replayfixture.h"
 #include <bit>
 
 namespace fugue::shell::test {
 // Existing independent wire/assets plus the declared placement fixture inputs.
 // Expected pixels and callbacks come only from stock, not from these mutations.
-struct MasterPlacementFixture : StockInputFixture {
+struct MasterPlacementFixture : ReplayFixture {
     uint32_t rootId = 0;
     static QJsonArray rows() {
         QFile file(QString(FUGUE_TEST_DATA_DIR)+"/master-tree-world/stock-placement.json");
@@ -20,7 +20,7 @@ struct MasterPlacementFixture : StockInputFixture {
         refresh();
     }
     bool load(const QJsonObject& row) {
-        if(!LocalRelayFixture::load("frames-overlay.txt","master-tree-world")) return false;
+        if(!ReplayFixture::load("frames-overlay.txt","master-tree-world")) return false;
         auto& w=session.worldMut();
         rootId=w.hudAppid.begin()->second;
         const auto original=w.appearances.at(rootId);
