@@ -629,7 +629,8 @@ QJsonObject BrowseHost::wingetObject(const QString& id, const QString& propSpec)
     auto it = slots_.constFind(id);
     if (it != slots_.constEnd() && it->popup) {
         QWidget* w = it->popup;
-        QJsonObject all{{"pos", QJsonObject{{"x", w->pos().x()}, {"y", w->pos().y()}}},
+        QJsonObject all{{"pos", QJsonObject{{"x", qRound(w->pos().x() * w->devicePixelRatioF())},
+                                            {"y", qRound(w->pos().y() * w->devicePixelRatioF())}}},
                         {"size", QJsonObject{{"x", qRound(w->width() * w->devicePixelRatioF())},
                                              {"y", qRound(w->height() * w->devicePixelRatioF())}}},
                         {"is-visible", w->isVisible()},
@@ -735,22 +736,26 @@ QString BrowseHost::applyWinset(BrowserPane*, const model::ByondUrl& u) {
             continue;
         }
         auto it = slots_.find(ctl);
-        if (it != slots_.end() && it->popup) {
+        const bool popup = it != slots_.end() && it->popup;
+        // Browser geometry is in device pixels (getBoundingClientRect * DPR, window.screenLeft * DPR).
+        // The live skin and Qt widgets use logical pixels. Round only here. A popup is no exception: winget answers
+        // its place and size in device pixels, and tgui adds the difference between the two to every position it
+        // sets, so a popup moved by unscaled numbers drifts further off with each opening on a scaled display.
+        if (prop == "size" || prop == "pos") {
+            static const QRegularExpression geometry(R"(^(-?\d+(?:\.\d+)?)[x,](-?\d+(?:\.\d+)?)$)");
+            const qreal dpr = popup ? it->popup->devicePixelRatioF() : anchor_->devicePixelRatioF();
+            auto m = geometry.match(v);
+            if (m.hasMatch())
+                v = QString("%1%2%3")
+                        .arg(qRound(m.captured(1).toDouble() / dpr))
+                        .arg(prop == "size" ? 'x' : ',')
+                        .arg(qRound(m.captured(2).toDouble() / dpr));
+        }
+        if (popup) {
             applyPopupProps(*it, prop, v);
             continue;
         }
         if (!live_) continue;
-        // Browser geometry is in device pixels (getBoundingClientRect * DPR).
-        // The live skin and Qt widgets use logical pixels. Round only here.
-        if (prop == "size" || prop == "pos") {
-            static const QRegularExpression geometry(R"(^(-?\d+(?:\.\d+)?)[x,](-?\d+(?:\.\d+)?)$)");
-            auto m = geometry.match(v);
-            if (m.hasMatch())
-                v = QString("%1%2%3")
-                        .arg(qRound(m.captured(1).toDouble() / anchor_->devicePixelRatioF()))
-                        .arg(prop == "size" ? 'x' : ',')
-                        .arg(qRound(m.captured(2).toDouble() / anchor_->devicePixelRatioF()));
-        }
         // URL-encode the value before passing it to the DM winset parser: a
         // semicolon or quote inside a JS value must never become another pair.
         const auto encoded = QUrl::toPercentEncoding(v);
