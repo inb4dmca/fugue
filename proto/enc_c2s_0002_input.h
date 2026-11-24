@@ -47,7 +47,7 @@ struct ClickCmd {
     // with screenLocMap (mapIdParam). Both empty on the default map.
     std::string locStr, screenLocMap;
     int iconX = 16, iconY = 16;  // in the named atom's icon frame, sent unclamped (can be < 1 or > 32 over an overlay)
-    // vis-x/vis-y: the cursor in a TRANSFORMED atom's bounding box (render/hittest.h). Sent, unclamped, right after
+    // vis-x/vis-y: the cursor in a TRANSFORMED atom's bounding box in image coordinates. Sent, unclamped, right after
     // icon-y only when hasVis - stock DreamSeeker's rule (vis pair != icon pair).
     int visX = 0, visY = 0;
     bool hasVis = false;
@@ -55,8 +55,12 @@ struct ClickCmd {
     int screenPX = 0, screenPY = 0;  // 0 = use icon px
     std::string button = "left";
     Mods mods;
+    int screenTileSize = 32;  // world icon size; bounds the screen-loc pixel components
 };
 std::string clickParams(const ClickCmd&);
+// Finalize a canonical narrow mouse body (subtypes 3..8) using this session's
+// negotiated verb-slot width. Worker only; refs/arguments and event IDs are unchanged.
+Bytes mouseWireBody(Bytes body, bool wideId);
 Bytes encodeMouseCmd(
     const ClickCmd&);  // [sub 00 ff ff][over][03 00][loc][02 ctrl\0][02 params\0] (loc: [02 locStr\0] when set)
 // The same shape naming nothing: over and loc null atoms (loc [02 locStr\0] when set), control a null atom when empty.
@@ -133,10 +137,12 @@ struct VerbArg {
     float num = 0;
     std::string str;
 };
-Bytes encodeVerb(uint16_t verbId, uint8_t srcKind, uint32_t srcRef, const std::vector<VerbArg>& args);
+// Wide wire slots are verified for IDs <=65535; callers must not truncate larger dictionary IDs.
+Bytes encodeVerb(uint16_t verbId, uint8_t srcKind, uint32_t srcRef, const std::vector<VerbArg>& args,
+                 bool wideId = false);
 // Movement verb call: args {dir} or {dir, state} (state only when the verb declares 2 args), src-kind client, src-ref 0
 // (what stock DreamSeeker sends for a /client/verb; the srcRef parameter is ignored).
-Bytes encodeMoveVerb(uint16_t verbId, uint32_t srcRef, int dir, bool down, bool twoArgs);
+Bytes encodeMoveVerb(uint16_t verbId, uint32_t srcRef, int dir, bool down, bool twoArgs, bool wideId = false);
 
 Bytes encodeTopic(const std::string& href);  // strips "byond://", ensures leading '?', NUL-terminated
 

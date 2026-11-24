@@ -24,10 +24,10 @@ struct Home {
         QString p = dir.path() + "/" + rel;
         QDir().mkpath(QFileInfo(p).absolutePath());
         QFile f(p);
-        f.open(QIODevice::WriteOnly);
-        f.write(b);
+        QVERIFY2(f.open(QIODevice::WriteOnly), qPrintable(f.errorString()));
+        QCOMPARE(f.write(b), qint64(b.size()));
         f.close();
-        ::chmod(p.toUtf8().constData(), mode);
+        QCOMPARE(platform::chmod(p.toUtf8().constData(), mode), 0);
     }
     void client() {
         put("bin/fugue", "x", 0755);

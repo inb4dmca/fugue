@@ -107,21 +107,20 @@ public:
     // (a winclone'd window's browser too). With no skin loaded yet, everything prints. No winexists()
     // side effect.
     bool printsOutput(const std::string& control) const;
-    // The default MAP control's `style` (what a winset last set, else the .dmf's). Stock lays out MeasureText() with
-    // this sheet: MeasureText(t, null, w) after `winset map style=S` answers MeasureText(t, S, w) (render/dsmaptext.h).
-    // The is-default map, else the first map; "" with no skin or no map. A text-color the control sets (not "none") leads
-    // the sheet as a `body` colour rule: stock draws maptext that names no colour in it, else white.
-    std::string defaultMapStyle() const;
-    // The MAP controls a winset `parent=` created (SkinSnapshot::runtime), by name: the secondary maps the session thread
-    // assembles a scene for (render/scene.h assembleSecondaryMap).
+    // The MAP controls a winset `parent=` created (SkinSnapshot::runtime), by name.
     std::vector<std::string> runtimeMaps() const;
+    // GUI presentation geometry in logical pixels; publishing it does not relayout.
+    void setMapViewSize(const std::string& id, int width, int height);
+    std::vector<std::string> clearRuntimeBrowsers();  // session boundary: retire documents, not popups
     // The control a winset `parent=` created under this name ("name" or "parent.name", case-insensitive); false if none.
     bool runtimeControl(const std::string& name, SkinSnapshot::RuntimeControl& out) const;
     // The default MAP control's "window.elem": the is-default one, else the first; "" with no skin or no map.
     std::string defaultMapId() const;
-    // Every MAP control but the default one, by the name a screen_loc prefix uses: the .dmf's other MAPs (their elem
-    // name) and runtimeMaps(). The secondary maps the session thread assembles.
-    std::vector<std::string> secondaryMaps() const;
+    struct MapTextSettings {
+        std::string style, family, size;
+    };
+    // Consistent worker raster inputs for the shared scene's default MAP.
+    MapTextSettings defaultMapTextSettings() const;
 
     // winget(client, null or "", params): the client-wide ("special") wingets, answered as stock DreamSeeker 516
     // answers them (the table is in liveskin.cpp kGlobalParams). Which name reads the windows,
@@ -137,8 +136,11 @@ public:
     // set DreamSeeker has instantiated (see usedMenus_). It enumerates X itself (windows, popups and menus; a macro
     // set has no entry of its own), then its named elements in file order as `X.param=v` / `X.elem.param=v`, each
     // element listing only the params it has, values encoded. The k=v form is always used, even for one param.
-    // Anything else (`*`, `main*`, `*.map`, `win.ctl.*`, a menu no window has named yet) is an unknown control.
-    std::string wingetWildcard(const std::string& control, const std::string& params) const;
+    // Also enumerates ';' / '&' separated control lists (including wildcard entries), retaining requested order,
+    // spelling and duplicates. Unknown controls/properties are omitted; if no control resolves, use wingetAnswer's
+    // unknown-control shape. Whitespace is significant; a leading empty entry names the main window.
+    // Other wildcard forms (`*`, `main*`, `*.map`, `win.ctl.*`, an unused menu) are unknown controls.
+    std::string wingetWildcard(const std::string& controls, const std::string& params) const;
     // The global wingets the skin cannot know (the GUI / session publish them; see kGlobalParams for which and the
     // stock defaults used until they do): "dpi", "screen-pos", "screen-size", "url", "sound", "hwmode", the locks.
     void setClientEnv(const std::string& name, std::string value);
@@ -173,8 +175,11 @@ public:
     // A winset to an id that was never browse()d is dropped. So a name stays a popup for the rest of the session
     // once it has been one; only its visibility changes.
     void setPopups(std::set<std::string> names);
-    // The GUI's half of is-visible: a popup the player closed is hidden until the world browse()s it again.
-    void setPopupShown(const std::string& name, bool shown);
+    // GUI publication. A delayed browse/snapshot must not overwrite a newer world write; page/player events
+    // use the default (latest writer). Titles are GUI facts, like screen positions, not new world winsets.
+    void setPopupShown(const std::string& name, bool shown, uint64_t throughRevision = ~uint64_t(0));
+    void setPopupTitle(const std::string& name, const std::string& title, uint64_t throughRevision = ~uint64_t(0));
+    uint64_t propertyRevision() const;  // captured with a worker browse notification, before subsequent winsets
     bool isPopup(const std::string& name) const;
 
     // winclone(src, "window", name) (S2C::WinClone): a blank window the world fills. Stock DreamSeeker answers
@@ -233,6 +238,12 @@ private:
     bool setFocusLocked(const std::string& target, bool on);
     void uncheckSiblingsLocked(const std::string& target);
     bool wingetLocked(const std::string& control, const std::string& param, std::string& out) const;
+    // Enumeration entries are resolved and consumed under the same mu_ lock.
+    struct WingetItem {
+        std::string key;
+        ParamLookup get;
+    };
+    std::vector<WingetItem> wingetItemsLocked(const std::string& control) const;
     std::string defaultMapIdLocked() const;
     // ":map", ":input": the default control of that type as "window.elem" (DM reference, winget), "" when none.
     std::string typeSelectorLocked(const std::string& id) const;
@@ -255,7 +266,9 @@ private:
     // Runtime-created controls (winset `parent=`): see runtime_.
     struct RuntimeCtl {
         std::string name, parent, type;
+        uint64_t identity = 0;
     };
+    uint64_t nextRuntimeIdentity_ = 0;
     const RuntimeCtl* runtimeLocked(const std::string& name) const;
     std::string typeLocked(const std::string& control) const;
     bool applyParentLocked(const WinsetPair& p);
@@ -304,6 +317,7 @@ private:
     // The first 8 text bytes of the heap block DreamSeeker builds each global-winget name in, as the names, control
     // wingets and lone answers this client has seen wrote them (liveskin.cpp nameBlockWrite). Zero = never used.
     mutable char nameBlock_[8] = {};
+    std::map<std::string, std::string> popupTitles_;        // GUI title, invalidated by a world title write
     std::map<std::string, std::pair<int, int>> screenPos_;  // setWindowPos, keyed lower-case ("" = the main window)
     std::string guiFocus_;                                  // setGuiFocus
     std::map<std::string, std::string> viewSize_;           // setViewSize, keyed lower-case "window.elem"
@@ -316,6 +330,7 @@ private:
     // map inside its window; `parent=` removes it. Kept in creation order; winget and winexists answer them, and a MAP
     // one is built as a widget (SkinSnapshot::runtime).
     std::vector<RuntimeCtl> runtime_;
+    std::map<std::string, std::pair<int, int>> mapViewSizes_;
     std::set<std::string> shownPanes_;  // setPaneShown (lower-case)
     // The menus and macro sets stock DreamSeeker has built, in build order. winget(null,"macro") and "menu" list only the
     // sets some window has named, and a "<set>.*" wildcard enumerates nothing before that. Seeded at load from every

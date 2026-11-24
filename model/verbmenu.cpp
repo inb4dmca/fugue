@@ -139,15 +139,15 @@ int worldView(const World& w) { return w.bounds.view > 0 ? w.bounds.view : 5; }
 
 namespace {
 
-const std::vector<uint16_t>& verbIdsOf(const World& w, uint32_t appid) {
-    static const std::vector<uint16_t> kNone;
+const std::vector<uint32_t>& verbIdsOf(const World& w, uint32_t appid) {
+    static const std::vector<uint32_t> kNone;
     auto it = w.appearances.find(appid);
     return it == w.appearances.end() ? kNone : it->second.fields.verbs;
 }
 
 // The verbs the player carries: the client appearance's verbs UNION the own mob's when knowable, else the own mob's alone.
-std::vector<uint16_t> ownVerbIds(const World& w) {
-    std::vector<uint16_t> own;
+std::vector<uint32_t> ownVerbIds(const World& w) {
+    std::vector<uint32_t> own;
     // The own mob is keyed selfRef | kRegistryA, or before its WorldState its MobBind; the bare key is an obj ref.
     std::vector<uint32_t> mobApps;
     if (w.haveSelf) {
@@ -158,11 +158,11 @@ std::vector<uint16_t> ownVerbIds(const World& w) {
         }
     }
     if (w.haveClientAppid && w.appearances.count(w.clientAppid) && !mobApps.empty()) {
-        std::set<uint16_t> scope;
-        for (uint16_t id : verbIdsOf(w, w.clientAppid)) scope.insert(id);
+        std::set<uint32_t> scope;
+        for (uint32_t id : verbIdsOf(w, w.clientAppid)) scope.insert(id);
         for (uint32_t a : mobApps)
-            for (uint16_t id : verbIdsOf(w, a)) scope.insert(id);
-        if (!scope.empty()) return std::vector<uint16_t>(scope.begin(), scope.end());
+            for (uint32_t id : verbIdsOf(w, a)) scope.insert(id);
+        if (!scope.empty()) return std::vector<uint32_t>(scope.begin(), scope.end());
     }
     if (!w.haveSelf) return own;
     auto m = w.atoms.find(w.selfRef | kRegistryA);
@@ -177,7 +177,7 @@ const std::string& menuCategory(const VerbDef& v) {
     return v.category.empty() ? kDefault : v.category;
 }
 
-bool dict(const World& w, uint16_t id, VerbDef& out) {
+bool dict(const World& w, uint32_t id, VerbDef& out) {
     auto it = w.verbById.find(id);
     if (it == w.verbById.end()) return false;
     out = verbDefOf(it->second);
@@ -231,8 +231,8 @@ std::vector<MenuVerb> atomMenu(const World& w, uint32_t appid, AtomTarget target
     bool havePos = playerPos(w, px, py);
     int view = worldView(w);
     if (target.kind == kTargetMob && w.haveSelf && target.ref == w.selfRef) target.isSelfMob = true;
-    std::set<uint16_t> seen;
-    for (uint16_t id : verbIdsOf(w, appid)) {
+    std::set<uint32_t> seen;
+    for (uint32_t id : verbIdsOf(w, appid)) {
         if (seen.count(id)) continue;
         VerbDef e;
         if (!dict(w, id, e)) continue;  // not defined yet: the dictionary arrives just in time
@@ -240,7 +240,7 @@ std::vector<MenuVerb> atomMenu(const World& w, uint32_t appid, AtomTarget target
         seen.insert(id);
         out.push_back({e, false});
     }
-    for (uint16_t id : ownVerbIds(w)) {
+    for (uint32_t id : ownVerbIds(w)) {
         if (seen.count(id)) continue;
         VerbDef e;
         if (!dict(w, id, e)) continue;
@@ -364,8 +364,8 @@ VerbSrcRank srcRank(const World& w, VerbSrc src) {
             const std::vector<uint32_t>* mobs = cellList(w.cellMobs, cell);
             const std::vector<uint32_t>* l = mob ? mobs : cellList(w.cellObjs, cell);
             if (l)
-                if (auto at = std::find(l->rbegin(), l->rend(), src.ref); at != l->rend())
-                    r.cell = int(l->rend() - at - 1) + (mob || !mobs ? 0 : int(mobs->size()));
+                if (auto position = std::find(l->rbegin(), l->rend(), src.ref); position != l->rend())
+                    r.cell = int(l->rend() - position - 1) + (mob || !mobs ? 0 : int(mobs->size()));
         }
     } else if (src.kind == kTargetTurf) {
         int x = int(src.ref & 0xffff) + 1, y = int(src.ref >> 16) + 1;
@@ -381,18 +381,18 @@ VerbSrcRank srcRank(const World& w, VerbSrc src) {
     return r;
 }
 
-std::vector<uint16_t> srcAdmittedVerbIds(const World& w) {
-    std::set<uint16_t> out;
+std::vector<uint32_t> srcAdmittedVerbIds(const World& w) {
+    std::set<uint32_t> out;
     int px = 0, py = 0;
     bool havePos = playerPos(w, px, py);
     int view = worldView(w);
     // Each verb is parsed once per call, and each appearance's verb list resolved once: thousands of atoms share a few appearances.
-    std::unordered_map<uint16_t, std::optional<VerbDef>> defs;
+    std::unordered_map<uint32_t, std::optional<VerbDef>> defs;
     std::unordered_map<uint32_t, std::vector<const VerbDef*>> carried;
     auto carries = [&](uint32_t appid) -> const std::vector<const VerbDef*>& {
         auto [it, fresh] = carried.try_emplace(appid);
         if (!fresh) return it->second;
-        for (uint16_t id : verbIdsOf(w, appid)) {
+        for (uint32_t id : verbIdsOf(w, appid)) {
             auto [d, parsed] = defs.try_emplace(id);
             if (parsed) {
                 VerbDef e;
@@ -471,7 +471,7 @@ std::vector<uint16_t> srcAdmittedVerbIds(const World& w) {
     return {out.begin(), out.end()};
 }
 
-std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t id, bool everyAtom) {
+std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint32_t id, bool everyAtom) {
     std::vector<VerbSrcCandidate> out;
     // Does an appearance carry the verb? Memoised per call, since many atoms share an appearance.
     std::unordered_map<uint32_t, bool> memo;
@@ -479,7 +479,7 @@ std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t id, boo
         auto m = memo.find(appid);
         if (m != memo.end()) return m->second;
         bool yes = false;
-        for (uint16_t v : verbIdsOf(w, appid))
+        for (uint32_t v : verbIdsOf(w, appid))
             if (v == id) {
                 yes = true;
                 break;
@@ -761,9 +761,9 @@ uint32_t dmRefOf(const World& w, const AtomTarget& t) {
     return 0;
 }
 
-bool ownVerbSrc(const World& w, uint16_t id, VerbSrc& out) {
+bool ownVerbSrc(const World& w, uint32_t id, VerbSrc& out) {
     auto carries = [&](uint32_t appid) {
-        for (uint16_t v : verbIdsOf(w, appid))
+        for (uint32_t v : verbIdsOf(w, appid))
             if (v == id) return true;
         return false;
     };

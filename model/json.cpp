@@ -166,8 +166,8 @@ std::string JVal::bytesOrStr() const {
     if (kind == Str) return s;
     const JVal& h = (*this)["bstr"];
     if (h.kind == Str) {
-        auto b = hexDecode(h.s);
-        if (b) return std::string(b->begin(), b->end());
+        auto bytes = hexDecode(h.s);
+        if (bytes) return std::string(bytes->begin(), bytes->end());
     }
     return {};
 }

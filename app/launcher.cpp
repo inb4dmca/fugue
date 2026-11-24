@@ -139,12 +139,14 @@ PagerOpts parsePagerArgs(const std::vector<std::string>& a) {
                 o.install = true;
             else if (n == "h" || n == "help")
                 o.help = true;
-            else if (!kRelease && n == "auto-join")
+#ifndef FUGUE_RELEASE
+            else if (n == "auto-join")
                 o.autoJoin = need();  // dev-only test hook
-            else if (!kRelease && n == "quit-after")
+            else if (n == "quit-after")
                 o.quitAfter = std::atof(need().c_str());  // dev-only test hook
-            else if (!kRelease && n == "hub-addr")
+            else if (n == "hub-addr")
                 o.hubAddr = need();  // dev-only: sign in against a fake hub
+#endif
             else
                 o.bad = "unknown flag: " + s;
             continue;
@@ -356,9 +358,6 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
     // After a remembered "Play as guest" the window opens on the server list rather than Sign in.
     if (cfg.account.empty() && pager::guestRemembered()) win.setGuestChosen(true);
     win.setAutoSignIn(pager::autoSignIn());
-#ifdef FUGUE_GPU
-    win.setRendererSettings(QString::fromStdString(pager::displaySettingsPath(pager::clientStateDir(o.pass))));
-#endif
     refresh();
     QProcess* child = nullptr;
     auto stopChild = [&] {

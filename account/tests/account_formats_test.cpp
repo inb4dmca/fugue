@@ -33,7 +33,7 @@ void put(const std::string& path, const std::string& body, int mode = 0600) {
     QVERIFY(f.open(QIODevice::WriteOnly));
     f.write(body.data(), qint64(body.size()));
     f.close();
-    ::chmod(path.c_str(), mode);
+    QCOMPARE(platform::chmod(path.c_str(), mode), 0);
 }
 std::string slurp(const std::string& path) {
     QFile f(QString::fromStdString(path));
@@ -97,6 +97,24 @@ private slots:
         QVERIFY2(atomicWrite(path.toStdString(), std::string("second\r\n\0tail", 13), &err), err.c_str());
         QCOMPARE(slurp(path.toStdString()), std::string("second\r\n\0tail", 13));
         QVERIFY(isPrivateFile(path.toStdString()));
+    }
+    void utf8OpenAndRename() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto from = (dir.path() + QString::fromUtf8("/日本語-clé.txt")).toStdString();
+        const auto to = (dir.path() + QString::fromUtf8("/renamed-日本語.txt")).toStdString();
+        int fd = platform::open(from.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+        QVERIFY(fd >= 0);
+        auto cleanup = qScopeGuard([&] {
+            if (fd >= 0) platform::close(fd);
+        });
+        QCOMPARE(platform::write(fd, "bytes", 5u), 5);
+        const int result = platform::close(fd);
+        fd = -1;
+        QCOMPARE(result, 0);
+        QCOMPARE(platform::rename(from.c_str(), to.c_str()), 0);
+        QVERIFY(!QFile::exists(QString::fromStdString(from)));
+        QCOMPARE(slurp(to), std::string("bytes"));
     }
     void identityFileFormatAndModes() {
         Home h;

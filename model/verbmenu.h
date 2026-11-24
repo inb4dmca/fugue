@@ -44,7 +44,7 @@ struct VerbArgSpec {
 };
 
 struct VerbDef {
-    uint16_t id = 0;
+    uint32_t id = 0;
     std::string name, desc, category;
     uint8_t head = 0xff, src = 0, flags = 0;
     uint32_t flagsExt = 0;
@@ -141,12 +141,12 @@ struct VerbSrcCandidate {
     std::string name;
     VerbSrcRank rank = {};
 };
-std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint16_t verbId, bool everyAtom = false);
+std::vector<VerbSrcCandidate> verbSrcCandidates(const World& w, uint32_t verbId, bool everyAtom = false);
 VerbSrcRank srcRank(const World& w, VerbSrc src);
 // The verb ids of the atoms around the player (map movables, usr.contents, client.screen, the turfs in view, the player's
 // own area) whose `set src` clause admits them where they stand: the verbs stock DreamSeeker lists in its panel besides
 // the client's and the own mob's. A verb whose dictionary entry has not arrived yet is left out.
-std::vector<uint16_t> srcAdmittedVerbIds(const World& w);
+std::vector<uint32_t> srcAdmittedVerbIds(const World& w);
 // A typed ATOM argument DreamSeeker resolves itself (FilterKind view / oview / range / orange / usr, an atom-only mask,
 // or `as anything` / `as text|anything` without a list, read as mob|obj|turf): the atoms it accepts, in its bare
 // listbox's order (objs by ascending ref, carried ones interleaved; mobs first and turfs last; usr's own turf first among
@@ -158,6 +158,6 @@ std::vector<VerbSrcCandidate> verbArgCandidates(const World& w, const VerbArgSpe
 uint32_t dmRefOf(const World& w, const AtomTarget& t);
 // The src of a verb the PLAYER carries (a right-click row offered by argument, from ownVerbIds): the client when its
 // appearance holds the id, else the own mob (A-keyed atom, else its MobBind). False: neither holds it.
-bool ownVerbSrc(const World& w, uint16_t verbId, VerbSrc& out);
+bool ownVerbSrc(const World& w, uint32_t verbId, VerbSrc& out);
 
 }  // namespace fugue::model

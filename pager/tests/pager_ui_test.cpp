@@ -47,10 +47,10 @@ private slots:
             qunsetenv(v);
         QDir().mkpath(home_.path() + "/bin");
         QFile f(home_.path() + "/bin/fugue");
-        f.open(QIODevice::WriteOnly);
-        f.write("x");
+        QVERIFY2(f.open(QIODevice::WriteOnly), qPrintable(f.errorString()));
+        QCOMPARE(f.write("x"), qint64(1));
         f.close();
-        ::chmod((home_.path() + "/bin/fugue").toUtf8().constData(), 0755);
+        QCOMPARE(platform::chmod((home_.path() + "/bin/fugue").toUtf8().constData(), 0755), 0);
         qputenv("FUGUE_CLIENT", (home_.path() + "/bin/fugue").toUtf8());
     }
     void signedOutOpensOnSignInAndGuestIsOneClick() {
@@ -237,32 +237,6 @@ private slots:
         QVERIFY(w.joinEnabled());
         QFile::remove(keyTxt);
         QFile::remove(QString::fromStdString(account::identityPath("Held One")));
-    }
-    // Preferences > "Use GPU rendering (experimental)" is the client's display.ini renderer key, hidden until the launcher
-    // hands it the path (GPU builds only), and re-read each time Preferences opens.
-    void gpuRenderingPreferenceIsTheClientsSetting() {
-        PagerWindow w;
-        account::Config cfg;
-        cfg.servers = account::defaultServers();
-        w.setGuestChosen(true);
-        w.setState(cfg, check(cfg));
-        w.showPreferences();
-        auto* gpu = w.preferencesDialog()->findChild<QCheckBox*>("prefsgpu");
-        QVERIFY(gpu && gpu->isHidden());
-        const QString ini = home_.path() + "/gpu-state/display.ini";
-        w.setRendererSettings(ini);
-        QVERIFY(!gpu->isHidden() && !gpu->isChecked());
-        QVERIFY(gpu->toolTip().contains("next join"));
-        gpu->setChecked(true);
-        QCOMPARE(QSettings(ini, QSettings::IniFormat).value("renderer").toString(), QString("gpu"));
-        QVERIFY(savedRendererGpu(ini.toStdString()));
-        gpu->setChecked(false);
-        QCOMPARE(QSettings(ini, QSettings::IniFormat).value("renderer").toString(), QString("cpu"));
-        w.preferencesDialog()->hide();
-        QVERIFY(setSavedRenderer(ini.toStdString(), true));  // as the game's Renderer menu writes it
-        w.showPreferences();
-        QVERIFY(gpu->isChecked());
-        w.preferencesDialog()->hide();
     }
     void unsupportedControlsAreHidden() {
         PagerWindow w;

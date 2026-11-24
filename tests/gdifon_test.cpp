@@ -103,20 +103,46 @@ private slots:
         QCOMPARE(QString::fromStdString(rows(m)), QString::fromStdString(expected(s, 0x80, false)));
         QVERIFY(fonGlyph(ss, smallFonts(7), U'Ā', m));  // outside the code page: the default char
         QCOMPARE(QString::fromStdString(rows(m)), QString::fromStdString(expected(s, s.defaultChar, false)));
-        // Bold overstrikes 1 px to the right; italic draws 1 px to the left.
+        // Bold overstrikes 1 px to the right; italic slants: one pixel right for every two rows above the cell's last.
         QVERIFY(fonGlyph(ss, smallFonts(7, "font-weight:bold"), U'g', m));
         QCOMPARE(QString::fromStdString(rows(m)), QString::fromStdString(expected(s, 'g', true)));
         QVERIFY(fonGlyph(ss, smallFonts(7, "font-style:italic"), U'g', m));
-        QCOMPARE(QString::fromStdString(rows(m)), QString::fromStdString(expected(s, 'g', false)));
-        QCOMPARE(m.left, -1);
-        // A scaled strike (14px: twice the 7pt metrics, 22px: three times) is drawn unscaled.
+        {
+            const int w = int(s.widths['g' - s.first]), top = (int(s.h) - 1) / 2;
+            std::string slanted;
+            for (int y = 0; y < int(s.h); y++) {
+                const int shift = top - y / 2;
+                for (int x = 0; x < w + top; x++)
+                    slanted += x >= shift && x - shift < w && s.ink('g', unsigned(x - shift), unsigned(y)) ? '#' : '.';
+                slanted += '/';
+            }
+            QCOMPARE(QString::fromStdString(rows(m)), QString::fromStdString(slanted));
+        }
+        QCOMPARE(m.left, 0);
+        // Windows never scales a strike: 14px and 22px are the 7pt strike of its 120-dpi file as it is, 13 px high,
+        // which is not in this file.
         for (int px : {14, 22}) {
             const DsFace f = smallFonts(px);
-            QCOMPARE(f.height, 11 * (px == 14 ? 2 : 3));
-            QVERIFY(fonGlyph(ss, f, U'M', m));
-            QCOMPARE(QString::fromStdString(rows(m)), QString::fromStdString(expected(s, 'M', false)));
-            QCOMPARE(m.top, 0);
+            QCOMPARE(f.height, 13);
+            QVERIFY(!fonGlyph(ss, f, U'M', m));
         }
+    }
+
+    // The strike a size is drawn from on Windows: GDI's choice with raster scaling off, among the strikes of both
+    // resolutions (stock 516.1689). A size is in points.
+    void picksTheStrikeGdiPicks() {
+        auto height = [](const std::string& family, int pt) {
+            return dsLayoutMaptext("<span style=\"font-family:'" + family + "';font-size:" + std::to_string(pt) + "pt\">A</span>", "", 0)
+                .faces.at(0)
+                .height;
+        };
+        for (auto [pt, h] : {std::pair{8, 13}, {14, 24}, {16, 25}, {17, 29}, {22, 29}, {23, 36}, {28, 37}, {29, 46}, {79, 46}})
+            QCOMPARE(height("MS Sans Serif", pt), h);
+        QCOMPARE(height("Small Fonts", 7), 11);
+        QCOMPARE(height("Small Fonts", 8), 13);
+        QCOMPARE(height("Small Fonts", 58), 13);
+        QCOMPARE(height("Courier", 16), 20);
+        QCOMPARE(height("Courier", 19), 25);
     }
 
     // Glyphs are only drawn from a strike whose metrics and every advance width match the strike the layout used.
@@ -129,8 +155,8 @@ private slots:
         QVERIFY(!fonGlyph(ss, smallFonts(7), U'x', m));
         s = layoutStrike();
         while (s.widths[s.defaultChar - s.first] == s.widths[128 - s.first])
-            s.defaultChar++;  // a default char of another width
-        QVERIFY(!fonGlyph(parseFon(fontfile::fon({s})), smallFonts(7), U'A', m));
+            s.defaultChar++;  // a default char of another width, among the bytes Windows' files leave empty
+        QVERIFY(!fonGlyph(parseFon(fontfile::fon({s})), smallFonts(7), U'Ā', m));  // only what draws as it is refused
         s = layoutStrike();
         s.ascent = 8;
         QVERIFY(!fonGlyph(parseFon(fontfile::fon({s})), smallFonts(7), U'A', m));

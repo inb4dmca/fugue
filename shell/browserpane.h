@@ -72,6 +72,7 @@ public:
     void evalWhenReady(const QString& js);
     void markReady();
     bool ready() const { return ready_; }
+    quint64 document() const { return document_; }
     int callsRun() const { return callsRun_; }
     QString name;  // the browse window / control name this pane shows
 
@@ -93,6 +94,8 @@ protected:
     void resizeEvent(QResizeEvent* e) override;
 
 private:
+    void installBridge();
+    quint64 document_ = 0;
     void flush();
     void ensureFindBar();
     void placeFindBar();
@@ -105,6 +108,7 @@ private:
     int paneId_ = 0, callsRun_ = 0;
     bool ready_ = false;
     QStringList pending_;
+    qsizetype pendingChars_ = 0;
 };
 
 }  // namespace fugue::shell

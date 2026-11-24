@@ -8,6 +8,13 @@
 
 namespace fugue::skin {
 
+float fileSplitterPercent(const Elem& e) {
+    const std::string value = trimSpace(e.str("splitter", ""));
+    char* end = nullptr;
+    const float pct = std::strtof(value.c_str(), &end);
+    return !value.empty() && end == value.c_str() + value.size() && std::isfinite(pct) ? pct : float(kDefaultSplitter);
+}
+
 Rect Rect::intersect(const Rect& s) const {
     Rect r = *this;
     if (r.x0 < s.x0) r.x0 = s.x0;
@@ -240,7 +247,7 @@ void fillSlot(Ctx& c, const std::string& path, const std::string& side, std::str
 
 void layoutChild(Ctx& c, const Block& b, const Elem& e, const Rect& box, const Rect& clip, int depth) {
     std::string path = b.name + "." + e.name;
-    bool vert = e.boolv("is-vert", true);
+    bool vert = e.boolv("is-vert", false);
     std::string left = e.str("left", ""), right = e.str("right", "");
     // Live left/right (a winset) override the file; `live` distinguishes "never stated" from "set, maybe to empty".
     bool leftLive = false, rightLive = false;
@@ -255,25 +262,31 @@ void layoutChild(Ctx& c, const Block& b, const Elem& e, const Rect& box, const R
             rightLive = true;
         }
     }
-    // A side that names no window (tg's `left=null`) is hidden as an emptied one is.
-    if (!left.empty() && !c.f.window(left)) left.clear();
-    if (!right.empty() && !c.f.window(right)) right.clear();
-    // The clearing form: an emptied side is hidden and the other side fills the whole box, undivided. A side the skin
-    // leaves empty is emptied the same way unless the empty-slot rule would fill it from an on-show claimant (tg's
-    // output_selector_screen names only a left window and measures at the box's full size).
-    if (left.empty() && (!c.infer || slotClaimants(c.f, path, "left").empty())) leftLive = true;
-    if (right.empty() && (!c.infer || slotClaimants(c.f, path, "right").empty())) rightLive = true;
-    if (leftLive && left.empty() && !right.empty()) {
+    // A side that names no window (tg's `left=null`) is hidden as an explicitly emptied one is.
+    if (!left.empty() && !c.f.window(left)) {
+        left.clear();
+        leftLive = true;
+    }
+    if (!right.empty() && !c.f.window(right)) {
+        right.clear();
+        rightLive = true;
+    }
+    // Stock uses the whole CHILD for a single pane, whether the other side is
+    // omitted in the file or explicitly cleared. Offline preview can still infer
+    // an unstated pane from its on-show; an explicit live clear overrides inference.
+    const bool leftEmpty = left.empty() && (leftLive || !c.infer || slotClaimants(c.f, path, "left").empty());
+    const bool rightEmpty = right.empty() && (rightLive || !c.infer || slotClaimants(c.f, path, "right").empty());
+    if (leftEmpty && !rightEmpty) {
         c.t.slotList.push_back(Slot{path + ".left", Rect{}, slotClaimants(c.f, path, "left"), ""});
         fillSlot(c, path, "right", right, box, clip, depth + 1);
         return;
     }
-    if (rightLive && right.empty() && !left.empty()) {
+    if (rightEmpty && !leftEmpty) {
         c.t.slotList.push_back(Slot{path + ".right", Rect{}, slotClaimants(c.f, path, "right"), ""});
         fillSlot(c, path, "left", left, box, clip, depth + 1);
         return;
     }
-    double frac = e.floatv("splitter", kDefaultSplitter) / 100;
+    double frac = double(fileSplitterPercent(e)) / 100;
     auto ov = c.splits.find(path);
     if (ov != c.splits.end()) frac = ov->second;
     frac = clampFrac(frac);
@@ -381,6 +394,59 @@ Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>&
     return t;
 }
 
+void layoutRuntime(Tree& tree, const File& file, const PropStore& props, const std::string& name,
+                   const std::string& parent, const std::string& type, uint64_t identity) {
+    // Runtime controls are siblings in their parent window, after file controls.
+    // They retain their own identity through visibility/geometry changes.
+    if (type != "BROWSER" && type != "MAP") return;
+    const auto* block = file.window(parent);
+    if (!block && type != "MAP") return;
+    Rect box;
+    if (block && block == findMainWindow(file))
+        box = tree.client;
+    else
+        for (const auto& c : tree.controls)
+            if (c.window == parent) {
+                box = c.box;
+                break;
+            }
+    Elem e;
+    e.name = name;
+    for (const char* key : {"pos", "size", "anchor1", "anchor2"}) {
+        std::string v;
+        if (props.get(name, key, v)) {
+            e.idx[key] = int(e.rows.size());
+            e.rows.push_back({key, v});
+        }
+    }
+    int dw = 0, dh = 0;
+    if (block)
+        designSize(*block, box, dw, dh);
+    else {
+        // Popup MAP geometry is browser-client-relative; Qt's actual parent
+        // supplies clipping. No invented main-window pane or default-map view.
+        int64_t x = 0, y = 0, width = 0, height = 0;
+        e.point("pos", x, y);
+        e.size("size", width, height);
+        if (width <= 0 || height <= 0 || width > 16384 || height > 16384 || std::abs(x) > 16384 || std::abs(y) > 16384)
+            return;
+        box = {0, 0, int(std::max<int64_t>(0, x) + width), int(std::max<int64_t>(0, y) + height)};
+        dw = box.dx();
+        dh = box.dy();
+    }
+    Control c;
+    c.window = parent;
+    c.name = name;
+    c.type = type;
+    c.box = box;
+    c.runtimeIdentity = identity;
+    c.full = anchorRect(e, {}, dw, dh, box);
+    c.rect = c.full.intersect(box);
+    c.offPane = box.empty() || c.rect.empty();
+    props.controlBool(parent, name, "is-visible", c.visible);
+    props.controlBool(parent, name, "is-disabled", c.disabled);
+    tree.controls.push_back(std::move(c));
+}
 bool isFloatingWindow(const File& f, const Block& b) {
     const Elem* m = b.main();
     if (!m || findMainWindow(f) == &b || m->boolv("is-pane", false)) return false;

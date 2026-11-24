@@ -1,7 +1,9 @@
 // skin/layout.h - a parsed skin laid out as control rectangles for one client rect.
 //
-// Stock DreamSeeker 516: an omitted `splitter` is 50; the divider is 4 px and comes out of the box BEFORE the fraction
-//   is applied; the split is a percentage preserved across resizes and clamped to 0..100 (tg's 2 and 97.5 are honoured,
+// Stock DreamSeeker 516: an omitted `splitter` is 50; fractional file values are retained; `is-vert` defaults false.
+//   A lone pane fills the CHILD without a divider, including an omitted opposite side.
+//   With two panes the divider comes out of the box BEFORE the fraction is applied. kSplitW is a fixed logical width, not native DPI parity (144-DPI stock measured a 5px divider).
+//   The split is a percentage preserved across resizes and clamped to 0..100 (tg's 2 and 97.5 are honoured,
 //   not pulled to 10 and 90); a pane window hosted in a splitter slot always fills the slot exactly (its MAIN anchors
 //   are never consulted); a control whose two anchors track the same edge keeps its designed extent on that axis.
 // The anchor formula is stock's (MEASURED): corner' = corner_design + trunc(actual * pct / 100) - trunc(design * pct / 100).
@@ -12,10 +14,11 @@
 //   inferSlots).
 // Quirk, matched on purpose: an empty result rect is the zero rect (0,0,0,0), not an empty rect at the control's corner.
 //   A divergence here would move an off-pane control.
+// SkinWindow places BUTTON widgets using full geometry and clips paint/input to rect without resizing the button.
 // Live property overlays: the layoutSkin() overload taking a PropStore (skin/props.h) lets a winset override, per
 //   control, is-visible / is-disabled / pos / size (applied in the window's design coordinates so the anchors still
-//   compose), and a CHILD's left / right. An empty live side hides its control and the other side takes the whole box,
-//   with no splitter (the clearing form). The overload without a PropStore lays out the file's own state.
+//   compose), and a CHILD's left / right. An empty side leaves the other pane the whole box, with no splitter.
+//   The overload without a PropStore lays out the file's own state, including optional slot inference.
 #pragma once
 #include <map>
 #include <string>
@@ -28,6 +31,10 @@ namespace fugue::skin {
 
 constexpr int kDefaultSplitter = 50;  // stock's default for an unstated splitter
 constexpr int kSplitW = 4;            // divider width
+
+// Stock stores CHILD percentages as float, including fractional DMF values.
+// Missing/malformed/nonfinite file values use the default; layout clamps separately.
+float fileSplitterPercent(const Elem& e);
 
 struct Rect {
     int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
@@ -50,7 +57,11 @@ struct Control {
     std::string top;   // the floating window it lives in (Tree::floats), "" = the main window
     std::string side;  // "left" / "right" / ""
     const Elem* elem = nullptr;
+    uint64_t runtimeIdentity = 0;  // zero for file controls
 };
+
+void layoutRuntime(struct Tree&, const File&, const PropStore&, const std::string& name, const std::string& parent,
+                   const std::string& type, uint64_t identity);
 
 struct Splitter {
     std::string path;

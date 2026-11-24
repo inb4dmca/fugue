@@ -30,7 +30,7 @@ On macOS, use `Fugue.app/Contents/MacOS/Fugue` in place of `fugue-qt`, or open t
   `dreamseeker "byond://host:port" -pager`, so existing launch scripts and `byond://` handlers work.
 * Guests and signed-in players both work; signing in lets servers that require a BYOND key accept you.
 * A game started from the launcher, or as `dreamseeker`, plays as the signed-in account. `client --connect`,
-  `--state-dir` and `--screenshot` runs play as a guest unless `--account` names one.
+  and `--state-dir` runs play as a guest unless `--account` names one.
 * Closing the launcher window while a game runs hides it to a tray icon (Open Fugue, Exit) and the game keeps running;
   the window comes back when the game ends. A desktop with no tray, such as GNOME without an AppIndicator extension,
   minimizes it instead. **Exit**, in the gear menu or the tray (or Cmd+Q on macOS), asks before it closes a running game.
@@ -39,15 +39,18 @@ On macOS, use `Fugue.app/Contents/MacOS/Fugue` in place of `fugue-qt`, or open t
 * Logout keeps the saved sign-in (`identity-<key>`); **Preferences > Clear cache** removes saved sign-ins, the
   resource cache and the login-certificate cache, and keeps `pager.json` and the machine id.
 
-## Experimental GPU rendering
+## Screenshots
 
-A build configured with `-DFUGUE_BUILD_GPU=ON` can draw the map with the GPU: start with `--renderer=gpu`, or pick
-**Client > Renderer** in the window-icon menu or in Options & Messages, which switches without reconnecting, or tick
-**Use GPU rendering (experimental)** in the pager's Preferences, which is the same setting and applies from the next
-join. The same menu has **Performance metrics**, an overlay of per-map timings. Both choices are kept in `display.ini`
-in the state directory (`~/.fugue`, or `--state-dir`); `--renderer` overrides the saved choice for one launch. A list
-the GPU cannot draw is drawn on the CPU. Recording the GPU commands runs on the GUI thread, so a heavy scene can delay
-input. A build without GPU support refuses `--renderer=gpu`.
+`.screenshot auto` saves the default map to `<state dir>/screenshots/` as
+`<world name> YYYY-MM-DD HHMMSS.png` and reports the path in chat. Captures within
+the same second get numbered suffixes. `.screenshot` or **Client > Screenshot...**
+opens a PNG save dialog instead. The built-in skin binds these to **F2** and
+**Shift+F2**, respectively; world skins can supply their own bindings.
+
+Screenshots contain the last complete map composition at native resolution,
+including HUD and effects, without display zoom, letterboxing, window chrome or
+the performance overlay. A map that has not rendered a complete frame cannot be
+captured.
 
 ## For server operators
 
@@ -76,7 +79,7 @@ The table uses `~` for this home directory:
 
 | Path | Contents |
 |---|---|
-| `~/.fugue/` | `pager.json` (server list, settings), `identity-<key>` (cached sign-ins), `key.txt`, `byond-sid` and `sid` (machine ids; `sid` is the one servers see, and lives under `$XDG_STATE_HOME/fugue/` when that is set), `cauth.txt` (login-certificate cache), `macros.dmf` and `macros/<host>_<port>/macros.dmf` (global and per-server user macros), `qt/` (launcher flags such as the remembered guest choice), `rsc/` (the shared resource cache), `audio.log`, `session.log` (why each game session ended), `client.log` |
+| `~/.fugue/` | `pager.json` (server list, settings), `identity-<key>` (cached sign-ins), `key.txt`, `byond-sid` and `sid` (machine ids; `sid` is the one servers see, and lives under `$XDG_STATE_HOME/fugue/` when that is set), `cauth.txt` (login-certificate cache), `macros.dmf` and `macros/<host>_<port>/macros.dmf` (global and per-server user macros), `qt/` (launcher flags such as the remembered guest choice), `screenshots/` (automatic map PNGs), `rsc/` (the shared resource cache), `audio.log`, `session.log` (why each game session ended), `client.log` |
 | `~/.byond/cfg/key.txt` | an existing BYOND key, imported at sign-in. If that file exists, sign-in updates it in place. |
 
 ## Environment
@@ -86,10 +89,8 @@ A command-line flag, where one exists, wins.
 | Variable | Meaning |
 |---|---|
 | `FUGUE_AUDIO` | audio sink; same as `--audio` |
-| `FUGUE_GPU_BACKEND` | GPU builds only: renderer backend, `d3d11`, `metal` or `opengl` (default: the platform's) |
-| `FUGUE_GPU_SOFTWARE` | GPU builds only: `1` prefers a software GPU adapter (D3D11 WARP) |
-| `FUGUE_SCENE_PROFILE` | `1`: log the main map's scene-assembly time and appearance-cache hits once a second, and RSS plus the model's table sizes (`[counters]`) |
-| `FUGUE_SCENE_TRACE` | path: a CSV row per map per assembly (time, cache hits, parses, cache size) |
+| `FUGUE_GPU_BACKEND` | the map's renderer backend, `d3d11`, `metal` or `opengl` (default: the platform's) |
+| `FUGUE_GPU_SOFTWARE` | `1` prefers a software GPU adapter (D3D11 WARP) |
 | `FUGUE_APPEARANCE_GC` | `0`: keep every appearance the server ever sent (default: erase the unreferenced ones and ask for them back with c2s 0x000c, as stock does; `model/appgc.h`) |
 | `FUGUE_IDENTITY` | path of the identity file to log in with |
 | `FUGUE_PAGER_CONFIG` | path of `pager.json` |

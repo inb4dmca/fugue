@@ -1,6 +1,8 @@
-// shell/ unit tests (offscreen QPA): skin -> widget geometry, the map widget's pixel path, and the focus table.
+// shell/ unit tests (offscreen QPA): skin -> widget geometry and the focus table.
 #include <QApplication>
 #include <QLineEdit>
+#include <QFile>
+#include <QPushButton>
 #include <QSignalSpy>
 #include <QtTest>
 #include "shell/browserpane.h"
@@ -66,46 +68,83 @@ private slots:
         delete win;
     }
 
+    void paneClipsButtonWithoutResizingIt() {
+        QFile file(QFINDTESTDATA("../../tests/data/splitter-world/skin.dmf"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        SkinWindow window;
+        QVERIFY(window.loadSkin(file.readAll().toStdString()).isEmpty());
+        window.resize(window.designSize());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto* button = window.findChild<QPushButton*>("row.menu");
+        QVERIFY(button);
+        QCOMPARE(button->height(), 6);  // 9px pane, y=5, 27px design button in a 30px design pane
+        QCOMPARE(button->mask().boundingRect(), QRect(0, 0, button->width(), 4));
+        // The clipped tail must not receive input in the adjacent pane.
+        const QPoint tail = button->mapTo(&window, QPoint(1, 5));
+        QVERIFY(window.childAt(tail) != button);
+        QVERIFY(window.childAt(button->mapTo(&window, QPoint(1, 1))) == button);
+        window.live()->winset("nested.split", "splitter=0");
+        window.syncFromLive();
+        QVERIFY(!button->isVisible());
+        window.live()->winset("nested.split", "splitter=50");
+        window.syncFromLive();
+        QVERIFY(button->isVisible());
+        QCOMPARE(button->height(), 216);
+        QCOMPARE(button->mask().boundingRect().height(), 214);
+        // A smaller design button fully inside the pane removes the previous mask.
+        window.resize(640, 880 + window.statusBarHeight());
+        window.live()->winset("row.menu", "size=88x1");
+        window.syncFromLive();
+        QVERIFY(button->mask().isEmpty());
+        window.close();
+        win->activateWindow();
+        QVERIFY(QTest::qWaitFor([&] { return win->isActiveWindow(); }));
+    }
+    void singleChildBrowserFillsPane() {
+        QFile file(QFINDTESTDATA("../../tests/data/child-sizing-world/skin.dmf"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        SkinWindow window;
+        QVERIFY(window.loadSkin(file.readAll().toStdString()).isEmpty());
+        window.resize(window.designSize());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto* browser = window.findChild<BrowserPane*>("chat.browser");
+        QVERIFY(browser);
+        QCOMPARE(browser->geometry(), QRect(0, 160, 300, 150));
+        QVERIFY(!window.splitterHandle("main.nested"));
+        window.live()->winset("main.nested", "size=420x210");
+        window.syncFromLive();
+        QCOMPARE(browser->geometry(), QRect(0, 160, 420, 210));
+        window.live()->winset("main.nested", "right=extra_right");
+        window.syncFromLive();
+        // Default axis is horizontal; attaching a second pane brings the divider back.
+        QCOMPARE(browser->geometry(), QRect(0, 160, 420, 103));
+        QVERIFY(window.splitterHandle("main.nested"));
+        window.live()->winset("main.nested", "right=\"\"");
+        window.syncFromLive();
+        QCOMPARE(browser->geometry(), QRect(0, 160, 420, 210));
+        QVERIFY(window.splitterHandle("main.nested")->isHidden());
+        window.close();
+        win->activateWindow();
+        QVERIFY(QTest::qWaitFor([&] { return win->isActiveWindow(); }));
+    }
     void designSizeAndMapRect() {
         // the MAIN window states no `statusbar`, so it gets DreamSeeker's default strip below the client area
         QCOMPARE(win->statusBarHeight(), 18);
         QCOMPARE(win->designSize(), QSize(560, 560 + 18));
-        QCOMPARE(win->mapControlRect(), QRect(0, 0, 480, 480));
+        QCOMPARE(win->map()->geometry(), QRect(0, 0, 480, 480));
     }
     void relayoutOnResize() {
         win->resize(800, 700);
-        QCOMPARE(win->mapControlRect().topLeft(), QPoint(0, 0));  // anchors none: designed extent kept
-        QCOMPARE(win->mapControlRect().size(), QSize(480, 480));
+        QCOMPARE(win->map()->geometry().topLeft(), QPoint(0, 0));  // anchors none: designed extent kept
+        QCOMPARE(win->map()->size(), QSize(480, 480));
         auto* in = win->findChild<QLineEdit*>();
         QVERIFY(in);
         QCOMPARE(in->width(), 800);                 // anchored 0%..100% horizontally
         QCOMPARE(in->y(), 500 + (700 - 18 - 560));  // anchored to the client area's bottom edge (above the status bar)
         win->resize(560, 560);
         QCOMPARE(in->width(), 560);
-    }
-    void mapPaintsFramePixelForPixel() {
-        QImage f(480, 480, QImage::Format_RGBX8888);
-        for (int y = 0; y < 480; y++)
-            for (int x = 0; x < 480; x++) f.setPixel(x, y, qRgb(x & 255, y & 255, (x ^ y) & 255));
-        win->setMapFrame(f);
-        QImage g = win->grab().toImage().convertToFormat(QImage::Format_RGB32).copy(win->mapControlRect());
-        QCOMPARE(g, f.convertToFormat(QImage::Format_RGB32));  // scale 1: an exact blit
-        QCOMPARE(win->map()->scale(), 1);
-    }
-    void integerZoomIsPointSampled() {
-        win->map()->setIconSize(64);  // zoom 2
-        QImage f(100, 100, QImage::Format_RGBX8888);
-        for (int y = 0; y < 100; y++)
-            for (int x = 0; x < 100; x++) f.setPixel(x, y, qRgb(x * 2, y * 2, 77));
-        win->setMapFrame(f);
-        QCOMPARE(win->map()->scale(), 2);
-        QImage g = win->grab().toImage().convertToFormat(QImage::Format_RGB32);
-        QRect ir = win->map()->imageRect().translated(win->mapControlRect().topLeft());
-        QCOMPARE(ir.size(), QSize(200, 200));
-        for (int y = 0; y < 200; y += 7)
-            for (int x = 0; x < 200; x += 5)  // every sampled pixel is a source pixel, no blends
-                QCOMPARE(g.pixel(ir.x() + x, ir.y() + y), f.pixel(x / 2, y / 2) | 0xff000000u);
-        win->map()->setIconSize(32);
     }
     void focusTable() {
         QSignalSpy spy(filt, &FocusFilter::macroFired);
