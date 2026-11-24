@@ -788,6 +788,36 @@ private slots:
         flags[15] = 0; input.onFrame(0x003b,flags);
         QVERIFY(!input.clientHover()); QVERIFY(!input.clientMove());
     }
+    void pointerTarget() {
+        model::World w; w.viewZ = 2; w.bounds.maxX = w.bounds.maxY = 10;
+        w.atoms[42].appid = 5; w.atoms[42 | model::kRegistryA].appid = 6; w.hudAppid[42] = 9;
+        MapPointer p; p.session = 7; p.z = 2;
+        // A vis_contents mob member is the mob, on the map and under a HUD holder alike, never obj or HUD ref 42.
+        auto member = std::make_shared<VisHit>(); member->target = 42 | model::kRegistryA;
+        p.click.over = proto::enc::mobRef(42); p.visHit = member;
+        for (bool screen : {false, true}) {
+            p.screen = screen;
+            const auto named = mapPointerTarget(p,w);
+            QVERIFY(named && named->appid); QCOMPARE(named->kind,MapPointerTarget::Atom);
+            QCOMPARE(named->atom,42u | model::kRegistryA); QCOMPARE(*named->appid,6u);
+        }
+        p.visHit.reset();
+        auto named = mapPointerTarget(p,w); QCOMPARE(named->kind,MapPointerTarget::Hud); QCOMPARE(*named->appid,9u);
+        p.screen = false; QCOMPARE(*mapPointerTarget(p,w)->appid,6u);
+        p.click.over = proto::enc::objRef(42); QCOMPARE(*mapPointerTarget(p,w)->appid,5u);
+        p.click.over = proto::enc::objRef(77); named = mapPointerTarget(p,w); QVERIFY(named && !named->appid);
+        // A turf on the map is the cell on the map's z; a copied turf is its own cell on its own z.
+        p.click.over = proto::enc::turfRef(4,5);
+        const uint16_t x = uint16_t(p.click.over.x), y = uint16_t(p.click.over.y);
+        w.tiles[{x,y,2}] = 7; w.tiles[{uint16_t(x+1),y,5}] = 8;
+        named = mapPointerTarget(p,w); QCOMPARE(named->kind,MapPointerTarget::Turf);
+        QCOMPARE(named->cell,(std::array<uint16_t,3>{x,y,2})); QCOMPARE(*named->appid,7u);
+        auto copied = std::make_shared<VisHit>(); copied->turf = true; copied->cell = {uint16_t(x+1),y,5};
+        p.visHit = copied; named = mapPointerTarget(p,w);
+        QCOMPARE(named->cell,copied->cell); QCOMPARE(*named->appid,8u);
+        p.visHit.reset(); p.click.over = proto::enc::nullRef(); QVERIFY(!mapPointerTarget(p,w));
+
+    }
     void dragEncodingAndLifetime() {
         MapPointer src; src.session = 7; src.z = 2;
         src.click.over = proto::enc::objRef(42); src.click.loc = proto::enc::turfRef(3,4);

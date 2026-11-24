@@ -435,14 +435,21 @@ private slots:
         // whole recipe; cannot confuse a valid empty icon with a missing source.
         const auto empty=recipe(QByteArray::fromHex("01ffff000001"));
         const auto insert=recipe(QByteArray::fromHex("010000000008010200000008050041ffff00000000004402"));
-        auto read=[&](uint32_t id,QByteArray& out) { out=id==10?empty:id==20?insert:animation(2,true);return true; };
-        cache.begin(resources,read); const auto result=cache.lookup(1);
+        const auto source=animation(2,true);
+        auto read=[&](uint32_t id,QByteArray& out) { out=id==10?empty:id==20?insert:source;return true; };
+        // A recipe gets a 2 ms slice per preparation and is finished by later ones.
+        auto finish=[&](IconCache& c,const IconCache::Read& r) {
+            IconCache::Result done; int preparations=0;
+            do { c.begin(resources,r); done=c.lookup(1); } while(!done.ready && ++preparations<1000);
+            return done;
+        };
+        const auto result=finish(cache,read);
         QCOMPARE(result.status,IconCache::Status::Ready); QVERIFY(result.ready);
         QCOMPARE(cache.icon(20).state("")->frames,3); QCOMPARE(cache.icon(20).state("")->dirs,4);
         QCOMPARE(cache.icon(20).state("")->loop,2); QVERIFY(cache.icon(20).state("")->rewind);
         QCOMPARE(*cache.icon(20).state("")->ends,*cache.icon(30).state("")->ends);
         const auto retained=cache.icon(20).sheet;
-        cache.trim(0,0); cache.begin(resources,read); QVERIFY(cache.lookup(1).ready);
+        cache.trim(0,0); QVERIFY(finish(cache,read).ready);
         QCOMPARE(cache.icon(20).sheet,retained);
         for (const auto& body : {
                 select(2,"")+QByteArray::fromHex("4bff7fff7f"), // huge Scale
@@ -452,8 +459,7 @@ private slots:
                 select(2,"")+QByteArray::fromHex("4a10")+QByteArray(64,'\0'), // unsupported matrix
                 select(2,"")+QByteArray::fromHex("06")}) {
             IconCache bounded;
-            bounded.begin(resources,[&](uint32_t id,QByteArray& out){out=id==20?recipe(body):animation();return true;});
-            const auto refused=bounded.lookup(1);
+            const auto refused=finish(bounded,[&](uint32_t id,QByteArray& out){out=id==20?recipe(body):animation();return true;});
             QVERIFY(refused.status==IconCache::Status::SafetyLimit || refused.status==IconCache::Status::UnsupportedRecipe);
             QVERIFY(bounded.icon(20).sheet.isNull());
         }

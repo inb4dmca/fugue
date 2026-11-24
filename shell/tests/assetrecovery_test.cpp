@@ -42,6 +42,13 @@ class AssetRecoveryTest : public QObject {
             out = it->second; return true;
         });
     }
+    // A recipe gets a 2 ms slice per preparation and is finished by later ones, as the client's frames do.
+    IconCache::Result finish(uint32_t id) {
+        IconCache::Result result;
+        int preparations = 0;
+        do { begin(); result = resolve(id); } while (!result.ready && ++preparations < 1000);
+        return result;
+    }
     IconCache::Result resolve(uint32_t id) {
         const auto& resources = session_.world().resources;
         const auto it = std::find_if(resources.begin(), resources.end(), [id](const auto& r){return r.first == id;});
@@ -97,7 +104,7 @@ private slots:
     }
     void dreamDaemonRecipes() {
         QFETCH(QString,name); QFETCH(uint32_t,id);
-        begin(); const auto result = resolve(id);
+        const auto result = finish(id);
         QVERIFY2(result.ready,IconCache::statusName(result.status));
         QCOMPARE(result.status,IconCache::Status::Ready);
         // 45-degree exact ties differ in DD's x87 vs DS's float32 arithmetic.
@@ -115,7 +122,7 @@ private slots:
         int compared = 0;
         for (const auto& c : cases()) {
             if (animated.contains(c.name)) continue;
-            begin(); QVERIFY(resolve(c.id).ready);
+            QVERIFY(finish(c.id).ready);
             const auto& icon = cache_.icon(c.id);
             const auto frame = icon.frame(c.name == "c_insert" ? "ins" : c.name == "d_insfull" ? "x" : "",2);
             const int x0 = (c.x-1)*32, y0 = stock.height()-(c.y+1)*32;
@@ -153,7 +160,7 @@ private slots:
         QCOMPARE(icon.sheet.pixelColor(0,0),QColor(Qt::red));
         QCOMPARE(icon.state("")->flickFrameAt(100000000,0),-1);
         for (const auto& c : cases()) if (c.name == "e_insmoving") {
-            begin(); QVERIFY(resolve(c.id).ready);
+            QVERIFY(finish(c.id).ready);
             const auto& generated = cache_.icon(c.id);
             QVERIFY(generated.metadata); QCOMPARE(generated.metadata->size(),size_t(1));
             const auto& state=generated.metadata->front();

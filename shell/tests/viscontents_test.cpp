@@ -274,6 +274,60 @@ private slots:
     QVERIFY(shell::mapPointerCurrent(*hit,w,0));
     w.tileRevision[{10,10,0}]=5; QVERIFY(!shell::mapPointerCurrent(*hit,w,0));
  }
+ // What a menu entry for a vis member targets, against the picks MEASURED on stock DreamSeeker 516.1689
+ // (tests/data/vismenu-world/stock.tsv part B, entry 1: the member itself). A verb ran on the member at its own place;
+ // for the turf from another z stock ran nothing, and the target is then not on the map's z.
+ void menuTargetsLikeStock() {
+    QFile file(QString(FUGUE_TEST_DATA_DIR)+"/vismenu-world/stock.tsv");
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    bool partB=false; int rows=0;
+    auto cell=[](const QString& text) { const auto p=text.split(',');
+        return std::array<int,3>{p.value(0).toInt(),p.value(1).toInt(),p.value(2).toInt()}; };
+    for (const auto& raw:file.readAll().split('\n')) {
+        const auto line=QString::fromUtf8(raw).trimmed();
+        if (line.startsWith("# part ")) partB=line.startsWith("# part B");
+        const auto column=line.split('\t');
+        if (!partB || line.startsWith('#') || column.size()!=5 || column[2]!="1") continue;
+        ++rows;
+        const auto member=column[1].split(' '), ran=column[4].split(' ');
+        const bool mob=member[0]=="mob", placed=member[1]!="-";
+        const auto at=cell(member[1]);
+        auto w=world(); w.atoms.erase(43);
+        const uint32_t key=5|model::kRegistryA;
+        if (mob) {
+            w.atoms[5].appid=1; w.atoms[5].renderIdentity=7; // an obj with the mob's number is not the member
+            auto& m=w.atoms[key]; m.appid=2; m.key=101; m.haveKey=true; m.renderIdentity=8;
+            if (placed) { m.hasPos=true; m.x=uint16_t(at[0]); m.y=uint16_t(at[1]); m.z=uint16_t(at[2]-1); }
+            QVERIFY(bind(w,42,{{3,5}}));
+        } else {
+            w.tiles[{uint16_t(at[0]-1),uint16_t(at[1]-1),uint16_t(at[2]-1)}]=2;
+            QVERIFY(bind(w,42,{{1,uint32_t(((at[2]-1)*20+at[1]-1)*20+at[0]-1)}}));
+        }
+        Scene scene; const auto sprites=scene.draw(w);
+        const auto frame=scene.terrain.prepare(w,{},1,false);
+        const shell::MapSprite* shown=nullptr;
+        for (const auto& s:sprites) if (s.visHit) shown=&s;
+        QVERIFY2(shown,qPrintable(column[0]));
+        const auto hit=shell::mapPointerAt(shown->position-frame.source.topLeft()+QPoint(16,16),frame.source.size(),
+            frame.source.size()/32,frame.source,frame.geometry,"map",true,sprites);
+        QVERIFY2(hit && hit->visHit && shell::mapPointerCurrent(*hit,w,0),qPrintable(column[0]));
+        const auto named=shell::mapPointerTarget(*hit,w);
+        QVERIFY2(named && named->appid,qPrintable(column[0])); QCOMPARE(*named->appid,2u);
+        if (mob) {
+            QCOMPARE(named->kind,shell::MapPointerTarget::Atom); QCOMPARE(named->atom,key);
+            const auto where=cell(ran.value(1)); const auto& m=w.atoms.at(named->atom);
+            QCOMPARE(m.hasPos,where[2]!=0);
+            if (m.hasPos) QCOMPARE((std::array<int,3>{m.x,m.y,m.z+1}),where);
+        } else {
+            QCOMPARE(named->kind,shell::MapPointerTarget::Turf);
+            const std::array<int,3> own{named->cell[0]+1,named->cell[1]+1,named->cell[2]+1};
+            QCOMPARE(own,at);
+            if (ran[0]=="-") QVERIFY(named->cell[2]!=hit->z); // no verb reaches it by cell on the map's z
+            else { QCOMPARE(own,cell(ran.value(1))); QCOMPARE(int(named->cell[2]),hit->z); }
+        }
+    }
+    QCOMPARE(rows,5);
+ }
  void turfAndImageTailLifetimes() {
     auto w=world(); w.tiles[{5,5,0}]=1;
     const auto turf=model::VisContents::turf(5,5,0);
