@@ -394,8 +394,8 @@ void MapWidget::moveGestures(QMouseEvent* e) {
             continue;
         }
         auto p = gesturePointer(e, Qt::MouseButton(it.key()), *press.source);
-        if (!p) {
-            it = presses_.erase(it);
+        if (!p) {  // the scene changed under the button: no drag steps, the release ends it (mouseReleaseEvent)
+            ++it;
             continue;
         }
         // Straight from the map to outside every window, the step still names the last cell dragged over, with the
@@ -487,6 +487,17 @@ void MapWidget::mouseReleaseEvent(QMouseEvent* e) {
             hoverSent_.reset();
         } else if (!p->outside) {
             p->kind = press.dbl ? MapPointer::DoubleClick : MapPointer::Click;
+            input_(*p);
+        }
+    } else if (press.source->session == inputGeometry_.session && rect().contains(e->position().toPoint())) {
+        // The map moved to another z under the held button. The release is then an ordinary one on what is under the
+        // pointer now, and a click on it (stock 516.1689: pressed on an obj whose MouseDown moves the mob to another z,
+        // the release reaches MouseUp and Click of the turf there). Nothing of the old scene is named.
+        if (auto p = pointerAt(e->position(), e->globalPosition().toPoint(), e->modifiers(), e->button());
+            p && !p->backgroundHidden) {
+            p->kind = MapPointer::Up;
+            input_(*p);
+            p->kind = MapPointer::Click;
             input_(*p);
         }
     }
@@ -657,10 +668,11 @@ void MapWidget::render(QRhiCommandBuffer* cb) {
             renderedSequence_ = latest->sequence;
             applyFrame(latest->terrain, latest->source, latest->timing);
             sprites_ = latest->sprites;
-            if (geometry_.session != latest->geometry.session || geometry_.z != latest->geometry.z) {
-                cancelGestures();
+            // Another session ends every held button. Another z of the same session keeps them: their release is an
+            // ordinary one on the new scene (mouseReleaseEvent), and they report no drag in between.
+            if (geometry_.session != latest->geometry.session) cancelGestures();
+            if (geometry_.session != latest->geometry.session || geometry_.z != latest->geometry.z)
                 wheelRemainder_ = {};
-            }
             geometry_ = latest->geometry;
         }
     }
