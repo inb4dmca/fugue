@@ -3,6 +3,7 @@
 // 2 px for every move that lands while the sprite is still gliding the way it moves (cap icon/2).
 // Data: tests/data/glide-zero/measured.txt, camera shifts measured on stock DreamSeeker (header there).
 #include <QtTest>
+#include "tests/testmain.h"
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -100,5 +101,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(GlideZeroTest)
+FUGUE_TEST_GUILESS_MAIN(GlideZeroTest)
 #include "glidezero_test.moc"

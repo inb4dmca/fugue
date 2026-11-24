@@ -1,6 +1,7 @@
 // Which account a client run plays as (pager/clientaccount.h). Each case runs under a scratch HOME holding a signed-in
 // pager.json and identity file, so a guest run must ignore that record.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QTemporaryDir>
 #include <set>
 #include "account/login.h"
@@ -228,5 +229,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(PagerClientAccount)
+FUGUE_TEST_GUILESS_MAIN(PagerClientAccount)
 #include "pager_clientaccount_test.moc"

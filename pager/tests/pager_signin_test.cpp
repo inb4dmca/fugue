@@ -1,6 +1,7 @@
 // pager_signin: the sign-in flow end to end against a fake hub on loopback, with a temp HOME and a synthetic account.
 // The fake hub answers the download-key request with a block encoded under the password, or with a refusal.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QTemporaryDir>
 #include "platform/socket.h"
 #include "tests/privatefile.h"
@@ -252,5 +253,5 @@ private slots:
         QCOMPARE(int(r.failure), int(pager::SignInFailure::MissingInput));
     }
 };
-QTEST_GUILESS_MAIN(PagerSignIn)
+FUGUE_TEST_GUILESS_MAIN(PagerSignIn)
 #include "pager_signin_test.moc"

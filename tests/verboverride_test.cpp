@@ -9,6 +9,7 @@
 // sent for each typed line against the same DD: the override's id on the own mob, and for Use-It, carried by two obj
 // types under two ids, a `Use-It word` listbox over both whose picks go out under each obj's own id.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <fstream>
 #include <regex>
 #include "model/verbmenu.h"
@@ -196,5 +197,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(VerbOverride)
+FUGUE_TEST_GUILESS_MAIN(VerbOverride)
 #include "verboverride_test.moc"

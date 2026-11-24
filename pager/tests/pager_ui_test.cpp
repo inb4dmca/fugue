@@ -21,6 +21,7 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QtTest>
+#include "tests/testmain.h"
 #include <algorithm>
 #include <functional>
 #include <future>
@@ -773,5 +774,5 @@ private slots:
         }
     }
 };
-QTEST_MAIN(PagerUi)
+FUGUE_TEST_MAIN(PagerUi)
 #include "pager_ui_test.moc"

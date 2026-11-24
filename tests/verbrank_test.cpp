@@ -15,6 +15,7 @@
 // DreamSeeker 516.1684 did for each typed line in its own fresh session: the frame, the `<Verb> word` listbox (and the
 // frame for a pick), the dialog, what it printed, or the command bar after a space.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <fstream>
 #include <regex>
 #include "model/verbmenu.h"
@@ -345,5 +346,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(VerbRank)
+FUGUE_TEST_GUILESS_MAIN(VerbRank)
 #include "verbrank_test.moc"

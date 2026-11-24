@@ -1,6 +1,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
+#include "tests/testmain.h"
 #include "audio/sink.h"
 
 class AudioSinkTest : public QObject {
@@ -84,5 +85,5 @@ private slots:
 #endif
     }
 };
-QTEST_GUILESS_MAIN(AudioSinkTest)
+FUGUE_TEST_GUILESS_MAIN(AudioSinkTest)
 #include "audio_sink_test.moc"

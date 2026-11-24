@@ -1,5 +1,6 @@
 // BYOND 516.1688 master opacity: one scenario, three execution profiles.
 #include <QtTest>
+#include "tests/testmain.h"
 #include "shell/tests/replayfixture.h"
 #include "shell/tests/gpucomparison.h"
 #include "shell/mapwidget.h"
@@ -263,5 +264,5 @@ private slots:
         QCOMPARE(receipts,45); QCOMPARE(menus,9);
     }
 };
-QTEST_MAIN(MasterOpacityTest)
+FUGUE_TEST_MAIN(MasterOpacityTest)
 #include "masteropacity_test.moc"

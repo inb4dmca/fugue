@@ -15,6 +15,10 @@ struct AnimationFixture {
         const auto frame = terrain.prepare(world, read, now, false);
         if (frame.image.isNull()) return {};
         const auto sprites = entities.prepare(world, frame, read, now, nullptr, true);
+        return raster(frame, sprites);
+    }
+    static QImage raster(const fugue::shell::TurfMap::Frame& frame, const fugue::shell::MapSprites& sprites) {
+        if (frame.image.isNull()) return {};
         QImage out(frame.source.size(), QImage::Format_ARGB32_Premultiplied); out.fill(Qt::black);
         QPainter painter(&out);
         for (const auto& sprite : sprites) {

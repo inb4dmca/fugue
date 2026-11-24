@@ -1,5 +1,6 @@
 // The browse() rules of model/browsing.h: parameter parsing, the output() hand-off, browse(file()) and the page-call bridge.
 #include <QtTest>
+#include "tests/testmain.h"
 #include "model/browsing.h"
 
 using namespace fugue::model;
@@ -186,5 +187,5 @@ private slots:
         QVERIFY(recs[1].name.empty());
     }
 };
-QTEST_APPLESS_MAIN(BrowsingTest)
+FUGUE_TEST_APPLESS_MAIN(BrowsingTest)
 #include "browsing_test.moc"

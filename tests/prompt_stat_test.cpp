@@ -2,6 +2,7 @@
 // (tab strip, row text, token gate, click and tab-select encodings). Cancel, row-click and tab-body bytes match stock
 // DreamSeeker on the wire; the request frames are the ones stock DreamDaemon emits for alert() and input().
 #include <QtTest>
+#include "tests/testmain.h"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -1027,5 +1028,5 @@ private slots:
     }
 };
 
-QTEST_APPLESS_MAIN(PromptStatTest)
+FUGUE_TEST_APPLESS_MAIN(PromptStatTest)
 #include "prompt_stat_test.moc"

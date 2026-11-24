@@ -11,6 +11,7 @@
 #include <QMenuBar>
 #include <QSignalSpy>
 #include <QtTest>
+#include "tests/testmain.h"
 #include "shell/skinwindow.h"
 
 using namespace fugue::shell;
@@ -305,7 +306,7 @@ private slots:
         }
     }
 };
-int main(int argc, char** argv) {
+int FUGUE_TEST_ENTRY(int argc, char** argv) {
     registerSchemes();
     QApplication app(argc, argv);
     ClientMenuTest test;

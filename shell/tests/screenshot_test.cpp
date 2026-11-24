@@ -1,4 +1,5 @@
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QTemporaryDir>
 #include <QFile>
 #include <QMenu>
@@ -83,5 +84,5 @@ private slots:
             QCOMPARE(routeCommand(command[0].toString().toStdString(), "", false).kind, Route::Screenshot);
     }
 };
-QTEST_MAIN(ScreenshotTest)
+FUGUE_TEST_MAIN(ScreenshotTest)
 #include "screenshot_test.moc"

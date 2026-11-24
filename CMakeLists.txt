@@ -71,6 +71,7 @@ find_package(ZLIB)   # gzip bundles; optional
 enable_testing()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})   # includes are "net/cipher.h", "proto/registry.h", ...
 include(cmake/FugueModule.cmake)
+include(cmake/FugueTests.cmake)
 
 # Module rule: a module directory's CMakeLists.txt calls `fugue_module(<target>)`, which globs <dir>/*.cpp into an
 # OBJECT library (some modules add options or tools after it). New .cpp files need no edit to any shared list. A new
@@ -103,6 +104,7 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt)
   add_subdirectory(tests)
 endif()
+fugue_finish_tests()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/cmake/devtree.cmake)
   include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/devtree.cmake)
 endif()

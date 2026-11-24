@@ -1,4 +1,5 @@
 #include <QtTest>
+#include "tests/testmain.h"
 #include <limits>
 #include "shell/iconcache.h"
 #include "shell/tests/iconfixture.h"
@@ -475,5 +476,5 @@ private slots:
         QVERIFY(cache.icon(10).frame("",2).isNull());
     }
 };
-QTEST_MAIN(IconCacheTest)
+FUGUE_TEST_MAIN(IconCacheTest)
 #include "iconcache_test.moc"

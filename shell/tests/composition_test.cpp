@@ -2,6 +2,7 @@
 // Flat rasterization is only an ordering oracle; native tests exercise QRhi.
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QDir>
 #include <QFile>
 #include <QPainter>
@@ -983,5 +984,5 @@ private slots:
         QCOMPARE(drawKey(5000,true,-1).band,17);
     }
 };
-QTEST_GUILESS_MAIN(Composition)
+FUGUE_TEST_GUILESS_MAIN(Composition)
 #include "composition_test.moc"

@@ -9,11 +9,11 @@ wire bytes are unchanged. This does not establish guest-account isolation.
 ## Retained expectations
 
 - `stock/result.json`: the three stock phase records consumed by
-  `masteropacity_test`, including **45 mouse receipts and nine Menu
+  the `masteropacity` suite, including **45 mouse receipts and nine Menu
   receipts**. This file is a test input, not an unconsumed run report.
 - `stock/frames-{control,two,zero}.txt` and `stock/res/`: independent wire/assets.
 - `stock/{control,two,zero}-map.png`: the three stock pixel goldens consumed by
-  the GPU and native profiles of `masteropacity_test`.
+  the GPU and native profiles of the `masteropacity` suite.
 - `MasterOpacityFixture::menu()`: separately transcribed original-rectangle menu
   ownership, not an inference from Click callbacks or generated pixels.
 
@@ -33,7 +33,7 @@ archive is required by the tests.
 
 ## Automated checks
 
-One executable, `shell/tests/masteropacity_test.cpp`, consumes this scenario through three CTest entries:
+The `masteropacity` suite in `shell/tests/masteropacity_test.cpp` runs in `fugue_tests` through three CTest entries:
 
 - `shell_masteropacity_portable`: 45 stock mouse receipts and nine menu stacks, plus fallback bounds and stale lifetimes.
 - `shell_masteropacity_gpu`: production QRhi output compared exactly with each stock PNG, without a MapWidget.
@@ -47,7 +47,10 @@ the window/input boundary, not desktop mouse automation, popup UX or live server
 
 Build first, then run `ctest --test-dir build -L master-opacity --output-on-failure`, or select one entry with `-R`.
 Windows multi-config builds also need `-C Release` and the configured build directory. Required capability failures
-are failures, not passing skips. See [profile setup and commands](../../../docs/BUILDING.md#master-opacity-scenario).
+are failures, not passing skips. See [profile setup and commands](../../../docs/BUILDING.md#test-profiles).
+
+The GPU profile uses software D3D11 on Windows and OpenGL on Linux/macOS. The native profile requires a window-system
+connection and checks both the platform's default backend and OpenGL. Linux can use Mesa with Xvfb.
 
 ## Reproduction
 

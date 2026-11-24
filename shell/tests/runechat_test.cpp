@@ -1,6 +1,7 @@
 // Wire-backed runechat placement, fade, deletion and MeasureText regressions.
 // Uses Qt glyph rasterization; does not establish stock GDI glyph/metric parity.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QFontDatabase>
 #include <fstream>
 #include "shell/entitymap.h"
@@ -105,5 +106,5 @@ private slots:
         QFAIL("missing historical MeasureText request");
     }
 };
-QTEST_MAIN(Runechat)
+FUGUE_TEST_MAIN(Runechat)
 #include "runechat_test.moc"

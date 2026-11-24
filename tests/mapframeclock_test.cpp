@@ -1,4 +1,5 @@
 #include <QtTest>
+#include "tests/testmain.h"
 #include "app/mapframeclock.h"
 using namespace std::chrono_literals;
 using fugue::MapFrameClock;
@@ -51,5 +52,5 @@ private slots:
         QCOMPARE(clock.wait(start + 90ms, start + 90ms).count(), 0LL);
     }
 };
-QTEST_GUILESS_MAIN(MapFrameClockTest)
+FUGUE_TEST_GUILESS_MAIN(MapFrameClockTest)
 #include "mapframeclock_test.moc"

@@ -4,6 +4,7 @@
 // pending offset toward the newest target); dropping the unfinished 30% instead jumps the view ~10 px a step.
 // tests/data/glidenpc-world: two non-player mobs falling behind their steps, which the catch-up keeps bounded.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -244,5 +245,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(GlideCarryTest)
+FUGUE_TEST_GUILESS_MAIN(GlideCarryTest)
 #include "glidecarry_test.moc"

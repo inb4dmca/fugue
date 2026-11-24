@@ -13,15 +13,21 @@ of each 96 px case crop and Fugue's difference from stock, from grabs named `<se
 `<set>-fugue/f0000.png`.
 
 `replay/` lets 30 sets be checked with no server and no DreamSeeker, on any host
-(`compositionplan_test::stockParityReplay`): `<set>.txt` is what DreamDaemon sent this client for the set
-(`FUGUE_RECORD_DIR=<dir>` on a client connected to the world, its `frames.txt`), `res/` the resources of all sets,
+(`compositiongpu` suite, `stockParityReplay` check, CTest `shell_composition_stock_gpu`): `<set>.txt` is what
+DreamDaemon sent this client for the set (`FUGUE_RECORD_DIR=<dir>` on a client connected to the world, its `frames.txt`),
+`res/` the resources of all sets,
 `<set>.png` stock's 576x384 map of the same world, grabbed six seconds after login, and `recorded.tsv` the BYOND
 version and display scale of each recording. `tools/stockprobe/stockprobe.py record <set>...` writes them all; a test that
 fails saves what it drew in the temporary directory and names the file. The test replays the frames, draws the map
 offscreen with the real renderer and allows no channel of any pixel more than 8 levels from stock's. It passes on
 Direct3D 11 (hardware and Windows' software device, which the test uses), on OpenGL with an NVIDIA driver, and on Linux
 with Mesa's llvmpipe (Ubuntu 24.04 under WSL, Qt 6.8.3, xvfb); Qt's offscreen platform has no OpenGL on Linux, so CI runs
-it in a step of its own. Stock's images of these sets did not change between a display at 150 % and at 100 %.
+the `gpu` CTest profile under Xvfb. Stock's images of these sets did not change between a display at 150 % and at 100 %.
+
+Run `ctest --test-dir build -R '^shell_composition_stock_gpu$' --output-on-failure` after building, with the
+configured build directory and `-C Release` for Windows multi-config builds. A missing GPU fails the selected check.
+The test requires the wire/image inventory to match `recorded.tsv`; it does not silently drop missing screenshots.
+See [test profiles](../../../docs/BUILDING.md#test-profiles) for platform setup.
 
 The other sets are compared as whole grabs or by eye and have no replay: `plane-alpha-mask*`, `lighting-*`,
 `client-*`, `client-dir-*`, `screen-loc-*` and `moving-atoms`. Sets that drew maptext were removed; the maptext rules

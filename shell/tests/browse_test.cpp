@@ -17,6 +17,7 @@
 #include <QTemporaryDir>
 #include <QWebEngineProfile>
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QLineEdit>
 #include "shell/browsehost.h"
 #include "shell/localorigin.h"
@@ -1782,22 +1783,23 @@ private slots:
     }
 };
 
-int main(int argc, char** argv) {
+template<class Test>
+static int runBrowserTest(int argc, char** argv) {
     registerSchemes();
     QApplication app(argc, argv);
-    int rc = 0;
-    {
-        BrowseTest t;
-        rc |= QTest::qExec(&t, argc, argv);
-    }
-    {
-        DockTest t;
-        rc |= QTest::qExec(&t, argc, argv);
-    }
-    {
-        RuntimeBrowserTest t;
-        rc |= QTest::qExec(&t, argc, argv);
-    }
-    return rc;
+    Test test;
+    return QTest::qExec(&test, argc, argv);
+}
+
+int FUGUE_TEST_ENTRY(int argc, char** argv) {
+    return runBrowserTest<BrowseTest>(argc, argv);
+}
+
+int fugue_run_browse_dock(int argc, char** argv) {
+    return runBrowserTest<DockTest>(argc, argv);
+}
+
+int fugue_run_browse_runtime(int argc, char** argv) {
+    return runBrowserTest<RuntimeBrowserTest>(argc, argv);
 }
 #include "browse_test.moc"

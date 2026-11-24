@@ -12,9 +12,9 @@
 #include <QJsonObject>
 
 namespace fugue::shell::test {
-// A retained snapshot through the production model and scene preparation. Set
-// session.setIngestClockNs() before load() when the snapshot has a known clock;
-// refresh() samples that state without ingesting or inventing further events.
+// Retained inputs through the production model and scene preparation. load()
+// builds a snapshot; timed scenarios readFrames(), ingest() at recorded instants,
+// then refresh() at each checkpoint. The wire reader does not interpret clocks.
 struct ReplayFixture {
     model::Session session;
     TurfMap terrain;
@@ -35,19 +35,27 @@ struct ReplayFixture {
         frame=terrain.prepare(session.world(),reader,sampleNs,false);
         sprites=entities.prepare(session.world(),frame,reader,sampleNs,nullptr,true);
     }
-    bool load(const QString& frames = "frames.txt", const QString& fixture = "local-relay-world",
-              const QString& assetsFixture = {}, int64_t sampleNs = 0) {
+    template<class Consume>
+    bool readFrames(const QString& frames, const QString& fixture, Consume consume) {
         error.clear();
         const QString dir=QString(FUGUE_TEST_DATA_DIR)+'/'+fixture;
-        const QString resDir=QString(FUGUE_TEST_DATA_DIR)+'/'+(assetsFixture.isEmpty() ? fixture : assetsFixture)+"/res";
         QFile wire(dir+'/'+frames);
         if (!wire.open(QIODevice::ReadOnly)) { error="Cannot read "+wire.fileName(); return false; }
         for (const auto& line:wire.readAll().split('\n')) {
             if (!line.startsWith("0x")) continue;
             const int at=int(line.indexOf(' ',line.indexOf("len=")));
             const auto body=at<0 ? QByteArray{} : QByteArray::fromHex(line.mid(at+1));
-            session.ingest(uint16_t(line.mid(2,4).toUInt(nullptr,16)),Bytes(body.begin(),body.end()));
+            consume(uint16_t(line.mid(2,4).toUInt(nullptr,16)),Bytes(body.begin(),body.end()));
         }
+        return true;
+    }
+    void ingest(uint16_t type, const Bytes& body, int64_t arrivalNs) {
+        session.setIngestClockNs(arrivalNs);
+        session.ingest(type,body);
+    }
+    bool loadResources(const QString& fixture) {
+        error.clear();
+        const QString resDir=QString(FUGUE_TEST_DATA_DIR)+'/'+fixture+"/res";
         if (!QDir(resDir).exists()) { error="Missing resources: "+resDir; return false; }
         for (const auto& name:QDir(resDir).entryList(QDir::Files)) {
             QFile file(resDir+'/'+name);
@@ -55,8 +63,14 @@ struct ReplayFixture {
             const auto data=file.readAll(); const auto id=name.toUInt(nullptr,16); resources[id]=data;
             session.noteResource(id,Bytes(data.begin(),data.end()),"");
         }
+        return true;
+    }
+    bool load(const QString& frames = "frames.txt", const QString& fixture = "local-relay-world",
+              const QString& assetsFixture = {}, int64_t sampleNs = 0) {
+        if (!readFrames(frames,fixture,[&](uint16_t type,const Bytes& body) { session.ingest(type,body); })) return false;
+        if (!loadResources(assetsFixture.isEmpty() ? fixture : assetsFixture)) return false;
         refresh(sampleNs);
-        if (sprites.empty()) { error="Empty scene: "+wire.fileName(); return false; }
+        if (sprites.empty()) { error="Empty scene: "+fixture+'/'+frames; return false; }
         return true;
     }
     std::string targetName(const MapPointer& p) const {

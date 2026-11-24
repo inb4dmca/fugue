@@ -3,24 +3,14 @@
 // parallel sequences overlap, a head step starts at its own StepDelay, a direct client.pixel_* set shifts a tween in
 // flight, and vg's directional_recoil fired every two ticks holds the view kicked until the burst ends.
 #include <QtTest>
-#include <fstream>
+#include "tests/testmain.h"
 #include "model/world.h"
-#include "net/bytes.h"
+#include "shell/tests/replayfixture.h"
 #include "shell/tests/animationfixture.h"
 
 using namespace fugue;
 
 namespace {
-Bytes unhex(const std::string& h) {
-    Bytes b;
-    auto v = [](char c) { return c <= '9' ? c - '0' : (c | 32) - 'a' + 10; };
-    for (size_t i = 0; i + 1 < h.size(); i += 2) b.push_back(uint8_t(v(h[i]) << 4 | v(h[i + 1])));
-    return b;
-}
-std::string slurp(const std::string& p) {
-    std::ifstream f(p, std::ios::binary);
-    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-}
 constexpr int64_t kT0 = 1'000'000'000'000'000'000;
 constexpr int64_t kTick = 100'000'000;
 constexpr uint32_t kRes = 0x163d55fd;
@@ -36,25 +26,31 @@ class ClientAnim : public QObject {
         int tick;
     };
     std::vector<Frame> frames_;
-    std::string resBytes_;
-    AnimationFixture renderer_;
-    std::map<int, model::Session> upTo_;
+    std::unique_ptr<shell::test::ReplayFixture> replay_;
+    size_t nextFrame_ = 0;
+    double sampledTick_ = -1;
 
-    // The session holding every frame that arrived by `tick`.
-    const model::Session& s(double tick) {
-        int last = int(tick);
-        auto [it, fresh] = upTo_.try_emplace(last);
-        if (!fresh) return it->second;
-        for (const Frame& f : frames_) {
-            if (f.tick > last) break;
-            it->second.setIngestClockNs(at(f.tick));
-            it->second.ingest(f.typ, f.body);
-        }
-        it->second.noteResource(kRes, Bytes(resBytes_.begin(), resBytes_.end()), "");
-        return it->second;
+    void reset() {
+        replay_ = std::make_unique<shell::test::ReplayFixture>();
+        nextFrame_ = 0;
+        sampledTick_ = -1;
     }
-
-    QImage image(double tick) { return renderer_.image(s(tick).world(), kRes, resBytes_, at(tick)); }
+    QImage image(double tick) {
+        if (!replay_ || tick < sampledTick_) reset();
+        while (nextFrame_ < frames_.size() && frames_[nextFrame_].tick <= int(tick)) {
+            const auto& frame = frames_[nextFrame_++];
+            replay_->ingest(frame.typ, frame.body, at(frame.tick));
+        }
+        // The original fixture supplies this one static resource after wire ingest;
+        // it does not record resource arrival times.
+        if (!replay_->loadResources("clientanim-world")) {
+            QTest::qFail(qPrintable(replay_->error), __FILE__, __LINE__);
+            return {};
+        }
+        replay_->refresh(at(tick));
+        sampledTick_ = tick;
+        return AnimationFixture::raster(replay_->frame, replay_->sprites);
+    }
     static uint32_t rgb(const QImage& img, int x, int y) { return img.pixel(x, y) & 0xffffff; }
 
     // The view offset at `tick`, read off where the player's tile is drawn: it sits at (160,160) unmoved, and the map
@@ -69,30 +65,29 @@ class ClientAnim : public QObject {
 
 private slots:
     void initTestCase() {
-        std::string dir = std::string(FUGUE_TEST_DATA_DIR) + "/clientanim-world";
-        std::ifstream f(dir + "/frames.txt");
-        QVERIFY(f);
-        std::string line;
-        std::getline(f, line);  // header
+        shell::test::ReplayFixture recording;
         int tick = 0;
-        while (std::getline(f, line)) {
-            QVERIFY(line.rfind("0x", 0) == 0);
-            size_t sp = line.find(' ', line.find("len="));
-            Frame fr{uint16_t(std::stoul(line.substr(2, 4), nullptr, 16)),
-                     sp == std::string::npos ? Bytes{} : unhex(line.substr(sp + 1)), 0};
-            if (fr.typ == S2C::Text && fr.body.size() > 1 && fr.body[0] == '@')
-                tick = std::stoi(std::string(fr.body.begin() + 1, fr.body.end()));
-            fr.tick = tick;
-            frames_.push_back(std::move(fr));
-        }
+        bool ordered = true;
+        QVERIFY2(recording.readFrames("frames.txt", "clientanim-world", [&](uint16_t type, const Bytes& body) {
+            if (type == S2C::Text && body.size() > 1 && body[0] == '@') {
+                bool valid = false;
+                const int next = QByteArray(reinterpret_cast<const char*>(body.data() + 1), qsizetype(body.size() - 1))
+                    .split('\0').front().toInt(&valid);
+                ordered = ordered && valid && next >= tick;
+                tick = next;
+            }
+            frames_.push_back({type, body, tick});
+        }), qPrintable(recording.error));
+        QVERIFY2(ordered, "Recorded tick markers must be valid and ordered");
         QCOMPARE(int(frames_.size()), 609);
-        char n[16];
-        std::snprintf(n, sizeof n, "%08x", kRes);
-        resBytes_ = slurp(dir + "/res/" + n);
-        QVERIFY(!resBytes_.empty());
+        QVERIFY2(recording.loadResources("clientanim-world"), qPrintable(recording.error));
+        QCOMPARE(recording.resources.size(), size_t(1));
+        QVERIFY(recording.resources.count(kRes) && !recording.resources.at(kRes).isEmpty());
         // Known-good unanimated control validates the adapter before chains.
         QCOMPARE(offset(30), QPoint(0, 0));
     }
+
+    void init() { reset(); }
 
     // animate(pixel_x = 32, time = 20, PARALLEL) at 31, then animate(pixel_y = 32, time = 20, PARALLEL) at 36: the
     // frame at 36 re-sends the first step and adds the second with flags 0x4 and StepDelay 0, so y runs 36 .. 56
@@ -134,7 +129,16 @@ private slots:
     // ends on 6, shifted by the -26 the set made.
     void directSetShiftsTween() {
         QCOMPARE(offset(105), QPoint(6, 0));
+        // The retained WorldState changes pixel_x from 32 to 6 at tick 106.
+        // Fractional sampling must not ingest that event early or change its arrival clock.
+        QVERIFY(!image(105.5).isNull());
+        QCOMPARE(replay_->session.world().viewPixelX, 32);
+        QCOMPARE(replay_->session.ingestClockNs(), at(105));
         QCOMPARE(offset(106), QPoint(-18, 0));
+        QCOMPARE(replay_->session.world().viewPixelX, 6);
+        QVERIFY(!image(106.5).isNull());
+        QCOMPARE(replay_->session.world().viewPixelX, 6);
+        QCOMPARE(replay_->session.ingestClockNs(), at(106));
         QCOMPARE(offset(111), QPoint(-10, 0));
         QCOMPARE(offset(121), QPoint(6, 0));
         QCOMPARE(offset(130), QPoint(6, 0));
@@ -161,5 +165,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(ClientAnim)
+FUGUE_TEST_MAIN(ClientAnim)
 #include "clientanim_test.moc"

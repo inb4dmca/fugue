@@ -1,71 +1,16 @@
 #include <QtTest>
+#include "tests/testmain.h"
 #include "shell/compositionplan.h"
 #include "shell/mapinput.h"
 #include "shell/tests/planesourcefixture.h"
 #include "shell/tests/turflocalfixture.h"
-#include "shell/tests/gpucomparison.h"
-#include "shell/tests/replayfixture.h"
-#include <QDir>
-#include <QFile>
-#include "shell/entitymap.h"
+#include "shell/tests/compositionfixture.h"
 using namespace fugue::shell;
-using test::GpuComparison;
+using test::ink;
+using test::master;
+using test::relay;
+using test::contributorScene;
 namespace {
-MapSprite ink(int plane = 0) {
-    MapSprite s; s.plane = plane; s.atom = 42; s.haveKey = true; s.key = 7; s.targetIdentity = 9;
-    s.image = QImage(32,32,QImage::Format_RGBA8888); s.image.fill(Qt::red);
-    s.iconBottom = {0,32}; s.cell = {1,1}; return s;
-}
-MapSprite master(int plane, QString target = {}) {
-    MapSprite s; s.kind = MapSprite::Master; s.plane = plane; s.renderTarget = target; return s;
-}
-MapSprite relay(int plane, QString source) {
-    MapSprite s; s.kind = MapSprite::Screen; s.plane = plane; s.renderSource = source;
-    s.screenInteractive = true; s.atom = 43; return s;
-}
-// Deterministic small contributors over a large captured plane. Hidden RGB,
-// tiny alpha, generated alpha and non-byte material coefficients are deliberate.
-MapSprites contributorScene(QRect source, int count, int variant = 0) {
-    auto raster = QImage(17,13,QImage::Format_RGBA8888);
-    const int alpha[] = {0,1,3,7,17,63,128,193,255};
-    for (int y=0;y<raster.height();++y) for (int x=0;x<raster.width();++x)
-        raster.setPixelColor(x,y,QColor((x*73+y*29)%256,(x*31+y*53)%256,
-            (x*17+y*97)%256,alpha[(x+3*y)%9]));
-    MapSprites scene;
-    for (int i=0;i<count;++i) {
-        auto s=ink(1);s.image=raster;
-        s.position=source.topLeft()+QPoint((i*19)%(source.width()+20)-10,(i*11)%(source.height()+16)-8);
-        s.tint={.73f,.91f,.57f,.67f};s.blend=i%5;
-        if (i%3==0) {s.color[19]=.21f;s.color[3]=.17f;s.color[16]=.13f;}
-        if (variant==1) {s.size={23+i%7,19+i%3};s.smooth=true;}
-        if (variant==7 || variant==8)
-            s.position=source.topLeft()+QPoint(31+(i*3)%37,19+(i*7)%31);
-        if (variant==2 && i%4==0) {
-            StaticAffine a;a.forward=QTransform(.91,.27,-.19,1.03,.375,-.625);
-            a.inverse=a.forward.inverted();a.bounds=a.forward.mapRect(QRectF(raster.rect())).toAlignedRect();s.affine=a;
-        }
-        scene.push_back(s);
-    }
-    if (variant==3 || variant==4 || variant==7 || variant==8) {
-        auto outer=std::make_shared<AppearanceGroup>();outer->tint[3]=.81f;
-        if (variant==7) outer->blend=count%5; // generated contributors exercise every supported blend
-        if (variant==4 || variant==8) outer->transform=QTransform(.93,.21,-.17,1.07,.375,-.625);
-        auto inner=std::make_shared<AppearanceGroup>();inner->parent=outer;inner->color[19]=.11f;
-        for (int i=0;i<count;++i) {
-            scene[i].appearanceGroup=i%3==0 ? inner : outer;
-            scene[i].groupOccurrence=1;scene[i].groupOrigin=source.center();scene[i].groupLayer=float(i);
-        }
-    }
-    auto m=master(1,"capture");
-    if (variant==5 || variant==6) {
-        auto effects=std::make_shared<PlaneEffects>();
-        PlaneFilter outline;outline.kind=PlaneFilter::Outline;outline.stock=true;outline.size=1.5;outline.color={.7f,.2f,.9f,.53f};
-        PlaneFilter blur;blur.stock=true;blur.size=1;
-        if (variant==6) {outline.kind=PlaneFilter::Shadow;outline.x=.5;outline.y=-.75;}
-        effects->filters={outline,blur};m.planeEffects=effects;
-    }
-    scene.push_back(m);return scene;
-}
 const QRect viewport(0,0,32,32);
 std::optional<MapPointer> pick(const std::shared_ptr<const CompositionPlan>& plan, QPoint point = {8,8}) {
     return mapPointerAtPresentation(point,viewport,{1,1},viewport,
@@ -135,61 +80,6 @@ private slots:
         s.renderSource.clear();s.affine=StaticAffine{};
         plan=CompositionPlan::build({s,master(1,"visible")},source,{true,true});
         for (const auto& p:plan->passes) if(p.straightOutput) QCOMPARE(p.bounds,source);
-    }
-    void contributorMaterialNative_data() {
-        QTest::addColumn<bool>("gl");
-#ifdef Q_OS_WIN
-        QTest::newRow("d3d11")<<false;
-#endif
-        QTest::newRow("opengl")<<true;
-    }
-    void contributorMaterialNative() {
-        if (QGuiApplication::platformName()=="offscreen") QSKIP("Requires native GPU texture readback (no desktop capture)");
-        QFETCH(bool,gl);GpuComparison gpu;const QRect source(11,-7,193,137);
-        QVERIFY(gpu.initialize(gl,source.size()));
-        int comparisons=0;
-        for (int variant=0;variant<9;++variant) {
-            auto scene=contributorScene(source,73,variant);
-            QImage original;
-            for (int phase=0;phase<4;++phase) {
-                // Replay, shrink/move to force pool reuse, then restore old content.
-                auto current=scene;
-                if (phase==2) {current.remove(9,47);for (auto& s:current) if(s.kind!=MapSprite::Master) s.position+=QPoint(5,-3);}
-                const auto a=gpu.render(gpu.reference,current,source);QVERIFY(!a.isNull());
-                if (phase>0) QCOMPARE(gpu.uploaded,uint64_t(0));
-                const auto b=gpu.render(gpu.bounded,current,source);QVERIFY(!b.isNull());
-                if (phase>0) QCOMPARE(gpu.uploaded,uint64_t(0));
-                QVERIFY(!gpu.reference.preparedPlan()->backend.boundedMaterials);
-                QVERIFY(gpu.bounded.preparedPlan()->backend.boundedMaterials);
-                QVERIFY(gpu.bounded.preparedPlan()->storage.workPixels < gpu.reference.preparedPlan()->storage.workPixels);
-                if (phase==0) original=a;else if(phase!=2) QCOMPARE(a,original);
-                QVERIFY2(a==b,qPrintable(QString("exact RGBA comparison variant=%1 phase=%2").arg(variant).arg(phase)));
-                ++comparisons;
-            }
-        }
-        for (int blend=0;blend<5;++blend) {
-            const auto grouped=contributorScene(source,70+blend,7);
-            const auto a=gpu.render(gpu.reference,grouped,source);
-            const auto b=gpu.render(gpu.bounded,grouped,source);
-            QVERIFY(!a.isNull() && !b.isNull());
-            QVERIFY(gpu.bounded.preparedPlan()->storage.workPixels < gpu.reference.preparedPlan()->storage.workPixels);
-            QCOMPARE(a,b);++comparisons;
-        }
-        GpuComparison large;const QRect largeSource(-23,17,832,704);
-        QVERIFY(large.initialize(gl,largeSource.size()));
-        const auto dense=contributorScene(largeSource,1024);
-        const auto a=large.render(large.reference,dense,largeSource);
-        const auto b=large.render(large.bounded,dense,largeSource);
-        QVERIFY(!a.isNull() && !b.isNull());
-        QVERIFY(large.bounded.preparedPlan()->backend.boundedMaterials);
-        QVERIFY(large.bounded.preparedPlan()->storage.workPixels < large.reference.preparedPlan()->storage.workPixels);
-        QCOMPARE(a,b);++comparisons;
-        // Device resource recreation must not reset the candidate selection.
-        QVERIFY(large.bounded.initialize(large.rhi.get(),large.descriptor.get(),1));
-        QCOMPARE(large.render(large.bounded,dense,largeSource),a);++comparisons;
-        QVERIFY(large.bounded.preparedPlan()->backend.boundedMaterials);
-        QVERIFY(large.bounded.preparedPlan()->storage.workPixels < large.reference.preparedPlan()->storage.workPixels);
-        qInfo()<<comparisons<<"exact full RGBA native comparisons; not presentation/timing evidence";
     }
     void anonymousGroupsAreOccurrenceScopedAndBounded() {
         auto group=std::make_shared<AppearanceGroup>();group->tint[3]=.5f;
@@ -458,62 +348,7 @@ private slots:
         }
         m={};m.available=true; QVERIFY(!m.html().contains("#ffbf69"));
     }
-    // Sets of tests/data/stock-parity-world, replayed without a server: replay/<set>.txt is what DreamDaemon 516.1689
-    // sent this client for the set (the app's recorder, FUGUE_RECORD_DIR), replay/res its resources, and
-    // replay/<set>.png the map stock DreamSeeker 516.1689 drew for the same world, grabbed six seconds after login
-    // (tools/stockprobe/stockprobe.py record writes all three). No channel of any pixel may be more than 8 levels from
-    // stock's.
-    // Drawn by Windows' software Direct3D, elsewhere by OpenGL (Mesa's llvmpipe passes: LIBGL_ALWAYS_SOFTWARE=1 under
-    // xvfb-run with QT_QPA_PLATFORM=xcb; the offscreen platform has no OpenGL). Without a device the test is skipped,
-    // or fails when FUGUE_REQUIRE_GPU is set, as CI sets it.
-private:
-    std::unique_ptr<GpuComparison> replayGpu_;   // one device for every set
-private slots:
-    void cleanupTestCase() { replayGpu_.reset(); }
-    void stockParityReplay_data() {
-        QTest::addColumn<QString>("set");
-        for (const auto& name : QDir(QString(FUGUE_TEST_DATA_DIR) + "/stock-parity-world/replay").entryList({"*.png"}, QDir::Files))
-            QTest::newRow(qPrintable(name.chopped(4))) << name.chopped(4);
-    }
-    void stockParityReplay() {
-        QFETCH(QString, set);
-        const QString dir = QString(FUGUE_TEST_DATA_DIR) + "/stock-parity-world/replay/";
-        const int64_t login = 1'000'000'000'000'000'000, grabbed = login + 6'000'000'000;
-        test::ReplayFixture fixture;
-        fixture.session.setIngestClockNs(login);
-        QVERIFY2(fixture.load(set + ".txt", "stock-parity-world/replay", {}, grabbed), qPrintable(fixture.error));
-        const auto& frame = fixture.frame;
-        const auto& sprites = fixture.sprites;
-        QImage stock(dir + set + ".png"); stock = stock.convertToFormat(QImage::Format_RGBA8888);
-        QCOMPARE(frame.source.size(), stock.size());
-        auto& gpu = replayGpu_;
-        if (!gpu) {
-            gpu = std::make_unique<GpuComparison>();
-#ifdef Q_OS_WIN
-            const bool gl = false;
-#else
-            const bool gl = true;
-#endif
-            if (!gpu->initialize(gl, stock.size(), true)) {
-                gpu.reset();
-                if (qEnvironmentVariableIsSet("FUGUE_REQUIRE_GPU")) QFAIL("No GPU device to draw the map with");
-                QSKIP("No GPU device to draw the map with");
-            }
-        }
-        const QImage drawn = gpu->render(gpu->bounded, sprites, frame.source, Qt::black);
-        QCOMPARE(drawn.size(), stock.size());
-        int off = 0; QPoint first;
-        for (int y = 0; y < stock.height(); ++y) for (int x = 0; x < stock.width(); ++x) {
-            const QRgb a = drawn.pixel(x, y), b = stock.pixel(x, y);
-            if (std::abs(qRed(a) - qRed(b)) > 8 || std::abs(qGreen(a) - qGreen(b)) > 8 || std::abs(qBlue(a) - qBlue(b)) > 8)
-                if (!off++) first = {x, y};
-        }
-        if (!off) return;
-        const QString saved = QDir::temp().filePath("fugue-parity-" + set + ".png");   // to look at beside stock's
-        drawn.save(saved);
-        QFAIL(qPrintable(QString("%1 pixels differ from stock, the first at %2,%3; drawn: %4")
-                             .arg(off).arg(first.x()).arg(first.y()).arg(saved)));
-    }
+
 };
-QTEST_MAIN(CompositionPlanTest)
+FUGUE_TEST_MAIN(CompositionPlanTest)
 #include "compositionplan_test.moc"

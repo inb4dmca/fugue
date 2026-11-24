@@ -7,6 +7,7 @@
 // Six samples here sit within half a pixel of a whole pixel; their earlier rounded values are one pixel further along
 // the motion, as a frame drawn slightly after its nominal tick would show. They hold the truncated value.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <fstream>
 #include "model/world.h"
 #include "net/bytes.h"
@@ -228,5 +229,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(MovAnim)
+FUGUE_TEST_MAIN(MovAnim)
 #include "movanim_test.moc"

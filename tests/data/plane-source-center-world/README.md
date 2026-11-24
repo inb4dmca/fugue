@@ -23,5 +23,5 @@ owned probe directories. No game code/assets are required.
 
 The admitted increment is only the zero-offset, leaf `1,1` alias. Offset, transformed,
 child-tree, alternate-anchor and prefixed source placement are not newly supported.
-Regression: `EntityMapTest::planeSourceBottomLeftSpellings` (the QtTest slot name;
-the test executable is `entitymap_test`).
+Regression: `EntityMapTest::planeSourceBottomLeftSpellings`, run directly with
+`fugue_tests entitymap planeSourceBottomLeftSpellings`.

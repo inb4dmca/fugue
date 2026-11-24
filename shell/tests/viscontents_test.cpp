@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <bit>
 #include "shell/entitymap.h"
 #include "shell/namedmap.h"
@@ -494,5 +495,5 @@ private slots:
     QCOMPARE(draw(2000000000)[0].image.pixelColor(16,16),QColor(210,30,20));
  }
 };
-QTEST_MAIN(VisContentsTest)
+FUGUE_TEST_MAIN(VisContentsTest)
 #include "viscontents_test.moc"

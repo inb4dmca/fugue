@@ -69,9 +69,6 @@ to avoid copying unrelated packages. Keep the output directory together; do not
 copy just the `.exe`. For distributable packages, use `packaging/windows/package.ps1`
 with `-BuildDir build/ninja/release` and the matching `-DependencyBin`.
 
-The deletion checks have a standalone Windows test:
-`./tools/tests/build_test.ps1`.
-
 ### Manual build
 
 Install [vcpkg](https://github.com/microsoft/vcpkg) and bootstrap it. Qt comes from the Qt installer, while the
@@ -186,7 +183,7 @@ Control key on macOS, not Command; paste and the browser find bar also take Comm
 
 ## Tests
 
-Build first, then run the QtTest executables through CTest. **CTest does not
+Build first, then run the QtTest suites through CTest. **CTest does not
 rebuild**: stop after a failed build and rerun after the last relevant source edit.
 The automated tests need no BYOND installation or game server; some use loopback
 network connections. Python is not required to build or run the application tests.
@@ -196,73 +193,54 @@ For a single-config `build/` tree:
 ```bash
 cmake --build build --parallel 2
 QT_QPA_PLATFORM=offscreen ctest --test-dir build -LE 'gpu|native' --output-on-failure
-QT_QPA_PLATFORM=offscreen ctest --test-dir build -R '^shell_(composition|mapinput|map)$' --output-on-failure
 ```
 
 For Windows multi-config builds, use the configured build directory and `-C Release`
-as shown above. Keep compiler/test logs locally; inspect failures rather than
-rerunning tests merely to collect counts.
+as shown above, with Qt/dependency DLLs on PATH. Keep compiler/test logs locally;
+inspect failures and report skipped cases separately from passes.
 
-`QT_QPA_PLATFORM=offscreen` lets the widget and WebEngine tests run without a display. Some tests skip with a message
-when optional input is absent. The Core Audio device smoke test is opt-in (it writes silence):
-
-```bash
-FUGUE_TEST_COREAUDIO=1 ctest --test-dir build -R '^audio_sink$' --output-on-failure
-```
-
-### Master-opacity scenario
-
-`masteropacity_test` reuses one set of stock wire, resources, mouse receipts and pixel expectations through three
-CTest entries. The scenario needs no BYOND installation. Each selected profile must execute successfully; unavailable
-capabilities and skipped cases fail that profile.
-
-| CTest entry | Evidence |
-|---|---|
-| `shell_masteropacity_portable` | 45 stock mouse receipts and nine menu stacks, plus Fugue lifetime and fallback bounds |
-| `shell_masteropacity_gpu` | Production QRhi composition compared exactly with the three stock maps |
-| `shell_masteropacity_native` | Exact framebuffer pixels, the same receipts/stacks through Qt events, pending versus rendered frames and warm uploads |
-
-Run one profile or all three with the standard CTest selectors:
+Use CTest to discover the current tests and labels:
 
 ```sh
-ctest --test-dir build -R '^shell_masteropacity_portable$' --output-on-failure
-ctest --test-dir build -R '^shell_masteropacity_gpu$' --output-on-failure
-ctest --test-dir build -R '^shell_masteropacity_native$' --output-on-failure
-ctest --test-dir build -L master-opacity --output-on-failure
+ctest --test-dir build -N
+ctest --test-dir build --print-labels
 ```
 
-On Windows, use `--test-dir build/ninja/release -C Release` and put Qt/dependency DLLs on PATH. CTest sets each
-profile's environment: portable uses offscreen Qt; GPU uses software D3D11 on Windows and OpenGL on Linux/macOS;
-native uses the platform window system and requires an interactive desktop. On Linux, a virtual display is sufficient:
-`LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ctest --test-dir build -L master-opacity --output-on-failure`.
-Native checks exercise Qt event delivery and the window renderer; they do not drive desktop mouse input or a live server.
+All suites share the `fugue_tests` executable; CTest runs each selected entry in a
+separate process. For direct debugging, use `fugue_tests <suite> [QtTest arguments]`,
+and use `fugue_tests --list` to discover suites. The executable is in
+the build root for single-config builds and its configuration subdirectory for
+multi-config builds, such as `build/Release/fugue_tests.exe`. Prefer CTest for normal
+runs because it applies each entry's arguments and environment.
 
-The general suite commands above exclude the explicit `gpu` and `native` labels. Unfiltered CTest runs include them
-and need their capabilities. These labels currently classify master opacity; other tests still have their existing
-offscreen/native behavior. Linux CI runs all three profiles, Windows CI runs portable and GPU, and macOS CI runs portable.
-See the [fixture README](../tests/data/master-opacity-world/README.md) for the retained evidence and its limits.
+### Test profiles
 
-### Native Windows MAP checks
+Tests with explicit profiles use these labels:
 
-Offscreen passes do not establish native rendering/input coverage. On an unlocked
-interactive Windows desktop, with the configured Qt/dependency DLLs on PATH and
-no global backend overrides, run the affected native checks directly:
+- `portable`: logic and replay checks that run with offscreen Qt.
+- `gpu`: rendering checks that require a working graphics backend.
+- `native`: window-system integration checks that require a display.
 
-```powershell
-$env:QT_QPA_PLATFORM = "windows"
-$env:FUGUE_AUDIO = "none"
-$env:QTWEBENGINE_CHROMIUM_FLAGS = "--no-sandbox"
-./build/ninja/release/shell/Release/map_test.exe `
-  positionedMasterPixelsAndInput `
-  masterMaterialPixelsAndInput stockOutlinePrecisionAndWorkload `
-  stockShadowPixels popupReleaseTiming -o -,txt
-Remove-Item Env:QT_QPA_PLATFORM, Env:FUGUE_AUDIO, Env:QTWEBENGINE_CHROMIUM_FLAGS
+A selected profile fails if its required capability is unavailable. The general suite above excludes `gpu` and
+`native`; unfiltered CTest includes them. Profile labels are being introduced incrementally, so unlabelled tests
+retain their existing requirements and skip behavior.
+
+```sh
+ctest --test-dir build -L portable --no-tests=error --output-on-failure
+ctest --test-dir build -L gpu --no-tests=error --output-on-failure
+ctest --test-dir build -L native --no-tests=error --output-on-failure
 ```
 
-Adjust the executable path for a single-config generator. The named tests include
-native-default/OpenGL rows; they are not the entire native suite. Report QtTest
-failures/skips separately from CTest target counts. A skipped native check is not
-verification. The test-only sandbox/audio settings are not normal launch settings.
+GPU checks that need a window-system connection also carry `display`. On Windows,
+`-L gpu -LE display` selects software D3D11 checks that can run without a desktop.
+Native Windows checks need an unlocked interactive desktop. On Linux, use Mesa and Xvfb:
+
+```sh
+LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ctest --test-dir build -L 'gpu|native' --no-tests=error --output-on-failure
+```
+
+CTest sets the environment for each profiled entry. Test sources and fixture READMEs under `tests/data/` describe
+individual expectations, optional device settings and reproduction conditions.
 
 ## Reproducing fixtures
 
@@ -278,7 +256,7 @@ started and can identify; a launcher forwarding to an existing client does not o
 that client. A stock guest-mode request does not itself prove account isolation.
 
 `tools/stockprobe/stockprobe.py` provides `record`, `pair` and `click` workflows for supported worlds on Windows.
-Other fixtures, including master opacity, retain their documented manual collection procedure.
+Other fixtures retain their documented manual collection procedure.
 Use each world's documented control file and wait for its readiness acknowledgement.
 For worlds reading `probe-request.json`, supply fresh `token`, `phase` and `action`
 fields and inspect the matching PROBE reply. A server acknowledgement is not a GPU
@@ -323,8 +301,7 @@ it, bundles Qt (including `QtWebEngineProcess`, its resources and locales) and l
 (an AppImage's mount is `nosuid`, so the setuid helper is not an option) and otherwise disables it for that run with a
 warning on stderr; `FUGUE_KEEP_SANDBOX=1` turns the fallback off.
 
-`fugue-qt webcheck` is the install smoke test: it starts WebEngine, runs a script in one page and prints
-`webcheck ok`. CI runs it, offscreen, in clean Ubuntu, Debian and Fedora containers.
+CI verifies the deployed application offscreen in clean Ubuntu, Debian and Fedora containers.
 
 ## Releases
 

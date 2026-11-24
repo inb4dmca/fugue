@@ -1,5 +1,6 @@
 // Stock nested CHILD evidence: tests/data/splitter-world/README.md.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -166,5 +167,5 @@ private slots:
         }
     }
 };
-QTEST_GUILESS_MAIN(SplitterTest)
+FUGUE_TEST_GUILESS_MAIN(SplitterTest)
 #include "splitter_test.moc"

@@ -16,6 +16,7 @@
 #include <QTableWidget>
 #include <QTextEdit>
 #include <QtTest>
+#include "tests/testmain.h"
 #include "model/prompt.h"
 #include "net/input.h"
 #include "shell/browserpane.h"
@@ -776,7 +777,7 @@ private slots:
     }
 };
 
-int main(int argc, char** argv) {
+int FUGUE_TEST_ENTRY(int argc, char** argv) {
     registerSchemes();
     QApplication app(argc, argv);
     PromptTest t;

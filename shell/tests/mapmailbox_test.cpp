@@ -1,4 +1,5 @@
 #include <QtTest>
+#include "tests/testmain.h"
 #include <atomic>
 #include <thread>
 #include "shell/mapmailbox.h"
@@ -103,5 +104,5 @@ private slots:
         QVERIFY(mailbox.publish(QImage(), QRect(), 0, 0));
     }
 };
-QTEST_GUILESS_MAIN(MapMailboxTest)
+FUGUE_TEST_GUILESS_MAIN(MapMailboxTest)
 #include "mapmailbox_test.moc"

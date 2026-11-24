@@ -1,5 +1,6 @@
 // pager/launch: the argv a join runs, the scrubbed child environment, the desktop entry and its install.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QDir>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -182,5 +183,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(PagerLaunchTest)
+FUGUE_TEST_MAIN(PagerLaunchTest)
 #include "pager_launch_test.moc"

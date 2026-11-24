@@ -1,6 +1,7 @@
 // shell/serverkey.h: a link() to the same server keeps the per-server macro key; another server changes it.
 #include <QSignalSpy>
 #include <QtTest>
+#include "tests/testmain.h"
 #include "shell/serverkey.h"
 
 using fugue::shell::ServerKey;
@@ -63,5 +64,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(ServerKeyTest)
+FUGUE_TEST_GUILESS_MAIN(ServerKeyTest)
 #include "serverkey_test.moc"

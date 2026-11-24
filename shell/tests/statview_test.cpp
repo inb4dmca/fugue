@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QBuffer>
 #include "shell/statview.h"
 #include "model/statpanel.h"
@@ -174,5 +175,5 @@ private slots:
         QCOMPARE(images.cached(),size_t(512));
     }
 };
-QTEST_GUILESS_MAIN(StatViewTest)
+FUGUE_TEST_GUILESS_MAIN(StatViewTest)
 #include "statview_test.moc"

@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
+#include "tests/testmain.h"
 #include "platform/file.h"
 #include "account/store.h"
 #include "pager/model.h"
@@ -124,5 +125,5 @@ private slots:
         QCOMPARE(closeAction(true, false), CloseAction::Minimize);
     }
 };
-QTEST_APPLESS_MAIN(PagerModel)
+FUGUE_TEST_APPLESS_MAIN(PagerModel)
 #include "pager_model_test.moc"

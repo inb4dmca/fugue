@@ -158,7 +158,7 @@ CTest runs decoding, cache, animation, composition, visibility and input regress
 Synthetic source worlds and independent stock expectations live under `tests/data/`;
 fixture READMEs describe their specific conditions and limitations. Native tests
 exercise QRhi composition and presentation separately from offscreen tests.
-See [BUILDING.md](BUILDING.md#tests) for direct CMake/CTest and native commands.
+See [BUILDING.md](BUILDING.md#tests) for build and test-profile setup.
 
 A passing fixture is evidence for that case, not full-game parity. Keep independent
 stock expectations distinct from renderer-generated references, and report skipped

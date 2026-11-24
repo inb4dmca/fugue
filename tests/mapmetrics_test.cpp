@@ -1,4 +1,5 @@
 #include <QtTest>
+#include "tests/testmain.h"
 #include "shell/mapmetrics.h"
 using fugue::shell::MapMetrics;
 class MapMetricsTest : public QObject {
@@ -80,5 +81,5 @@ private slots:
         QVERIFY(!s.compose.available);
     }
 };
-QTEST_GUILESS_MAIN(MapMetricsTest)
+FUGUE_TEST_GUILESS_MAIN(MapMetricsTest)
 #include "mapmetrics_test.moc"

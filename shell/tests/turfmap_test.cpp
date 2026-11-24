@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QBuffer>
 #include <QPainter>
 #include "shell/turfmap.h"
@@ -214,5 +215,5 @@ private slots:
         QVERIFY(map.compose(w, {}).isNull());
     }
 };
-QTEST_GUILESS_MAIN(TurfMapTest)
+FUGUE_TEST_GUILESS_MAIN(TurfMapTest)
 #include "turfmap_test.moc"

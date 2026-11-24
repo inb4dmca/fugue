@@ -1,5 +1,6 @@
 #include "platform/readwait.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <thread>
 using namespace fugue;
 using namespace std::chrono_literals;
@@ -74,5 +75,5 @@ private slots:
         QCOMPARE(value, 'c');
     }
 };
-QTEST_GUILESS_MAIN(ReadWaitTest)
+FUGUE_TEST_GUILESS_MAIN(ReadWaitTest)
 #include "readwait_test.moc"

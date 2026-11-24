@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include "shell/entitymap.h"
@@ -256,5 +257,5 @@ private slots:
         QVERIFY(retries.sample(retry.trace,1,2,0,0,1000).isEmpty());
     }
 };
-QTEST_MAIN(AtomDiagnosticTest)
+FUGUE_TEST_MAIN(AtomDiagnosticTest)
 #include "atomdiagnostic_test.moc"

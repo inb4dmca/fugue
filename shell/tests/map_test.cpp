@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QLabel>
 #include <QAction>
 #include <QWheelEvent>
@@ -3652,7 +3653,7 @@ private slots:
         QCOMPARE(map->viewSize(), QSize(0, 0));
     }
 };
-int main(int argc, char** argv) {
+int FUGUE_TEST_ENTRY(int argc, char** argv) {
     registerSchemes();
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QApplication app(argc, argv);

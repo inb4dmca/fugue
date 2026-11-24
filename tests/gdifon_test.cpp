@@ -3,6 +3,7 @@
 // layout's advance widths.
 #include <QFile>
 #include <QtTest>
+#include "tests/testmain.h"
 #include <string>
 
 #include "render/dsmaptext.h"
@@ -181,5 +182,5 @@ private slots:
     }
 };
 
-QTEST_MAIN(GdiFon)
+FUGUE_TEST_MAIN(GdiFon)
 #include "gdifon_test.moc"

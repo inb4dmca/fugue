@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QFontDatabase>
@@ -449,5 +450,5 @@ private slots:
         QCOMPARE(sprites.back().kind,shell::MapSprite::Screen);
     }
 };
-QTEST_MAIN(MaptextTest)
+FUGUE_TEST_MAIN(MaptextTest)
 #include "maptext_test.moc"

@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include "shell/mapinput.h"
 #include "shell/mapvisibility.h"
 #include "shell/mappresentation.h"
@@ -953,5 +954,5 @@ private slots:
         QVERIFY(mapPointerWanted(MapPointer::Wheel, hooks, true));
     }
 };
-QTEST_GUILESS_MAIN(MapInputTest)
+FUGUE_TEST_GUILESS_MAIN(MapInputTest)
 #include "mapinput_test.moc"

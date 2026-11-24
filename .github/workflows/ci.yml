@@ -37,16 +37,13 @@ jobs:
           FUGUE_AUDIO: none
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
         run: ctest --test-dir build -LE 'gpu|native' --output-on-failure
-      # The offscreen platform has no OpenGL, so the replay against stock's images is skipped above: run it on Mesa's
-      # software renderer under a virtual display.
-      - name: Test GPU replay and native master opacity
+      # GPU and native profiles require OpenGL/XCB on Linux; use Mesa under a virtual display.
+      - name: Test GPU and native profiles
         env:
           QT_QPA_PLATFORM: xcb
           LIBGL_ALWAYS_SOFTWARE: 1
-          FUGUE_REQUIRE_GPU: 1
         run: |
           sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libxcb-image0 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1
-          xvfb-run -a build/shell/compositionplan_test stockParityReplay
           xvfb-run -a ctest --test-dir build -L 'gpu|native' --no-tests=error --output-on-failure
 
   macos:
@@ -129,6 +126,7 @@ jobs:
           (& ./tools/msvc-env.ps1 | ConvertFrom-Json).PSObject.Properties | ForEach-Object { [Environment]::SetEnvironmentVariable($_.Name, $_.Value, "Process") }
           cmake --build build --config Release --parallel 2
       - name: Test
+        id: tests
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
@@ -137,34 +135,23 @@ jobs:
         run: |
           $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
           ctest --test-dir build -C Release -LE 'gpu|native' --output-on-failure --timeout 120
-      - name: Test master opacity on software D3D11
+      - name: Test GPU profiles on software D3D11
+        id: gpu_tests
         shell: pwsh
         run: |
           $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
-          ctest --test-dir build -C Release -L gpu --no-tests=error --output-on-failure
-      - name: Diagnose a crashing test
-        if: failure()
+          ctest --test-dir build -C Release -L gpu -LE display --no-tests=error --output-on-failure
+      - name: Diagnose failed tests
+        if: failure() && (steps.tests.outcome == 'failure' || steps.gpu_tests.outcome == 'failure')
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
           FUGUE_AUDIO: none
+          QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
         run: |
-          # A fail-fast exit loses buffered stdout, so run each function on its own and report its exit code.
+          # CTest preserves each failed entry's suite, selected functions and environment.
           $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
-          $failed = Get-ChildItem build/Testing/Temporary -Filter 'LastTestsFailed*.log' -ErrorAction SilentlyContinue |
-            Get-Content | ForEach-Object { ($_ -split ':', 2)[1] }
-          $exes = foreach ($t in $failed) {
-            Get-ChildItem build -Recurse -Include "${t}_test.exe", "$t.exe" | Select-Object -First 1
-          }
-          $exes | ForEach-Object {
-            $exe = $_.FullName
-            "=== $exe"
-            foreach ($f in (& $exe -functions | ForEach-Object { $_ -replace '\(\)$', '' })) {
-              $out = & $exe $f -v2 2>&1 | Out-String
-              "== $f exit=$LASTEXITCODE"
-              if ($LASTEXITCODE -ne 0) { $out }
-            }
-          }
+          ctest --test-dir build -C Release --rerun-failed --verbose --output-on-failure --timeout 120
       - name: Package
         shell: pwsh
         run: ./packaging/windows/package.ps1 -QtDir "$env:QT_ROOT_DIR"

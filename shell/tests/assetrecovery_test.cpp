@@ -2,6 +2,7 @@
 // Expected pixels/metadata come from DreamDaemon exports and stock DreamSeeker
 // captures, not renderer-generated reference output.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QFile>
 #include <QTextStream>
 #include <cmath>
@@ -222,5 +223,5 @@ private slots:
         auto jpeg=load("jpeg/base.jpg"); QVERIFY(DmiIcon::decode(jpeg.first(12)).sheet.isNull());
     }
 };
-QTEST_MAIN(AssetRecoveryTest)
+FUGUE_TEST_MAIN(AssetRecoveryTest)
 #include "assetrecovery_test.moc"

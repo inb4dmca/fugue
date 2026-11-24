@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QBuffer>
 #include <QPainter>
 #include <QFile>
@@ -4723,5 +4724,5 @@ private slots:
         QCOMPARE(first->sprites.size(), 1);
     }
 };
-QTEST_GUILESS_MAIN(EntityMapTest)
+FUGUE_TEST_GUILESS_MAIN(EntityMapTest)
 #include "entitymap_test.moc"

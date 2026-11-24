@@ -1,4 +1,5 @@
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include "shell/recipefiler.h"
@@ -186,5 +187,5 @@ private slots:
         std::string bytes; QVERIFY(store.get("far.png",bytes));
     }
 };
-QTEST_GUILESS_MAIN(RecipeFilerTest)
+FUGUE_TEST_GUILESS_MAIN(RecipeFilerTest)
 #include "recipefiler_test.moc"

@@ -5,6 +5,7 @@
 #include <QMenu>
 #include <QSignalSpy>
 #include <QtTest>
+#include "tests/testmain.h"
 #include "shell/browserpane.h"
 #include "shell/focusfilter.h"
 #include "shell/inputrouter.h"
@@ -1025,7 +1026,7 @@ window "mainwindow"
     }
 };
 
-int main(int argc, char** argv) {
+int FUGUE_TEST_ENTRY(int argc, char** argv) {
     registerSchemes();
     QApplication app(argc, argv);
     InputTest t;

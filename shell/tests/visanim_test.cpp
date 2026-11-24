@@ -2,6 +2,7 @@
 // holder changes, shared clocks and list ordering. Uses the flat-sprite CPU
 // fixture, not GPU presentation.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <fstream>
 #include <set>
 #include "shell/tests/animationfixture.h"
@@ -80,5 +81,5 @@ private slots:
         QCOMPARE(tile(f,8,5),0x8000ffu); QCOMPARE(tile(f,8,6),0xff8000u);
     }
 };
-QTEST_APPLESS_MAIN(VisAnim)
+FUGUE_TEST_APPLESS_MAIN(VisAnim)
 #include "visanim_test.moc"

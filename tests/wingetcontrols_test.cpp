@@ -1,6 +1,7 @@
 // Stock DreamSeeker 516.1688 answers from tests/data/winget-controls-world.
 // Regression: tgstation's fit_viewport queries "mainwindow.split;mapwindow", "size".
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -90,5 +91,5 @@ private slots:
         QCOMPARE(replies, 1);
     }
 };
-QTEST_GUILESS_MAIN(WingetControls)
+FUGUE_TEST_GUILESS_MAIN(WingetControls)
 #include "wingetcontrols_test.moc"

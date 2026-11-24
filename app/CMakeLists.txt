@@ -7,13 +7,6 @@ target_link_libraries(fugue-qt PRIVATE fugue_shell fugue_audio fugue_net fugue_p
 if(FUGUE_RELEASE)
   target_compile_definitions(fugue-qt PRIVATE FUGUE_RELEASE=1)   # no FUGUE_AUTO_* hooks, no pager --auto-join/--quit-after, disable core dumps
 endif()
-if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/worldlink_dd_test.cpp)
-  add_executable(worldlink_dd_test ${CMAKE_CURRENT_SOURCE_DIR}/tests/worldlink_dd_test.cpp)
-  target_link_libraries(worldlink_dd_test PRIVATE Qt6::Core Qt6::Test)
-  target_compile_definitions(worldlink_dd_test PRIVATE FUGUE_QT_BIN="$<TARGET_FILE:fugue-qt>")
-  add_dependencies(worldlink_dd_test fugue-qt)
-  add_test(NAME worldlink_dd COMMAND worldlink_dd_test)
-endif()
 add_test(NAME version COMMAND fugue-qt --version)
 set_tests_properties(version PROPERTIES PASS_REGULAR_EXPRESSION "^fugue-qt ${PROJECT_VERSION}(-dev)?\n")
 add_test(NAME webcheck COMMAND fugue-qt webcheck)

@@ -1,5 +1,6 @@
 // Independent stock CHILD geometry: tests/data/child-sizing-world/README.md.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -92,5 +93,5 @@ private slots:
         QCOMPARE(preview.byName("chat.browser")->rect, (Rect{0, 160, 300, 310}));
     }
 };
-QTEST_GUILESS_MAIN(ChildSizingTest)
+FUGUE_TEST_GUILESS_MAIN(ChildSizingTest)
 #include "child_sizing_test.moc"

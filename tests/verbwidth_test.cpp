@@ -1,5 +1,6 @@
 // Stock 516.1688 narrow/wide advertisements, appearance membership and commands.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -147,5 +148,5 @@ private slots:
         QCOMPARE(input.verbs().size(), size_t(1));
     }
 };
-QTEST_GUILESS_MAIN(VerbWidthTest)
+FUGUE_TEST_GUILESS_MAIN(VerbWidthTest)
 #include "verbwidth_test.moc"

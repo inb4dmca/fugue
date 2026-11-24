@@ -4,7 +4,7 @@ a built fugue-qt with its Qt on PATH, and Pillow. For the maintainer who adds a 
 update: the tests themselves replay what this writes and need none of it.
 
   stockprobe.py record <set>...           parity fixture: writes replay/<set>.txt (the frames this client received),
-                                          replay/res/ and replay/<set>.png (stock's map) for compositionplan_test
+                                          replay/res/ and replay/<set>.png (stock's map) for the compositiongpu suite
   stockprobe.py pair <name>               grabs both maps: <out>/<name>-stock.png, -client.png and -diff.png
   stockprobe.py click <name> ACTION...    does the same things in both windows (client-area pixels) and prints what
                                           the world logged for each, action by action

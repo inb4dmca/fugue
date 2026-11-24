@@ -72,7 +72,7 @@ Stop owned clients/servers even on failure. Full screenshots, wire dumps and
 client state stay under ignored `build/`, not in this directory.
 
 Build the configured tree, then run CTest with `-R '^shell_mapinput$'` for the
-focused regression. Native `map_test stockShadowPixels` additionally checks the
+focused regression. Native `fugue_tests map stockShadowPixels` additionally checks the
 original target receipt and default/OpenGL pixels; see
 [test commands](../../../docs/BUILDING.md#tests). Use a separate build directory
 if a running client needs its executable; do not stop the user's client.

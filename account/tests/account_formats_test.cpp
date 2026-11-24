@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include <QtTest>
+#include "tests/testmain.h"
 #include "tests/privatefile.h"
 #include <QScopeGuard>
 #include "net/guest.h"
@@ -346,5 +347,5 @@ private slots:
     }
 };
 
-QTEST_APPLESS_MAIN(AccountFormats)
+FUGUE_TEST_APPLESS_MAIN(AccountFormats)
 #include "account_formats_test.moc"

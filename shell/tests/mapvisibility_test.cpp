@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include "tests/testmain.h"
 #include <QBuffer>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -680,5 +681,5 @@ private slots:
         const auto hidden=s; w.sight=8; const auto visible=prepare(); QVERIFY(!has(hidden,2)); QVERIFY(has(visible,2));
     }
 };
-QTEST_MAIN(MapVisibilityTest)
+FUGUE_TEST_MAIN(MapVisibilityTest)
 #include "mapvisibility_test.moc"

@@ -1,5 +1,6 @@
 // DreamSeeker's command line (pager/dsargv.h). Each row is a shape whose stock behaviour is read from stock DreamSeeker 516.1684.
 #include <QtTest>
+#include "tests/testmain.h"
 #include <set>
 #include "pager/clientaccount.h"
 #include "pager/dsargv.h"
@@ -237,5 +238,5 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(PagerDsArgv)
+FUGUE_TEST_GUILESS_MAIN(PagerDsArgv)
 #include "pager_dsargv_test.moc"

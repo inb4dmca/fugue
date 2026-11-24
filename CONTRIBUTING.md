@@ -10,10 +10,14 @@ Prerequisites, options and the test command are in [docs/BUILDING.md](docs/BUILD
 `-DFUGUE_RELEASE=ON`) keeps the test hooks. For work that does not touch the window, `-DFUGUE_HEADLESS_ONLY=ON` builds
 only the Qt-light modules and their tests.
 
-Tests use QtTest and CTest. Core, account and pager test sources are glob-discovered; shell tests are registered in
-`shell/CMakeLists.txt`. A scenario can have separate CTest entries for portable logic, GPU replay and native window
-integration, sharing its inputs and expectations. Master opacity is the first such scenario; see
-[its profiles and commands](docs/BUILDING.md#master-opacity-scenario).
+QtTest suites share the `fugue_tests` executable, with CTest selecting a suite for each test process. Core, account and
+pager test sources are glob-discovered; shell tests are registered in `shell/CMakeLists.txt`. Use the matching
+`FUGUE_TEST_MAIN`, `FUGUE_TEST_GUILESS_MAIN` or `FUGUE_TEST_APPLESS_MAIN` entry from `tests/testmain.h`;
+custom startup functions use `FUGUE_TEST_ENTRY` in place of `main`. A scenario can have
+separate CTest entries for portable logic, GPU replay and native window integration, sharing its inputs and expectations.
+Add only the profiles the scenario needs; see
+[test profiles and commands](docs/BUILDING.md#test-profiles). Keep individual expectations and reproduction details
+with the test source or fixture README.
 
 Tests must not need external network services, a BYOND installation, or files outside the repository. Tests that replay
 a recorded session use data under `tests/data/`; a recording should come from a small purpose-written world rather than
