@@ -25,6 +25,7 @@
 
 class QWebEngineProfile;
 class QLabel;
+class QTimer;
 class QLineEdit;
 class QWebEngineFindTextResult;
 
@@ -103,6 +104,7 @@ private:
     QWidget* findBar_ = nullptr;
     QLineEdit* findEdit_ = nullptr;
     QLabel* findCount_ = nullptr;
+    QTimer* findTimer_ = nullptr;  // the pause after typing before the page is searched
     BrowserPage* page_;
     LocalOrigin* origin_ = nullptr;
     int paneId_ = 0, callsRun_ = 0;

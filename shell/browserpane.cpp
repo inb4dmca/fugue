@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QResizeEvent>
+#include <QTimer>
 #include <QToolButton>
 #include <QWebEngineFindTextResult>
 #include <QElapsedTimer>
@@ -189,15 +190,17 @@ void BrowserPane::ensureFindBar() {
     connect(button(QString::fromUtf8("\u2193"), "Next result (Enter)"), &QToolButton::clicked, this,
             [this] { findNext(false); });
     connect(button(QString::fromUtf8("\u2715"), "Close (Esc)"), &QToolButton::clicked, this, [this] { closeFind(); });
-    // Incremental: every edit searches from the top again.
-    connect(findEdit_, &QLineEdit::textEdited, this, [this](const QString& t) {
-        if (t.isEmpty()) {
-            page_->findText(QString());
-            findCount_->clear();
-            return;
-        }
+    // Incremental: an edit searches from the top again, once the typing pauses. A search for every keystroke sends
+    // them back to back, and on a page that has just loaded the answer to the last one can be lost, leaving no count.
+    findTimer_ = new QTimer(this);
+    findTimer_->setSingleShot(true);
+    findTimer_->setInterval(60);
+    connect(findTimer_, &QTimer::timeout, this, [this] {
+        const QString t = findEdit_->text();
         page_->findText(t);
+        if (t.isEmpty()) findCount_->clear();
     });
+    connect(findEdit_, &QLineEdit::textEdited, this, [this] { findTimer_->start(); });
     bar->hide();
     findBar_ = bar;
 }
@@ -226,6 +229,7 @@ void BrowserPane::openFind() {
 
 void BrowserPane::closeFind() {
     if (!findBar_ || findBar_->isHidden()) return;
+    if (findTimer_) findTimer_->stop();
     page_->findText(QString());  // clears the highlight and the active match
     findCount_->clear();
     findBar_->hide();
@@ -234,6 +238,7 @@ void BrowserPane::closeFind() {
 
 void BrowserPane::findNext(bool backward) {
     if (!findEdit_ || findEdit_->text().isEmpty()) return;
+    findTimer_->stop();  // this search is for the text as it is now
     page_->findText(findEdit_->text(), backward ? QWebEnginePage::FindBackward : QWebEnginePage::FindFlags());
 }
 
