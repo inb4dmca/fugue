@@ -683,6 +683,35 @@ bool mapPointerCurrent(const MapPointer& p, const model::World& w, uint64_t sess
         (!p.haveAtomKey || (atom->second.haveKey && atom->second.key == p.atomKey)) &&
         (!p.targetIdentity || atom->second.renderIdentity == p.targetIdentity);
 }
+std::optional<MapPointerTarget> mapPointerTarget(const MapPointer& p, const model::World& w) {
+    const auto& over = p.click.over;
+    MapPointerTarget out;
+    auto atom = [&](uint32_t key) {
+        out.kind = MapPointerTarget::Atom;
+        out.atom = key;
+        if (const auto a = w.atoms.find(key); a != w.atoms.end()) out.appid = a->second.appid;
+    };
+    auto turf = [&](std::array<uint16_t,3> cell) {
+        out.kind = MapPointerTarget::Turf;
+        out.cell = cell;
+        if (const auto t = w.tiles.find(cell); t != w.tiles.end()) out.appid = t->second;
+    };
+    if (p.visHit) {
+        if (p.visHit->turf) turf(p.visHit->cell); else atom(p.visHit->target);
+    } else if (over.kind == proto::enc::RefTurf) {
+        if (p.screen) return std::nullopt;
+        turf({uint16_t(over.x), uint16_t(over.y), uint16_t(p.z)});
+    } else if (over.kind != proto::enc::RefObj && over.kind != proto::enc::RefMob) {
+        return std::nullopt;
+    } else if (p.screen) {
+        out.kind = MapPointerTarget::Hud;
+        out.atom = over.ref;
+        if (const auto h = w.hudAppid.find(over.ref); h != w.hudAppid.end()) out.appid = h->second;
+    } else {
+        atom(over.ref | (over.kind == proto::enc::RefMob ? model::kRegistryA : 0));
+    }
+    return out;
+}
 bool sameMapTarget(const MapPointer& a, const MapPointer& b) {
     const auto& x = a.click.over; const auto& y = b.click.over;
     if (bool(a.planeMousePath) != bool(b.planeMousePath)) return false;

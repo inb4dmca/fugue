@@ -895,22 +895,12 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 const auto& w = m.world();
                 if (p.session != mapSession_) continue;
                 const auto& c = p.click;
-                const bool entityHit = c.over.kind == proto::enc::RefObj || c.over.kind == proto::enc::RefMob;
                 const bool current = shell::mapPointerCurrent(p, w, mapSession_);
                 if (p.kind == shell::MapPointer::Hover || p.kind == shell::MapPointer::Leave) {
                     uint32_t appid = UINT32_MAX, flags = 0;
                     if (current && p.kind == shell::MapPointer::Hover) {
-                        if (p.screen) {
-                            if (auto h = w.hudAppid.find(c.over.ref); h != w.hudAppid.end()) appid = h->second;
-                        } else if (entityHit) {
-                            auto a =
-                                w.atoms.find(c.over.ref | (c.over.kind == proto::enc::RefMob ? model::kRegistryA : 0));
-                            if (a != w.atoms.end()) appid = a->second.appid;
-                        } else if (c.over.kind == proto::enc::RefTurf) {
-                            const bool copied = p.visHit && p.visHit->turf;  // a vis_contents turf, maybe on another z
-                            auto t = w.tiles.find({c.over.x, c.over.y, copied ? p.visHit->cell[2] : uint16_t(p.z)});
-                            if (t != w.tiles.end()) appid = t->second;
-                        }
+                        if (const auto named = shell::mapPointerTarget(p, w); named && named->appid)
+                            appid = *named->appid;
                         if (auto a = w.appearances.find(appid); a != w.appearances.end())
                             flags = a->second.fields.appearanceFlags;
                     }
@@ -925,14 +915,9 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 static const bool traceInput = std::getenv("FUGUE_INPUT_TRACE") != nullptr;
                 if (traceInput) {
                     uint32_t appid = UINT32_MAX;
-                    if (p.screen) {
-                        if (auto h = w.hudAppid.find(c.over.ref); h != w.hudAppid.end()) appid = h->second;
-                    } else if (entityHit) {
-                        if (auto a =
-                                w.atoms.find(c.over.ref | (c.over.kind == proto::enc::RefMob ? model::kRegistryA : 0));
-                            a != w.atoms.end())
-                            appid = a->second.appid;
-                    }
+                    if (const auto named = shell::mapPointerTarget(p, w);
+                        named && named->kind != shell::MapPointerTarget::Turf && named->appid)
+                        appid = *named->appid;
                     if (auto a = w.appearances.find(appid); a != w.appearances.end())
                         std::fprintf(stderr, "[map-input] appid=%u name=%s appearanceFlags=%08x\n", appid,
                                      model::plainAtomName(a->second.fields.name).c_str(),
@@ -967,14 +952,16 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                             if (!shell::mapPointerCurrent(rendered, w, mapSession_)) continue;
                             const auto& ref = rendered.click.over;
                             const auto& loc = rendered.click.loc;
-                            const int x = rendered.screen ? 0 : int(loc.x) + 1;
-                            const int y = rendered.screen ? 0 : int(loc.y) + 1;
+                            const auto named = shell::mapPointerTarget(rendered, w);
+                            const bool turf = named && named->kind == shell::MapPointerTarget::Turf;
+                            // A turf is targeted at its own cell, which for a vis_contents member is not the cell it
+                            // is drawn on. A verb names a turf by cell on the map's z only, so a member from another z
+                            // has no entry rather than one that would run on the turf under it.
+                            if (turf && (!named->appid || named->cell[2] != uint16_t(p.z))) continue;
+                            const int x = rendered.screen ? 0 : turf ? int(named->cell[0]) + 1 : int(loc.x) + 1;
+                            const int y = rendered.screen ? 0 : turf ? int(named->cell[1]) + 1 : int(loc.y) + 1;
                             auto hit = model::targetFromHit(w, ref.kind, ref.ref, x, y, rendered.screen);
-                            if (ref.kind == proto::enc::RefTurf) {
-                                const auto tile = w.tiles.find({ref.x, ref.y, uint16_t(p.z)});
-                                if (tile == w.tiles.end()) continue;
-                                hit.appid = tile->second;
-                            }
+                            if (named && named->appid) hit.appid = *named->appid;
                             std::string name;
                             if (auto ap = w.appearances.find(hit.appid); ap != w.appearances.end())
                                 name = model::plainAtomName(ap->second.fields.name);
@@ -1047,22 +1034,17 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                     (choice.attachment && !shell::mapPointerCurrent(*choice.attachment, w, mapSession_)))
                     continue;
                 auto& target = choice.hit.target;
-                if (target.kind == model::kTargetTurf) {
-                    auto tile = w.tiles.find({uint16_t(target.x - 1), uint16_t(target.y - 1), uint16_t(menuZ)});
-                    if (tile == w.tiles.end()) continue;
-                    choice.hit.appid = tile->second;
-                } else if (choice.attachment && choice.attachment->visHit) {
-                    // Membership validation above pins a nullspace child too;
-                    // its menu location remains the rendered holder's cell.
-                    const auto atom = w.atoms.find(target.ref);
-                    if (atom == w.atoms.end()) continue;
-                    choice.hit.appid = atom->second.appid;
-                } else if (choice.attachment && choice.attachment->screen) {
-                    const auto appid = w.hudAppid.find(target.ref);
-                    if (appid == w.hudAppid.end()) continue;
-                    choice.hit.appid = appid->second;
-                } else {
-                    auto atom = w.atoms.find(target.ref | (target.kind == model::kTargetMob ? model::kRegistryA : 0));
+                // The same resolution the menu was built with, against the world as it is now.
+                const auto named =
+                    choice.attachment ? shell::mapPointerTarget(*choice.attachment, w) : std::nullopt;
+                if (!named || !named->appid) continue;
+                choice.hit.appid = *named->appid;
+                if (named->kind == shell::MapPointerTarget::Turf) {
+                    if (named->cell[2] != uint16_t(menuZ)) continue;
+                } else if (named->kind == shell::MapPointerTarget::Atom && !choice.attachment->visHit) {
+                    // A vis_contents member is pinned by the membership validation above, a nullspace child too; its
+                    // menu location remains the rendered holder's cell. An atom on the map follows its own position.
+                    auto atom = w.atoms.find(named->atom);
                     if (atom == w.atoms.end() || !atom->second.hasPos || atom->second.z != menuZ ||
                         w.resync.freed.count(atom->first) || atom->second.renderIdentity != choice.lifetime ||
                         (choice.haveKey && (!atom->second.haveKey || atom->second.key != choice.key)))

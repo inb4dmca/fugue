@@ -155,6 +155,16 @@ MapPopupAction mapPopupAction(const MapPointer&, bool popupMenus, bool pressSent
 
 // Worker-only validation and hover subscription state. No model access in the presenter.
 bool mapPointerCurrent(const MapPointer&, const model::World&, uint64_t session);
+// What a pointer names in the model, for hover flags, menus and menu picks alike: a vis_contents member is its own
+// atom or its own turf (on its own z), a HUD hit its HUD record, anything else the atom or the cell on the map's z.
+// Says nothing about lifetime; mapPointerCurrent does.
+struct MapPointerTarget {
+    enum Kind { Atom, Hud, Turf } kind = Atom;
+    uint32_t atom = 0; // Atom: the World::atoms key (registry bit set for a mob). Hud: the HUD ref
+    std::array<uint16_t,3> cell{}; // Turf: zero-based
+    std::optional<uint32_t> appid; // absent: the model no longer holds it
+};
+std::optional<MapPointerTarget> mapPointerTarget(const MapPointer&, const model::World&);
 bool sameMapTarget(const MapPointer&, const MapPointer&);
 class MapHover {
 public:
