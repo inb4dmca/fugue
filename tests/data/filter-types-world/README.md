@@ -16,23 +16,22 @@ whose alpha is the bloom's `alpha`, flags are two bytes. Every parameter is sent
 own `flags` byte numbers the filter among the list's filters of its type (the bar sign's seven waves arrive as 1..7;
 `bloom-outline`'s outline, second in its list, is still 1), so it is not a first/subsequent marker.
 
-## Independent conclusions (byondwin.dll 516.1688)
+## Independent conclusions (stock 516.1688)
 
-The HLSL is plain text in byondwin.dll (`WavePS`, `RipplePS`, `rgbThresholdPS`, `spreadoutPS`); the native code that
-feeds it was read with IDA, and a Python model of it matched every set a case within 1.5/255 before Fugue changed.
+A Python model of these rules matched every set a case within 1.5/255 before Fugue changed.
 
-- **Wave** (`sub_10122680`). Consecutive wave records share one pass (at most 10; grouped by flags without
+- **Wave**. Consecutive wave records share one pass (at most 10; grouped by flags without
   WAVE_SIDEWAYS; a record with |size| < 0.001 or x²+y² < 1e-6 is consumed without counting). Per wave, with y' the
   screen-down y and L = x²+y'²: `waveDir = (x, y')/L` times the grown surface size, amplitude `sqrt(1/L)*size*(x, y')`
   (WAVE_SIDEWAYS: `(-y', x)`) over the original size, and `fmod(offset, 1)`. The surface grows by the ceiling of the
   summed |amplitude| per axis, at most 32 px; WAVE_BOUNDED grows nothing and clamps sampling to the surface edge
   instead of a transparent border (`wave-bound`, `wave-flags`, `wave-split`: a bounded record starts its own pass).
-- **Ripple** (`sub_1011EE20`). Grouped like waves by all flags. Centre `(W/2 + x, H/2 - y)`, `waveDir2 =
+- **Ripple**. Grouped like waves by all flags. Centre `(W/2 + x, H/2 - y)`, `waveDir2 =
   (|repeat|, falloff*2.5)`, `blurOffset = radius/repeat`, `blurWeight = size`; records with |size| ≤ 0.001,
   |repeat| ≤ 0.001 or falloff < 0 are skipped. The surface grows by the ceiling of the summed size, at most 32 px,
   none with WAVE_BOUNDED.
-- **Bloom** (`sub_1010F2C0`). Skipped when alpha is 0 or both size and offset are below 0.001. Keep pixels with a
-  straight channel above the threshold; spread them with the outline's 1.75 ladder (`spreadoutPS`: nine summed taps,
+- **Bloom**. Skipped when alpha is 0 or both size and offset are below 0.001. Keep pixels with a
+  straight channel above the threshold; spread them with the outline's 1.75 ladder (nine summed taps,
   renormalized by alpha) for `offset`, blur them with the stock blur on byte surfaces for `size`, subtract the kept
   pixels (RGB reverse-subtract, alpha left alone), then add the result times the alpha byte into the atom's surface
   (RGB ONE/ONE, alpha over). The glow never grows the surface: it is clipped at the icon's box (`bloom-wide`), or at

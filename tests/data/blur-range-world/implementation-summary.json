@@ -168,12 +168,8 @@
     "six_planes": "refused by work budget, then recovery checked"
   },
   "algorithm_evidence": {
-    "binary": "BYOND 516.1688 byondwin.dll (read-only local evidence, no copied source/binary retained)",
-    "sha256": "160181fed9699847d9ec39dfb38e066540bc7a68378f0cd9c8ce2dff05530d69",
-    "image_base": "0x10000000",
-    "cascade_va": "0x1010f980",
-    "kernel_va": "0x10111000",
-    "validation": "Formula reconstruction checked against independent stock captures; parameter clamping rests on measured saturation, not binary inference alone."
+    "stock_version": "BYOND 516.1688",
+    "validation": "Formula checked against independent stock captures; parameter clamping rests on measured saturation."
   },
   "rejected_approaches": {
     "full_gaussian": {

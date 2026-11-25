@@ -88,7 +88,7 @@ std::vector<std::pair<double, int>> outlineSteps(double width, int flags) {
     return out;
 }
 
-// One pass (byondwin OutlinePS): a pixel adds up its own alpha and eight taps `step` px away, the diagonal ones at
+// One pass of the stock outline: a pixel adds up its own alpha and eight taps `step` px away, the diagonal ones at
 // step / sqrt(2) unless square, and takes the outline's alpha times that sum (at most 1; sharp: all or nothing from
 // 0.75) on what the picture so far leaves open. `alpha` is the picture's, `halo` the outline's share of it.
 void outlinePass(std::vector<float>& alpha, std::vector<float>& halo, int w, int h, double step, int flags, float colourAlpha) {

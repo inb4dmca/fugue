@@ -1,4 +1,5 @@
-// Worker-only client camera sampling; recovered truncation differs from movable rounding.
+// The client's camera offset (client.pixel_x/y/w/z) and colour at a given time, animate() included. Called on the
+// worker. Stock truncates an animated camera offset toward zero, where an animated movable's pixel offset rounds.
 #pragma once
 #include "shell/animation.h"
 #include "shell/sceneappearance.h"

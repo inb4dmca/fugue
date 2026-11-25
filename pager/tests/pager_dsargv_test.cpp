@@ -114,7 +114,7 @@ private slots:
         QCOMPARE(d.dropped, (std::vector<std::string>{"b:2"}));
     }
     void
-    updaterLinesAreUnknownFlags() {  // inert in stock dreamseeker.exe (only a standalone hub-game build acts on them)
+    updaterLinesAreUnknownFlags() {  // inert in stock DreamSeeker (only a standalone hub-game build acts on them)
         DsArgv d = p({"-install", "h:1", "x", "y"});
         QCOMPARE(d.target, std::string("h:1"));
         QCOMPARE(d.dropped, (std::vector<std::string>{"-install", "x", "y"}));

@@ -41,8 +41,8 @@ inline QByteArray recipe(const QByteArray& program) {
     return out+program;
 }
 inline QByteArray masked(uint32_t ordinal) {
-    // This synthetic sheet has one direction. The recovered stock f_onedir
-    // fixture shows that requesting an absent direction drops that state.
+    // Both selects ask for direction index 0 because sheet() below has one direction per state. In stock, asking
+    // a one-direction state for another direction gives an empty icon (ddmiops-world case f_onedir).
     return recipe(select(ordinal,"base",0)+select(ordinal,"mask",0)+QByteArray::fromHex("42070300ff00ff03000000004801"));
 }
 inline QByteArray sheet(QColor color = Qt::red) {
