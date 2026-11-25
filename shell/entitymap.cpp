@@ -1402,6 +1402,9 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                 // commands stay viewport-wide; the renderer ignores their origin.
                 const auto positions = ap.screenPlacement && !ap.screenPlacement->range ?
                     ap.screenPlacement->positions({inner.width() / tile_, inner.height() / tile_}, tile_, around) : std::vector<QPoint>{};
+                // A refused tree drops its plane. That only approximates stock 516.1689: a master with an invalid
+                // screen_loc does nothing (the plane draws plainly), and one with a range acts, its filter applied once
+                // and its overlays drawn at every position (master-screen-loc-world).
                 if (positions.size() == 1) screenPosition = positions.front();
                 else screenMasterPlacementRefused = ap.keepTogether || ap.keepApart ||
                     !ap.underlays.empty() || !ap.overlays.empty() ||
@@ -2191,6 +2194,9 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
         // vis. Invalid coordinates may still select a LOCAL leaf master, but a
         // different MAP never may, even when its placement is unsupported.
         if (!ap.screenTarget || ap.screenTarget->map != mapName_) continue;
+        // A plane master without a screen_loc is no master: its plane draws as if it were absent, with none of its
+        // filters, colour, alpha, overlays or render target (stock 516.1689, master-screen-loc-world).
+        if (ap.master && ap.screenTarget->location.isEmpty()) continue;
         const auto object = w.atoms.find(key);
         const auto* chain = object != w.atoms.end() && (!object->second.chain.steps.empty() || object->second.chain.rejected) ?
             &object->second.chain : nullptr;

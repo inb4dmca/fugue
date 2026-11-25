@@ -659,48 +659,72 @@ private slots:
         w.tiles.clear(); w.atoms.erase(43);
         QVERIFY(shell::LocalTargets(draw(210'000'000)).groups.empty());
     }
+    // Every master here has a screen_loc: one without is no master at all (masterWithoutScreenLocIsInert).
     void masterSurfaceMetadataAndRefusal() {
         auto w=world(); shell::TurfMap terrain; shell::EntityMap scene;
         w.hudOrder={100}; w.hudAppid[100]=10; w.hudIdentity[100]={2,7,11};
         setFields(w.appearances[10], affinefixture::fields({0,-1,3,1,0,2},
-            R"(,"appearanceFlags":268435456,"hasPlane":true,"plane":0)"));
+            R"(,"appearanceFlags":268435456,"screenLoc":"1,1","hasPlane":true,"plane":0)"));
         auto draw=[&] { return scene.prepare(w,terrain.prepare(w,{},0,false),reader(),0,nullptr,true); };
         const auto original=draw(); QCOMPARE(original.size(),2);
         const auto& master=original.back(); QCOMPARE(master.kind,shell::MapSprite::Master);
         QVERIFY(master.planeEffects); QVERIFY(master.planeEffects->supported); QVERIFY(master.planeEffects->matrix);
         QVERIFY(!master.affine); // geometry is viewport-sized, not icon-sized
         QCOMPARE((*master.planeEffects->matrix)[2],3.0);
-        // A filtered master needs one screen position.
         setFields(w.appearances[10], R"({"appearanceFlags":268435456,"screenLoc":"1,1","filters":[{"type":1,"flags":1,"paramMask":1,"params":{"bstr":"0000803f"}}]})");
         const auto filtered=draw(); QCOMPARE(filtered.size(),2);
         QVERIFY(filtered.back().planeEffects->supported);
         QCOMPARE(filtered.back().planeEffects->filters.size(),size_t(1));
         QCOMPARE(filtered.back().planeEffects->filters[0].size,1.0);
         const auto matrix=QByteArray(reinterpret_cast<const char*>(shell::identityColor.data()),80).toHex();
-        setFields(w.appearances[10], std::string("{\"appearanceFlags\":268435456,\"hasColor\":true,\"colorA\":0,\"vars\":[{\"bit\":1024,\"data\":\"")+
+        setFields(w.appearances[10], std::string("{\"appearanceFlags\":268435456,\"screenLoc\":\"1,1\",\"hasColor\":true,\"colorA\":0,\"vars\":[{\"bit\":1024,\"data\":\"")+
             matrix.toStdString()+"\"}]}");
         const auto matrixMaster=draw(); QCOMPARE(matrixMaster.size(),2);
         QCOMPARE(matrixMaster.back().tint,(std::array<float,4>{1,1,1,1}));
         QVERIFY(matrixMaster.back().planeEffects->supported);
         setFields(w.appearances[10], affinefixture::fields({0,-1,3,1,0,2},
-            R"(,"appearanceFlags":268435456,"filters":[{"type":99,"flags":1}])"));
+            R"(,"appearanceFlags":268435456,"screenLoc":"1,1","filters":[{"type":99,"flags":1}])"));
         const auto fallback=draw();QCOMPARE(fallback.size(),2);
         QVERIFY(fallback.back().planeEffects->supported);QVERIFY(fallback.back().planeEffects->filters.empty());
         QCOMPARE(fallback.back().planeEffects->ignoredFilters,size_t(1));
         QCOMPARE(fallback.back().planeEffects->matrix,original.back().planeEffects->matrix);
         QCOMPARE(filtered.back().planeEffects->filters.size(),size_t(1)); // immutable older filter command
-        // Invalid matrices and structural master-tree refusals still retain a
-        // marker; ignoring an unsupported filter does not bypass those gates.
+        // Invalid matrices and malformed colour matrices still retain a refused marker;
+        // ignoring an unsupported filter does not bypass those gates.
         for(const auto& fields:std::vector<std::string>{
-            affinefixture::fields({0,0,0,0,0,0},R"(,"appearanceFlags":268435456)"),
-            R"({"appearanceFlags":268435456,"overlays":[1]})",
-            R"({"appearanceFlags":268435456,"vars":[{"bit":1024,"data":"00"}]})"}) {
+            affinefixture::fields({0,0,0,0,0,0},R"(,"appearanceFlags":268435456,"screenLoc":"1,1")"),
+            R"({"appearanceFlags":268435456,"screenLoc":"1,1","vars":[{"bit":1024,"data":"00"}]})"}) {
             setFields(w.appearances[10], fields);
             const auto refused=draw(); QCOMPARE(refused.size(),2);
             QVERIFY(refused.back().planeEffects); QVERIFY(!refused.back().planeEffects->supported);
         }
         QVERIFY(original.back().planeEffects->supported); // earlier frame is immutable
         w.hudOrder.clear(); w.hudAppid.clear(); QCOMPARE(draw().size(),1);
+    }
+    // A plane master whose screen_loc is null or "" does nothing in stock 516.1689: its plane draws as if it were
+    // absent, whatever filter, alpha, KEEP_TOGETHER, overlay or render target it has. At 1,1 the same master acts
+    // (tests/data/master-screen-loc-world).
+    void masterWithoutScreenLocIsInert() {
+        auto w=world(); shell::TurfMap terrain; shell::EntityMap scene;
+        auto draw=[&] { return scene.prepare(w,terrain.prepare(w,{},0,false),reader(),0,nullptr,true); };
+        const auto absent=draw(); QCOMPARE(absent.size(),1);
+        w.hudOrder={100}; w.hudAppid[100]=10; w.hudIdentity[100]={2,7,11};
+        const std::vector<std::string> effects{
+            R"("appearanceFlags":268435456,"filters":[{"type":1,"flags":1,"paramMask":1,"params":{"bstr":"0000803f"}}])",
+            R"("appearanceFlags":268435456,"hasColor":true,"colorA":0)",
+            R"("appearanceFlags":335544320,"hasColor":true,"colorA":0)", // KEEP_TOGETHER too
+            R"("appearanceFlags":268435456,"overlays":[1])",
+            R"("appearanceFlags":268435456,"renderTarget":"*cap")"};
+        for (const auto& effect : effects) {
+            for (const std::string loc : {"", R"(,"screenLoc":"")", R"(,"screenLoc":"  ")"}) {
+                setFields(w.appearances[10], "{" + effect + loc + "}");
+                QVERIFY2(samePixelsAndMetadata(draw(),absent), (effect + loc).c_str());
+            }
+            setFields(w.appearances[10], "{" + effect + R"(,"screenLoc":"1,1"})");
+            const auto placed=draw();
+            QVERIFY2(std::any_of(placed.begin(),placed.end(),[](const auto& s) { return s.kind==shell::MapSprite::Master; }),
+                     effect.c_str());
+        }
     }
     // HUD plane-master trees with matrices (tests/data/master-transform-world, stock 516.1688): the root master's matrix
     // turns its plane (the plane relay) and also each overlay about its own pivot; an overlay's own matrix applies first.
@@ -4393,7 +4417,7 @@ private slots:
         w.seeInvisible = 101;
         QCOMPARE(scene.prepare(w, map, reader(), 0, nullptr, true).size(), 1);
         w.hudOrder = {7}; w.hudAppid[7] = 2;
-        setFields(w.appearances[2], R"({"appearanceFlags":268435456,"hasPlane":true,"plane":-32767,
+        setFields(w.appearances[2], R"({"appearanceFlags":268435456,"screenLoc":"1,1","hasPlane":true,"plane":-32767,
             "renderTarget":"*capture","hasColor":true,"colorR":255,"colorG":255,"colorB":255,"colorA":0,
             "vars":[{"bit":256,"data":"04"}]})");
         auto sprites = scene.prepare(w, map, reader(), 0, nullptr, true);

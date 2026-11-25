@@ -61,7 +61,7 @@ inline model::World blacknessWorld(const QString& config) {
     hud(50,7); if (number("backdrop",0)) hud(51,8);
     const auto master=p.queryItemValue("master");
     if (!master.isEmpty()) {
-        QJsonObject f{{"hasPlane",true},{"plane",number("masterplane",0)},{"appearanceFlags",0x10000000}};
+        QJsonObject f{{"screenLoc","SOUTHWEST"},{"hasPlane",true},{"plane",number("masterplane",0)},{"appearanceFlags",0x10000000}};
         if (master=="alpha" || master=="targetalpha" || master=="zero") {
             f["hasColor"]=true; f["colorR"]=255; f["colorG"]=255; f["colorB"]=255;
             f["colorA"]=master=="zero" ? 0 : 128;

@@ -439,7 +439,11 @@ private slots:
             }
             return master;
         };
-        for(const auto* invalid:{"1,1 TO 2,1","invalid","","8,1"}) {f.setLocation(invalid);QVERIFY(refused());}
+        // Without a screen_loc the master and its overlay are not drawn at all (stock 516.1689, master-screen-loc-world).
+        f.setLocation("");
+        QVERIFY(std::none_of(f.sprites.begin(),f.sprites.end(),[](const auto& s) {
+            return s.kind==MapSprite::Master || s.kind==MapSprite::Screen; }));
+        for(const auto* invalid:{"1,1 TO 2,1","invalid","8,1"}) {f.setLocation(invalid);QVERIFY(refused());}
         auto& w=f.session.worldMut();w.bounds.maxX=std::max(w.bounds.maxX,9);w.bounds.maxY=std::max(w.bounds.maxY,9); // a world the view fits in
         w.bounds.viewW=9;w.bounds.viewH=9;f.refresh();
         QVERIFY(!refused()); // Same cached template becomes placeable in the larger view.
