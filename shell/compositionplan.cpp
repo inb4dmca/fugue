@@ -894,6 +894,12 @@ void CompositionPlan::planInput() {
             (s.kind != MapSprite::Entity || !filteredInputPart(s) || s.footprint || s.localGroup || s.passMouse ||
              s.tint != std::array<float,4>{1,1,1,1} || s.color != identityColor)) fallbackRefused.insert(s.plane);
     }
+    // A hidden plane that is only an alpha mask's source takes no clicks either (stock 516.1689, plane-click-world
+    // ptalpha).
+    for (const auto& [plane,index] : masters)
+        if (const auto* effects = sprites[index].planeEffects.get())
+            for (const auto& f : effects->filters)
+                if (f.kind == PlaneFilter::AlphaMask && !f.source.isEmpty()) consumed.insert(f.source);
     for (const auto& [plane,index] : masters) {
         const auto& s = sprites[index];
         const auto* effects = s.planeEffects.get();
