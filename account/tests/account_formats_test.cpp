@@ -50,10 +50,8 @@ int modeOf(const std::string& p) {
 class AccountFormats : public QObject {
     Q_OBJECT
 private slots:
+#ifdef WIN32
     void windowsProfileFallback() {
-#ifndef _WIN32
-        QSKIP("Windows profile fallback");
-#else
         const auto oldHome = qgetenv("HOME"), oldProfile = qgetenv("USERPROFILE");
         const bool hadHome = qEnvironmentVariableIsSet("HOME"), hadProfile = qEnvironmentVariableIsSet("USERPROFILE");
         auto restore = qScopeGuard([&] {
@@ -76,8 +74,8 @@ private slots:
         QCOMPARE(fugue::net::RscStore::defaultDir(), fugueDir() + "/rsc");
         qputenv("HOME", (dir.path() + "/override").toUtf8());
         QCOMPARE(homeDir().value(), dir.path().toStdString() + "/override");
-#endif
     }
+#endif
     // An explicit HOME is the home directory on every platform (USAGE.md), so tests and overrides never reach the real profile.
     void explicitHomeWins() {
         const auto oldHome = qgetenv("HOME");

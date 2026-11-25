@@ -145,10 +145,8 @@ private slots:
             QVERIFY(!e.empty());
         }
     }
+#ifndef WIN32
     void installWritesOnlyUnderXdgData() {
-#ifdef _WIN32
-        QSKIP("XDG desktop install is Unix-only; never change the real Windows registry in a test");
-#endif
         QTemporaryDir home;
         qputenv("HOME", home.path().toUtf8());
         QString xdg = home.path() + "/data";
@@ -181,6 +179,7 @@ private slots:
         QVERIFY(r.desktopPath.rfind(xdg.toStdString(), 0) == 0);
         qunsetenv("XDG_DATA_HOME");
     }
+#endif
 };
 
 FUGUE_TEST_MAIN(PagerLaunchTest)

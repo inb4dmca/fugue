@@ -172,26 +172,6 @@ private slots:
         QCOMPARE(command.at(0).first().toString(), QString(".options"));
         QCOMPARE(command.at(1).first().toString(), QString(".macros"));
     }
-    void outsideClickDismissesPopup() {
-        if (QGuiApplication::platformName() == "offscreen")
-            QSKIP("Popup mouse grabs require a native window-system run");
-        SkinWindow w;
-        QVERIFY(w.loadSkin(menuSkin(false)).isEmpty());
-        w.resize(500, 400);
-        w.show();
-        QVERIFY(QTest::qWaitForWindowExposed(&w));
-        w.activateWindow();
-        FocusFilter filter;
-        filter.setClientWindow(&w);
-        qApp->installEventFilter(&filter);
-        chord(&w);
-        auto* popup = w.clientMenu();
-        QTRY_VERIFY(popup->isVisible());
-        // A popup receives grabbed mouse events even when their position is outside its bounds.
-        QTest::mouseClick(popup->windowHandle(), Qt::LeftButton, Qt::NoModifier,
-                          QPoint(popup->width() + 40, popup->height() + 40));
-        QTRY_VERIFY(!popup->isVisible());
-    }
     void configurableChordInInputAndBrowser() {
         SkinWindow w;
         QVERIFY(w.loadSkin(menuSkin(false)).isEmpty());
@@ -306,10 +286,48 @@ private slots:
         }
     }
 };
-int FUGUE_TEST_ENTRY(int argc, char** argv) {
+
+class ClientMenuNativeTest : public QObject {
+    Q_OBJECT
+private slots:
+    void initTestCase() {
+        const auto platform = QGuiApplication::platformName();
+        QVERIFY2(platform != "offscreen" && platform != "minimal",
+                 "Popup mouse grabs require a native window-system run");
+    }
+    void outsideClickDismissesPopup() {
+        SkinWindow w;
+        QVERIFY(w.loadSkin(menuSkin(false)).isEmpty());
+        w.resize(500, 400);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        w.activateWindow();
+        FocusFilter filter;
+        filter.setClientWindow(&w);
+        qApp->installEventFilter(&filter);
+        chord(&w);
+        auto* popup = w.clientMenu();
+        QTRY_VERIFY(popup->isVisible());
+        // A popup receives grabbed mouse events even when their position is outside its bounds.
+        QTest::mouseClick(popup->windowHandle(), Qt::LeftButton, Qt::NoModifier,
+                          QPoint(popup->width() + 40, popup->height() + 40));
+        QTRY_VERIFY(!popup->isVisible());
+    }
+};
+
+template<class Test>
+static int runClientMenuTest(int argc, char** argv) {
     registerSchemes();
     QApplication app(argc, argv);
-    ClientMenuTest test;
+    Test test;
     return QTest::qExec(&test, argc, argv);
+}
+
+int FUGUE_TEST_ENTRY(int argc, char** argv) {
+    return runClientMenuTest<ClientMenuTest>(argc, argv);
+}
+
+int fugue_run_clientmenu_native(int argc, char** argv) {
+    return runClientMenuTest<ClientMenuNativeTest>(argc, argv);
 }
 #include "clientmenu_test.moc"

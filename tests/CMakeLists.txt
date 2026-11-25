@@ -13,5 +13,18 @@ foreach(src ${test_srcs})
   target_compile_definitions(${stem} PRIVATE
     FUGUE_QT_ROOT="${PROJECT_SOURCE_DIR}"
     FUGUE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
-  add_test(NAME ${name} COMMAND fugue_tests ${name} -o -,txt)
+  fugue_add_test(${name} fugue_tests ${name} -o -,txt)
 endforeach()
+
+if(WIN32 OR APPLE)
+  if(APPLE)
+    target_compile_definitions(audio_sink_test PRIVATE FUGUE_TEST_APPLE=1)
+  endif()
+  fugue_test_entry(audio_device fugue_run_audio_device)
+  fugue_add_test(audio_device fugue_tests audio_device -o -,txt)
+  set_tests_properties(audio_device PROPERTIES LABELS "audio;device" RUN_SERIAL TRUE)
+endif()
+
+fugue_test_entry(gdifon_host fugue_run_gdifon_host)
+fugue_add_test(gdifon_host fugue_tests gdifon_host -o -,txt)
+set_tests_properties(gdifon_host PROPERTIES LABELS font)

@@ -7,18 +7,17 @@ target_link_libraries(fugue-qt PRIVATE fugue_shell fugue_audio fugue_net fugue_p
 if(FUGUE_RELEASE)
   target_compile_definitions(fugue-qt PRIVATE FUGUE_RELEASE=1)   # no FUGUE_AUTO_* hooks, no pager --auto-join/--quit-after, disable core dumps
 endif()
-add_test(NAME version COMMAND fugue-qt --version)
+fugue_add_test(version fugue-qt --version)
 set_tests_properties(version PROPERTIES PASS_REGULAR_EXPRESSION "^fugue-qt ${PROJECT_VERSION}(-dev)?\n")
-add_test(NAME webcheck COMMAND fugue-qt webcheck)
-set_tests_properties(webcheck PROPERTIES PASS_REGULAR_EXPRESSION "webcheck ok\n" TIMEOUT 120
-  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+fugue_add_test(webcheck fugue-qt webcheck)
+set_tests_properties(webcheck PROPERTIES PASS_REGULAR_EXPRESSION "webcheck ok\n")
 if(WIN32 AND TARGET Qt6::QOffscreenIntegrationPlugin)
   # The deployed app's qt.conf points at its minimal plugin bundle (windows only).
   # This developer-only test needs offscreen from the selected SDK, not extra shipped plugins.
   set_property(TEST webcheck APPEND PROPERTY ENVIRONMENT
     "QT_QPA_PLATFORM_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt6::QOffscreenIntegrationPlugin>")
 endif()
-add_test(NAME pager_url_one_argument COMMAND fugue-qt pager --url "byond://127.0.0.1:1" -keytxt x)
+fugue_add_test(pager_url_one_argument fugue-qt pager --url "byond://127.0.0.1:1" -keytxt x)
 set_tests_properties(pager_url_one_argument PROPERTIES PASS_REGULAR_EXPRESSION "pager: --url takes exactly one link")
 if(APPLE)
   # Declare the SVG plugin's framework explicitly so macdeployqt can resolve it even with split Qt installations.

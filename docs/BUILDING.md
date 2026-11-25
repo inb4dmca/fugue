@@ -96,7 +96,7 @@ Run tests:
 $env:QT_QPA_PLATFORM = "offscreen"
 $env:FUGUE_AUDIO = "none"
 $env:QTWEBENGINE_CHROMIUM_FLAGS = "--no-sandbox --disable-gpu"
-ctest --test-dir build/ninja/release -C Release -LE 'gpu|native' --output-on-failure --timeout 120
+ctest --test-dir build/ninja/release -C Release -L portable --no-tests=error --output-on-failure --timeout 120
 Remove-Item Env:QT_QPA_PLATFORM, Env:FUGUE_AUDIO, Env:QTWEBENGINE_CHROMIUM_FLAGS
 ```
 
@@ -192,7 +192,7 @@ For a single-config `build/` tree:
 
 ```bash
 cmake --build build --parallel 2
-QT_QPA_PLATFORM=offscreen ctest --test-dir build -LE 'gpu|native' --output-on-failure
+ctest --test-dir build -L portable --no-tests=error --output-on-failure
 ```
 
 For Windows multi-config builds, use the configured build directory and `-C Release`
@@ -215,15 +215,17 @@ runs because it applies each entry's arguments and environment.
 
 ### Test profiles
 
-Tests with explicit profiles use these labels:
+CTest entries declare their requirements with these labels:
 
 - `portable`: logic and replay checks that run with offscreen Qt.
 - `gpu`: rendering checks that require a working graphics backend.
 - `native`: window-system integration checks that require a display.
+- `device`: checks that require a real output device.
+- `font`: checks that require installed font files; `FUGUE_FONT_DIR` selects their directory.
 
-A selected profile fails if its required capability is unavailable. The general suite above excludes `gpu` and
-`native`; unfiltered CTest includes them. Profile labels are being introduced incrementally, so unlabelled tests
-retain their existing requirements and skip behavior.
+A selected profile fails if its required capability is unavailable or a check is skipped.
+The general suite above selects `portable`; unfiltered CTest includes every available profile.
+Checks for APIs absent from the target platform are omitted when compiling.
 
 ```sh
 ctest --test-dir build -L portable --no-tests=error --output-on-failure
@@ -248,7 +250,7 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ctest --test-dir build -L 'gpu|native' --no-
 ```
 
 CTest sets the environment for each profiled entry. Test sources and fixture READMEs under `tests/data/` describe
-individual expectations, optional device settings and reproduction conditions.
+individual expectations, required capabilities and reproduction conditions.
 
 ## Reproducing fixtures
 

@@ -1,4 +1,4 @@
-// Desktop compositor pixels and ownership require a foreground, unobstructed desktop.
+// Desktop pixel checks require the test windows to stay foreground and unobstructed.
 #include "tests/appearancejson.h"
 #include <QtTest>
 #include "tests/testmain.h"
@@ -48,7 +48,7 @@ private slots:
         QVERIFY2(platform!="offscreen" && platform!="minimal",
                  "Desktop MapWidget checks require a foreground, unobstructed desktop with capture support");
     }
-    void nativeDesktopCaptureOwnership() {
+    void desktopCaptureRejectsObstruction() {
         MapWidget map; map.resize(320,240); map.setViewSize({1,1});
         auto mailbox=std::make_shared<MapMailbox>(std::make_shared<MapMetrics>()); map.setMailbox(mailbox);
         QImage green(32,32,QImage::Format_RGBA8888); green.fill(Qt::green);

@@ -1,5 +1,5 @@
-// Native desktop assertions need compositor ownership, not just Qt's cached
-// activeWindow(). Diagnostics deliberately do not activate or read back the MAP.
+// Desktop pixels must come from the unobstructed test window. Diagnostics
+// leave activation unchanged and capture the screen as it is.
 #pragma once
 #include <QApplication>
 #include <QScreen>
@@ -28,7 +28,7 @@ inline bool ownsPoint(QWidget& window, QPoint global) {
 
 inline void diagnose(QWidget& window, QWidget& surface, QPoint local, qsizetype submissions);
 
-// Once observation starts, lost ownership/geometry invalidates the whole case.
+// Once observation starts, obstruction or changed geometry invalidates the case.
 // Pixel polling must never silently recover from sampling another window.
 class Capture {
     QWidget& window_;
@@ -56,7 +56,7 @@ public:
         auto pixels=surface_.screen()->grabWindow(0).toImage();
         valid_=before && unchanged() && !pixels.isNull();
         if(!valid_) {
-            qInfo() << "Native desktop observation invalidated: ownership, geometry, DPI or capture changed";
+            qInfo() << "Desktop observation invalidated: window visibility, geometry, DPI or capture changed";
             diagnose(window_,surface_,points_.front(),submissions_());
         }
         return pixels;

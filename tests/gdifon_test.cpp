@@ -1,6 +1,7 @@
 // render/gdifon.h: reading raster strikes out of a .FON and drawing a glyph the way DreamSeeker does. The files are
-// built here byte by byte (tests/fonfile.h); a host's own Small Fonts file, when present, is also checked against the
-// layout's advance widths.
+// built here byte by byte (tests/fonfile.h). The separate host-font entry checks an installed Small Fonts file against
+// the layout's advance widths.
+#include <QDir>
 #include <QFile>
 #include <QtTest>
 #include "tests/testmain.h"
@@ -163,13 +164,19 @@ private slots:
         QVERIFY(!fonGlyph(parseFon(fontfile::fon({s})), smallFonts(7), U'A', m));
         QVERIFY(fonGlyph(parseFon(fontfile::fon({layoutStrike()})), smallFonts(7), U'A', m));
     }
+};
 
+class GdiFonHost : public QObject {
+    Q_OBJECT
+private slots:
     void hostSmallFontsMatchesTheLayout() {
-        QFile f("/usr/share/wine/fonts/smalle.fon");
-        if (!f.open(QIODevice::ReadOnly)) QSKIP("no Wine Small Fonts on this host");
+        const QString directory = qEnvironmentVariable("FUGUE_FONT_DIR");
+        QFile f(QDir(directory.isEmpty() ? QString("/usr/share/wine/fonts") : directory).filePath("smalle.fon"));
+        QVERIFY2(f.open(QIODevice::ReadOnly), qPrintable(f.fileName() + ": " + f.errorString()));
         const QByteArray d = f.readAll();
+        QVERIFY2(f.error() == QFileDevice::NoError, qPrintable(f.fileName() + ": " + f.errorString()));
         auto ss = parseFon(std::string_view(d.constData(), size_t(d.size())));
-        QVERIFY(!ss.empty());
+        QVERIFY2(!ss.empty(), qPrintable(f.fileName() + ": no readable 96-DPI font strikes"));
         const DsFace fc = smallFonts(7);
         int checked = 0;
         for (int c = 32; c <= 255; c++) {
@@ -183,4 +190,13 @@ private slots:
 };
 
 FUGUE_TEST_MAIN(GdiFon)
+
+int fugue_run_gdifon_host(int argc, char** argv) {
+    QCoreApplication app(argc, argv);
+    app.setAttribute(Qt::AA_Use96Dpi, true);
+    GdiFonHost test;
+    QTest::setMainSourcePath(__FILE__);
+    return QTest::qExec(&test, argc, argv);
+}
+
 #include "gdifon_test.moc"

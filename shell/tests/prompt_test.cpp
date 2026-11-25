@@ -507,19 +507,6 @@ private slots:
         key(cb.lineEdit(), Qt::Key_V, Qt::ControlModifier);
         QCOMPARE(cb.lineEdit()->text(), QString("a b"));
     }
-    void middleClickPastesThePrimarySelection() {
-        QClipboard* cb = QGuiApplication::clipboard();
-        if (!cb->supportsSelection())
-            QSKIP("this platform has no primary selection (offscreen QPA): the middle-click arm needs X11");
-        cb->setText("PRIMARY", QClipboard::Selection);
-        cb->setText("CLIPBOARD", QClipboard::Clipboard);
-        QLineEdit le;
-        wirePaste(&le);
-        le.show();
-        QVERIFY(QTest::qWaitForWindowExposed(&le));
-        QTest::mouseClick(&le, Qt::MiddleButton, Qt::NoModifier, QPoint(5, le.height() / 2));
-        QCOMPARE(le.text(), QString("PRIMARY"));
-    }
     void pasteIntoViaApiHonoursTheMode() {  // pasteInto(Selection) is the testable half of the middle click
         QClipboard* cb = QGuiApplication::clipboard();
         QLineEdit le;
@@ -777,10 +764,43 @@ private slots:
     }
 };
 
-int FUGUE_TEST_ENTRY(int argc, char** argv) {
+#ifdef FUGUE_TEST_X11_PRIMARY_SELECTION
+class PrimarySelectionTest : public QObject {
+    Q_OBJECT
+private slots:
+    void initTestCase() {
+        QVERIFY2(QGuiApplication::platformName() == "xcb", "Primary-selection checks require the X11 xcb platform");
+        QVERIFY2(QGuiApplication::clipboard()->supportsSelection(), "The X11 clipboard must support primary selection");
+    }
+    void middleClickPastesThePrimarySelection() {
+        QClipboard* cb = QGuiApplication::clipboard();
+        cb->setText("PRIMARY", QClipboard::Selection);
+        cb->setText("CLIPBOARD", QClipboard::Clipboard);
+        QLineEdit le;
+        wirePaste(&le);
+        le.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&le));
+        QTest::mouseClick(&le, Qt::MiddleButton, Qt::NoModifier, QPoint(5, le.height() / 2));
+        QCOMPARE(le.text(), QString("PRIMARY"));
+    }
+};
+#endif
+
+template<class Test>
+static int runPromptTest(int argc, char** argv) {
     registerSchemes();
     QApplication app(argc, argv);
-    PromptTest t;
+    Test t;
     return QTest::qExec(&t, argc, argv);
 }
+
+int FUGUE_TEST_ENTRY(int argc, char** argv) {
+    return runPromptTest<PromptTest>(argc, argv);
+}
+
+#ifdef FUGUE_TEST_X11_PRIMARY_SELECTION
+int fugue_run_prompt_primary_selection(int argc, char** argv) {
+    return runPromptTest<PrimarySelectionTest>(argc, argv);
+}
+#endif
 #include "prompt_test.moc"

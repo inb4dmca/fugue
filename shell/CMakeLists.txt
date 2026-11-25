@@ -24,7 +24,6 @@ qt_add_shaders(fugue_shell mapshaders
 
 # Suites are compiled separately and linked into the shared test runner.
 set(CMAKE_AUTOMOC ON)
-set(_shell_test_env "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 # fugue_shell_test(<ctest name> <source stem>)
 function(fugue_shell_test name stem)
   if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/${stem}.cpp)
@@ -33,8 +32,7 @@ function(fugue_shell_test name stem)
   fugue_test_suite(${stem} tests/${stem}.cpp)
   target_link_libraries(${stem} PRIVATE fugue_shell Qt6::Test Qt6::Network)
   string(REGEX REPLACE "_test$" "" suite "${stem}")
-  add_test(NAME ${name} COMMAND fugue_tests ${suite} -o -,txt)
-  set_tests_properties(${name} PROPERTIES ENVIRONMENT "${_shell_test_env}")
+  fugue_add_test(${name} fugue_tests ${suite} -o -,txt)
 endfunction()
 
 # GPU readback can use software D3D11 without a display on Windows. OpenGL
@@ -72,8 +70,7 @@ endif()
 foreach(animation clientanim movanim visanim runechat)
   fugue_shell_test(shell_${animation} ${animation}_test)
   if(TARGET ${animation}_test)
-    set_tests_properties(shell_${animation} PROPERTIES LABELS "portable;animation"
-      TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:")
+    set_property(TEST shell_${animation} APPEND PROPERTY LABELS animation)
   endif()
 endforeach()
 if(TARGET clientanim_test)
@@ -84,12 +81,12 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/masteropacity_test.cpp)
   fugue_test_suite(masteropacity_test tests/masteropacity_test.cpp)
   target_link_libraries(masteropacity_test PRIVATE fugue_shell Qt6::Test Qt6::GuiPrivate)
   target_compile_definitions(masteropacity_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
-  add_test(NAME shell_masteropacity_portable COMMAND fugue_tests masteropacity portable lifetimes -o -,txt)
-  add_test(NAME shell_masteropacity_gpu COMMAND fugue_tests masteropacity gpu -o -,txt)
-  add_test(NAME shell_masteropacity_native COMMAND fugue_tests masteropacity native -o -,txt)
+  fugue_add_test(shell_masteropacity_portable fugue_tests masteropacity portable lifetimes -o -,txt)
+  fugue_add_test(shell_masteropacity_gpu fugue_tests masteropacity gpu -o -,txt)
+  fugue_add_test(shell_masteropacity_native fugue_tests masteropacity native -o -,txt)
   foreach(profile portable gpu native)
     set_tests_properties(shell_masteropacity_${profile} PROPERTIES
-      LABELS "master-opacity;${profile}" TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:")
+      LABELS "master-opacity;${profile}")
   endforeach()
   set_tests_properties(shell_masteropacity_portable PROPERTIES
     ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=offscreen")
@@ -105,26 +102,23 @@ fugue_shell_test(shell_compositionplan compositionplan_test) # shared model-free
 if(TARGET compositionplan_test)
   target_link_libraries(compositionplan_test PRIVATE fugue_proto)
   target_compile_definitions(compositionplan_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
-  set_tests_properties(shell_compositionplan PROPERTIES LABELS "portable;composition"
-    TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:")
+  set_property(TEST shell_compositionplan APPEND PROPERTY LABELS composition)
 endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/compositiongpu_test.cpp)
   fugue_test_suite(compositiongpu_test tests/compositiongpu_test.cpp)
   target_link_libraries(compositiongpu_test PRIVATE fugue_shell Qt6::Test Qt6::GuiPrivate)
   target_compile_definitions(compositiongpu_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
-  add_test(NAME shell_composition_stock_gpu COMMAND fugue_tests compositiongpu stockParityReplay -o -,txt)
+  fugue_add_test(shell_composition_stock_gpu fugue_tests compositiongpu stockParityReplay -o -,txt)
   if(WIN32)
-    add_test(NAME shell_composition_material_gpu COMMAND fugue_tests compositiongpu contributorMaterialGpu:d3d11 -o -,txt)
-    add_test(NAME shell_composition_material_opengl_gpu COMMAND fugue_tests compositiongpu contributorMaterialGpu:opengl -o -,txt)
+    fugue_add_test(shell_composition_material_gpu fugue_tests compositiongpu contributorMaterialGpu:d3d11 -o -,txt)
+    fugue_add_test(shell_composition_material_opengl_gpu fugue_tests compositiongpu contributorMaterialGpu:opengl -o -,txt)
     set_tests_properties(shell_composition_material_opengl_gpu PROPERTIES LABELS "composition;gpu;display"
-      TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
       ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
   else()
-    add_test(NAME shell_composition_material_gpu COMMAND fugue_tests compositiongpu contributorMaterialGpu:opengl -o -,txt)
+    fugue_add_test(shell_composition_material_gpu fugue_tests compositiongpu contributorMaterialGpu:opengl -o -,txt)
   endif()
   foreach(workload stock material)
     set_tests_properties(shell_composition_${workload}_gpu PROPERTIES LABELS "composition;gpu"
-      TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
       ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_gpu_platform}")
     if(NOT WIN32)
       set_property(TEST shell_composition_${workload}_gpu APPEND PROPERTY LABELS display)
@@ -157,26 +151,30 @@ endif()
 fugue_shell_test(shell_mapmailbox mapmailbox_test) # coalesced notifications and newest-frame delivery
 fugue_shell_test(shell_map      map_test)         # portable configuration, routing and skin rebuilds
 if(TARGET map_test)
-  set_tests_properties(shell_map PROPERTIES LABELS "map;portable"
-    TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:")
+  set_property(TEST shell_map APPEND PROPERTY LABELS map)
 endif()
 fugue_shell_test(shell_map_native mapnative_test) # rendering, presentation and input through a real MapWidget
 if(TARGET mapnative_test)
   target_compile_definitions(mapnative_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
   target_link_libraries(mapnative_test PRIVATE fugue_proto Qt6::GuiPrivate)
   set_tests_properties(shell_map_native PROPERTIES LABELS "map;native" RUN_SERIAL TRUE
-    TIMEOUT 300 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
+    TIMEOUT 300
     ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
 endif()
 fugue_shell_test(shell_map_desktop mapdesktop_test) # desktop-composited pixels; windows must stay foreground and unobstructed
 if(TARGET mapdesktop_test)
   set_tests_properties(shell_map_desktop PROPERTIES LABELS "map;native;desktop" RUN_SERIAL TRUE
-    TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
     ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
 endif()
 fugue_shell_test(shell          shell_test)       # shell input routing
 fugue_shell_test(shell_skincolor skincolor_test)  # winset colours -> widgets
 fugue_shell_test(shell_clientmenu clientmenu_test) # skin menu transitions and client-only hotkey routing
+if(TARGET clientmenu_test)
+  fugue_test_entry(clientmenu_native fugue_run_clientmenu_native)
+  fugue_add_test(shell_clientmenu_native fugue_tests clientmenu_native -o -,txt)
+  set_tests_properties(shell_clientmenu_native PROPERTIES LABELS "clientmenu;native" RUN_SERIAL TRUE
+    ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
+endif()
 fugue_shell_test(shell_input    input_test)       # keys -> their macro bindings only, command routing
 fugue_shell_test(shell_screenshot screenshot_test) # PNG saves, naming, default screenshot controls
 fugue_shell_test(shell_live     live_test)        # winset -> widgets, menu bar, skin button / menu commands, cross-thread sync
@@ -184,12 +182,18 @@ fugue_shell_test(shell_browse   browse_test)      # browse(): popups, loopback o
 if(TARGET browse_test)
   fugue_test_entry(browse_dock fugue_run_browse_dock)
   fugue_test_entry(browse_runtime fugue_run_browse_runtime)
-  add_test(NAME shell_browse_dock COMMAND fugue_tests browse_dock -o -,txt)
-  add_test(NAME shell_browse_runtime COMMAND fugue_tests browse_runtime -o -,txt)
-  set_tests_properties(shell_browse_dock shell_browse_runtime PROPERTIES ENVIRONMENT "${_shell_test_env}")
+  fugue_add_test(shell_browse_dock fugue_tests browse_dock -o -,txt)
+  fugue_add_test(shell_browse_runtime fugue_tests browse_runtime -o -,txt)
 endif()
 fugue_shell_test(shell_recipefiler recipefiler_test)  # browse_rsc runtime icons (DDMI recipes) filed for pages as PNG
 fugue_shell_test(shell_prompt   prompt_test)      # alert()/input() PromptHost, the INFO control's StatPanelWidget, paste in every key-taking widget
+if(TARGET prompt_test AND NOT WIN32 AND NOT APPLE)
+  target_compile_definitions(prompt_test PRIVATE FUGUE_TEST_X11_PRIMARY_SELECTION=1)
+  fugue_test_entry(prompt_primary_selection fugue_run_prompt_primary_selection)
+  fugue_add_test(shell_prompt_primary_selection fugue_tests prompt_primary_selection -o -,txt)
+  set_tests_properties(shell_prompt_primary_selection PROPERTIES LABELS "prompt;native;x11" RUN_SERIAL TRUE
+    ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=xcb")
+endif()
 fugue_shell_test(shell_skinfont skinfont_test)    # skin control fonts: stock defaults, .dmf and winset font-family/size/style
 fugue_shell_test(shell_serverkey serverkey_test)  # the per-server macro key across a link() to the same server
 
@@ -198,6 +202,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/paste_scan_test.cpp)
   fugue_test_suite(paste_scan_test tests/paste_scan_test.cpp)
   target_link_libraries(paste_scan_test PRIVATE Qt6::Test Qt6::Core)
   target_compile_definitions(paste_scan_test PRIVATE FUGUE_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
-  add_test(NAME shell_paste_scan COMMAND fugue_tests paste_scan -o -,txt)
+  fugue_add_test(shell_paste_scan fugue_tests paste_scan -o -,txt)
 endif()
 fugue_shell_test(shell_chaticons chaticons_test)  # \icon[x] in chat: the IMG tag becomes the state cell inline

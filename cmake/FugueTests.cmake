@@ -4,6 +4,13 @@ add_executable(fugue_tests ${PROJECT_SOURCE_DIR}/tests/runner.cpp)
 target_include_directories(fugue_tests PRIVATE ${PROJECT_BINARY_DIR})
 target_link_libraries(fugue_tests PRIVATE Qt6::Core)
 
+function(fugue_add_test name)
+  add_test(NAME ${name} COMMAND ${ARGN})
+  set_tests_properties(${name} PROPERTIES LABELS portable TIMEOUT 120
+    FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;FUGUE_AUDIO=none;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+endfunction()
+
 function(fugue_test_entry name entry)
   get_property(names GLOBAL PROPERTY FUGUE_TEST_NAMES)
   if(name IN_LIST names)

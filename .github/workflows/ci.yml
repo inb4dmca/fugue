@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y build-essential cmake ninja-build pkg-config \
             zlib1g-dev libjpeg-dev libopenmpt-dev libgl-dev libegl-dev libxkbcommon-dev \
             libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 \
-            libnss3 libasound2t64 libcups2 libxcomposite1 libxdamage1 libxrandr2 libxtst6
+            libnss3 libasound2t64 libcups2 libxcomposite1 libxdamage1 libxrandr2 libxtst6 fonts-wine
       # Use one SDK for Qt libraries and their matching GuiPrivate headers.
       - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125   # v4.4.1
         with:
@@ -36,7 +36,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           FUGUE_AUDIO: none
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
-        run: ctest --test-dir build -LE 'gpu|native' --output-on-failure
+        run: ctest --test-dir build -L portable --no-tests=error --output-on-failure
+      - name: Test host fonts
+        run: ctest --test-dir build -L font --no-tests=error --output-on-failure
       # GPU and native profiles require OpenGL/XCB on Linux; use Mesa under a virtual display.
       - name: Test GPU and native profiles
         env:
@@ -81,7 +83,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
           FUGUE_AUDIO: none
-        run: ctest --test-dir build -LE 'gpu|native' --output-on-failure
+        run: ctest --test-dir build -L portable --no-tests=error --output-on-failure
       - name: Deploy and verify the standalone bundle
         run: |
           cmake --install build --prefix "$PWD/build/macos"
@@ -134,15 +136,22 @@ jobs:
           QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox --disable-gpu
         run: |
           $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
-          ctest --test-dir build -C Release -LE 'gpu|native' --output-on-failure --timeout 120
+          ctest --test-dir build -C Release -L portable --no-tests=error --output-on-failure --timeout 120
       - name: Test GPU profiles on software D3D11
         id: gpu_tests
         shell: pwsh
         run: |
           $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
           ctest --test-dir build -C Release -L gpu -LE display --no-tests=error --output-on-failure
+      - name: Test host fonts
+        id: font_tests
+        shell: pwsh
+        run: |
+          $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
+          $env:FUGUE_FONT_DIR = "$env:WINDIR/Fonts"
+          ctest --test-dir build -C Release -L font --no-tests=error --output-on-failure
       - name: Diagnose failed tests
-        if: failure() && (steps.tests.outcome == 'failure' || steps.gpu_tests.outcome == 'failure')
+        if: failure() && (steps.tests.outcome == 'failure' || steps.gpu_tests.outcome == 'failure' || steps.font_tests.outcome == 'failure')
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
@@ -151,6 +160,7 @@ jobs:
         run: |
           # CTest preserves each failed entry's suite, selected functions and environment.
           $env:PATH = "$pwd/build/vcpkg_installed/x64-windows/bin;$env:PATH"
+          $env:FUGUE_FONT_DIR = "$env:WINDIR/Fonts"
           ctest --test-dir build -C Release --rerun-failed --verbose --output-on-failure --timeout 120
       - name: Package
         shell: pwsh

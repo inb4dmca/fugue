@@ -19,12 +19,13 @@ Add only the profiles the scenario needs; see
 [test profiles and commands](docs/BUILDING.md#test-profiles). Keep individual expectations and reproduction details
 with the test source or fixture README.
 
-Tests must not need external network services, a BYOND installation, or files outside the repository. Tests that replay
-a recorded session use data under `tests/data/`; a recording should come from a small purpose-written world rather than
-a real game, so the expected values are understood and the data is ours to publish. Stock observations establish parity;
+Automated tests must not need external network services or a BYOND installation. Portable tests keep their input files
+inside the repository; explicit capability profiles may require their declared display, device or installed font files.
+Tests that replay a recorded session use data under `tests/data/`; a recording should come from a small purpose-written
+world rather than a real game, so the expected values are understood and the data is ours to publish. Stock observations establish parity;
 explicit Fugue invariants establish requirements such as bounded work and correct lifetimes.
 
-Please run the suite and the affected GPU/native profiles before sending a change. Report unavailable profiles and
+Please run the portable suite and the affected capability profiles before sending a change. Report unavailable profiles and
 skipped cases separately; they do not establish verification.
 
 ## Scenario lifecycle
