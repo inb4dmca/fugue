@@ -13,10 +13,11 @@
 
 namespace fugue::shell {
 namespace {
+// A client image or a vis_contents member on a filtered or turned plane is clicked like the plane's own atoms: by its
+// own ink where it stood, through the plane's matrix, naming the image's atom or the member (stock 516.1689,
+// plane-click-world outline1, turn90, scalex2).
 bool planeInputPart(const MapSprite& s) {
-    return !s.affine && !s.rootAffine && !s.imageIdentity && !s.visHit && !s.maptext &&
-        s.kind != MapSprite::Image && s.kind != MapSprite::Vis &&
-        (s.size.isEmpty() || s.size == s.image.size());
+    return !s.affine && !s.rootAffine && !s.maptext && (s.size.isEmpty() || s.size == s.image.size());
 }
 // A turned master's own overlays carry its matrix about their own centre as well as the plane's: the pointer goes back
 // through the plane's, then the part's (stock 516.1689, master-transform-world clicks on master-turn, master-scale).
