@@ -77,7 +77,8 @@ public:
     std::map<int,StaticAffine> transforms;
     qsizetype fallback = -1;
     // Icon alpha masks hide their masked-out pixels from input too (stock 516.1689, tests/data/click-mask-world): a
-    // plane master's by plane, an atom's by group occurrence. Masks by render source are not tested.
+    // plane master's by plane, an atom's by group occurrence. A plane master's mask by render source is tested at the
+    // pointer instead (mapinput.cpp); an atom's is not applied.
     struct InputMask { QImage image; QPoint topLeft; bool inverse = false; };
     std::map<int,std::vector<InputMask>> planeMasks;
     std::map<std::pair<uint64_t,const AppearanceGroup*>,std::vector<InputMask>> groupMasks;

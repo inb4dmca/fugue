@@ -13,10 +13,11 @@
 
 namespace fugue::shell {
 namespace {
+// A client image or a vis_contents member on a filtered or turned plane is clicked like the plane's own atoms: by its
+// own ink where it stood, through the plane's matrix, naming the image's atom or the member (stock 516.1689,
+// plane-click-world outline1, turn90, scalex2).
 bool planeInputPart(const MapSprite& s) {
-    return !s.affine && !s.rootAffine && !s.imageIdentity && !s.visHit && !s.maptext &&
-        s.kind != MapSprite::Image && s.kind != MapSprite::Vis &&
-        (s.size.isEmpty() || s.size == s.image.size());
+    return !s.affine && !s.rootAffine && !s.maptext && (s.size.isEmpty() || s.size == s.image.size());
 }
 // A turned master's own overlays carry its matrix about their own centre as well as the plane's: the pointer goes back
 // through the plane's, then the part's (stock 516.1689, master-transform-world clicks on master-turn, master-scale).
@@ -61,6 +62,63 @@ std::optional<QPointF> turnedPartPoint(const MapSprite& s, QPoint pixel, QRect s
                                        const std::map<int, StaticAffine>& transforms) {
     if (!s.affine || !transforms.count(s.plane)) return {};
     return planePoint(pixel, s.plane, source, transforms, false);
+}
+// Where a part with a matrix of its own is under the pointer, in its untransformed icon; outside the icon is nothing.
+// partPixel is after the sprite's group inverse; samplePixel is that after the plane's inverse, rounded down.
+std::optional<QPoint> turnedIconPixel(const MapSprite& s, QPoint partPixel, QPoint samplePixel, QRect source,
+                                      const std::map<int, StaticAffine>& transforms) {
+    // Stock ordinary root trees and half-size images test the inverse integer corner, including visible edge pixels
+    // whose corner maps to transparent source alpha.
+    const auto exact = turnedPartPoint(s, partPixel, source, transforms);
+    // The ink is tested in the cell the click will name: the same boundary nudge as nameSprite().
+    const QPointF p = s.affine->inverse.map((exact ? *exact - s.position : QPointF(samplePixel - s.position)) +
+        (s.smooth || s.rootAffine ? QPointF() : QPointF(.5,.5))) + (exact ? QPointF(1e-6,1e-6) : QPointF());
+    if (p.x() < 0 || p.y() < 0 || p.x() >= s.image.width() || p.y() >= s.image.height()) return {};
+    return QPoint(int(std::floor(p.x())), int(std::floor(p.y())));
+}
+// The alpha of one part of a render target at a scene pixel: its own pixel there, times its own alpha.
+double partAlpha(const MapSprite& s, QPoint pixel) {
+    if (s.image.isNull() || s.maptext || !s.rect().contains(pixel)) return 0;
+    const QPoint local = pixel - s.position;
+    QPoint sample(local.x() * s.image.width() / s.rect().width(), local.y() * s.image.height() / s.rect().height());
+    if (s.affine) {
+        const QPointF p = s.affine->inverse.map(QPointF(local) + QPointF(.5,.5));
+        if (p.x() < 0 || p.y() < 0 || p.x() >= s.image.width() || p.y() >= s.image.height()) return 0;
+        sample = {int(std::floor(p.x())), int(std::floor(p.y()))};
+    }
+    return s.image.pixelColor(sample).alphaF() * std::clamp(double(s.tint[3]), 0.0, 1.0);
+}
+// An alpha mask filter on a plane master whose mask is a render target, an atom's or a plane's, hides from clicks what
+// it masks out, as a mask from an icon does; MASK_INVERSE hides what it keeps (stock 516.1689, plane-click-world
+// rtalpha, ptalpha, rtalpha-inverse, turn90-rtalpha). An atom's target is centred on the plane, a plane's stays where
+// it is drawn, both moved by the filter's x, y, as the drawing places them. The mask's alpha here is its parts' own
+// pixels over one another; filters or a matrix on the mask's source are not applied (not measured).
+bool renderMaskedOut(const CompositionPlan& plan, const MapSprite& s, QPoint planePixel) {
+    if (plan.hiddenTree.count(s.plane)) return false;
+    const auto master = plan.masters.find(s.plane);
+    if (master == plan.masters.end() || master->second < 0 || master->second >= plan.sprites.size()) return false;
+    const auto* effects = plan.sprites[master->second].planeEffects.get();
+    if (!effects) return false;
+    for (const auto& f : effects->filters) {
+        if (f.kind != PlaneFilter::AlphaMask || f.icon != UINT32_MAX || f.source.isEmpty()) continue;
+        const QPoint offset(int(std::lround(f.x)), int(std::lround(f.y)));
+        const std::vector<qsizetype>* parts = nullptr;
+        QPoint at;
+        const int group = plan.local.find(f.source);
+        if (group >= 0 && plan.local.groups[size_t(group)].valid) {
+            const auto& g = plan.local.groups[size_t(group)];
+            const QPoint topLeft = plan.source.topLeft() + offset +
+                QPoint((plan.source.width() - g.bounds.width()) / 2, (plan.source.height() - g.bounds.height()) / 2);
+            at = planePixel - topLeft + g.bounds.topLeft(); parts = &g.parts;
+        } else if (const auto* surface = plan.planeSources.find(f.source)) {
+            at = planePixel - offset; parts = &surface->parts;
+        }
+        double alpha = 0;   // a target that is not there is an empty mask
+        if (parts) for (auto i : *parts) alpha += partAlpha(plan.sprites[i], at) * (1 - alpha);
+        const int level = int(std::lround(alpha * 255));
+        if ((f.flags & 1) ? level == 255 : level == 0) return true;
+    }
+    return false;
 }
 bool mouseCandidate(const MapSprite& s, QPoint pixel, const std::set<int>& hidden) {
     return s.kind != MapSprite::Blackness && s.kind != MapSprite::Master &&
@@ -306,7 +364,12 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
         const auto& binding = plan.bindings[size_t(i)];
         if (binding.refused) continue;
         const auto scenePixel = groupPixel(pointer.scenePixel, binding);
-        const auto pixel = planePixel(scenePixel, it->plane, pointer.renderedSource, transforms, true);
+        // The menu takes the pointer back through a plane's matrix as a left click does: the pixel whose corner the
+        // inverse lands in, and for a part with a matrix of its own the unrounded point; such a part is listed where
+        // its turned icon is, not over the whole of its bounds (stock 516.1689, plane-click-world turn90, tree45,
+        // tree45-scalex2 right clicks). An alpha mask hides nothing from the menu, from an icon or a render target
+        // (iconalpha, turn90-rtalpha).
+        const auto pixel = planePixel(scenePixel, it->plane, pointer.renderedSource, transforms, false);
         auto hit = pointer;
         if (outlines.count(it->plane) && !outlinedInputPart(*it)) continue;
         if (!it->planeSourceDependency.isEmpty()) continue; // plane-relay menus not established
@@ -317,7 +380,9 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
             hit = *relay;
         } else {
             if ((transforms.count(it->plane) && (!pointer.renderedSource.contains(pixel) || (!planeInputPart(*it) && !turnedPlanePart(*it)))) ||
-                !binding.localVisible || !mouseCandidate(*it, pixel, hidden) || plan.maskedOut(*it, scenePixel, pixel)) continue;
+                !binding.localVisible || !mouseCandidate(*it, pixel, hidden) ||
+                (it->affine && !it->image.isNull() &&
+                 !turnedIconPixel(*it, scenePixel, pixel, pointer.renderedSource, transforms))) continue;
             namePlaneSprite(hit, *it, scenePixel, pointer.renderedSource, transforms);
             hit.filteredPlane = outlines.count(it->plane) != 0;
         }
@@ -420,7 +485,7 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
             }
             // Stock blackness is presentation-only: covered admitted atoms still hit.
             if (!binding.localVisible || !mouseCandidate(*it, samplePixel, hidden) || it->footprint || it->image.isNull() ||
-                plan.maskedOut(*it, partPixel, samplePixel) ||
+                plan.maskedOut(*it, partPixel, samplePixel) || renderMaskedOut(plan, *it, samplePixel) ||
                 ((!it->inkInteractive || it->maptext) && it->mouseOpacity < 2) ||
                 // Images extending a parent's opacity-2 rectangle are unsupported.
                 (it->mouseOpacity == 2 && (it->imageIdentity || it->kind == MapSprite::Image))) continue;
@@ -428,16 +493,9 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
             QPoint sample(local.x() * it->image.width() / it->rect().width(),
                           local.y() * it->image.height() / it->rect().height());
             if (it->affine) {  // opacity 2 is the turned icon rectangle, not its bounds
-                // Preserve childless/image coverage. Stock ordinary root trees
-                // and half-size images test the inverse integer corner, including
-                // visible edge pixels whose corner maps to transparent source alpha.
-                const auto exact = turnedPartPoint(*it,partPixel,source,transforms);
-                // The ink is tested in the cell the click will name: the same boundary nudge as nameSprite().
-                const QPointF sourcePixel = it->affine->inverse.map((exact ? *exact - it->position : QPointF(local)) +
-                    (it->smooth || it->rootAffine ? QPointF() : QPointF(.5,.5))) + (exact ? QPointF(1e-6,1e-6) : QPointF());
-                if (sourcePixel.x() < 0 || sourcePixel.y() < 0 ||
-                    sourcePixel.x() >= it->image.width() || sourcePixel.y() >= it->image.height()) continue;
-                sample = {int(std::floor(sourcePixel.x())), int(std::floor(sourcePixel.y()))};
+                const auto icon = turnedIconPixel(*it,partPixel,samplePixel,source,transforms);
+                if (!icon) continue;
+                sample = *icon;
             }
             if (it->mouseOpacity < 2 && it->image.pixelColor(sample).alpha() == 0) continue;
             if (!it->planeSourceDependency.isEmpty()) {

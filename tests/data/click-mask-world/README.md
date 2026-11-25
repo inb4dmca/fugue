@@ -76,5 +76,5 @@ pixel in x.
 
 ## Not covered
 
-Masks by `render_source` are not applied to clicks (the masked plane or atom stays clickable everywhere). Hover,
-drag/drop and right-click menus on these shapes.
+Masks by `render_source` on an atom's own filters are not applied to clicks (on a plane master they are:
+`tests/data/plane-click-world`). Hover, drag/drop and right-click menus on these shapes.

@@ -629,10 +629,12 @@ private slots:
         QVERIFY(!pick(old,false)->screen); // no secondary-MAP extension
         // A filtered plane's own ink is clickable under other filter kinds and a matrix too (stock 516.1689,
         // master-transform-world clicks).
-        for(const QString key:{"wave","turned","affine"}) {
+        // So is a client image's (stock 516.1689, plane-click-world outline1).
+        for(const QString key:{"wave","turned","affine","image"}) {
             auto changed=old;
             for(auto& sprite:changed) if(sprite.kind==MapSprite::Screen && key=="affine")
                 sprite.affine=StaticAffine::make({1,0,0,0,1,0},{32,32}); // a part that carries a matrix of its own
+            for(auto& sprite:changed) if(sprite.kind==MapSprite::Screen && key=="image") sprite.imageIdentity=1;
             for(auto& sprite:changed) if(sprite.kind==MapSprite::Master) {
                 auto effects=std::make_shared<PlaneEffects>(*sprite.planeEffects);
                 if(key=="wave") {PlaneFilter wave;wave.kind=PlaneFilter::Wave;wave.x=16;wave.size=3;effects->filters={wave};}
@@ -641,7 +643,7 @@ private slots:
             }
             QVERIFY2(pick(changed)->screen,qPrintable(key));
         }
-        for(const QString key:{"chain","opacity2","scaled","image","text","relay","blend"}) {
+        for(const QString key:{"chain","opacity2","scaled","text","relay","blend"}) {
             auto changed=old;
             for(auto& sprite:changed) {
                 if(sprite.kind==MapSprite::Master && key=="chain") {
@@ -652,7 +654,6 @@ private slots:
                 if(sprite.kind!=MapSprite::Screen) continue;
                 if(key=="opacity2") sprite.mouseOpacity=2;
                 if(key=="scaled") sprite.size={64,64};
-                if(key=="image") sprite.imageIdentity=1;
                 if(key=="text") sprite.maptext=true;
                 if(key=="relay") sprite.renderSource="unverified";
                 if(key=="blend") sprite.blend=3;
@@ -935,7 +936,8 @@ private slots:
         QVERIFY(rotation);QCOMPARE(rotation->click.over.ref,42u);QCOMPARE(rotation->click.iconX,4);QCOMPARE(rotation->click.iconY,6);
         QCOMPARE(mapPointerStack(*rotation).size(),1);
         auto attached=object;attached.kind=MapSprite::Image;attached.screenInteractive=true;attached.imageIdentity=5;
-        QVERIFY(mapPointerStack(at({32,24},{attached,master})).empty());
+        // A client image on a turned plane is listed where the plane draws it (stock 516.1689, plane-click-world turn90).
+        QCOMPARE(mapPointerStack(at({32,24},{attached,master})).size(),1);
         // Pending selection changes cannot alter the retained rendered transform.
         QCOMPARE(at({32,24},rendered).click.over.ref,42u);
         QCOMPARE(mapPointerStack(hit).size(),1);

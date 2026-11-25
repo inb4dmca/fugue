@@ -166,8 +166,8 @@ the `master-*` cases without an outline, through the real hit test) hold the rul
 
 Nested
 masters with a matrix (still refused), and non-32 px worlds. For filters with a matrix:
-turns that are not quarter turns, a master with a render target, an alpha mask from a render target, and the
-view-edge clamp of an enlarged bilinear plane (`fx-grid-s200`). For clicks: right-click menus, mouse-opacity 2, and
-images or vis_contents on a turned plane. For animation: no mid-flight frame is kept or compared pixel for pixel (only
-the holds are), clicks on an animating master were not taken, and a KEEP_TOGETHER master with an animating matrix is
-still refused.
+turns that are not quarter turns, a master with a render target, and the view-edge clamp of an enlarged bilinear plane
+(`fx-grid-s200`). For clicks: mouse-opacity 2. Right-click menus, images and vis_contents members on a turned or
+filtered plane, and render-target masks are in `tests/data/plane-click-world`. For animation: no mid-flight frame is
+kept or compared pixel for pixel (only the holds are), clicks on an animating master were not taken, and a
+KEEP_TOGETHER master with an animating matrix is still refused.
