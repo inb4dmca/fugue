@@ -1,4 +1,5 @@
 #include "tests/appearancejson.h"
+#include "tests/recordedinput.h"
 #include <QtTest>
 #include "tests/testmain.h"
 #include <QBuffer>
@@ -8,7 +9,9 @@
 #include <QUrlQuery>
 #include <QCryptographicHash>
 #include <QDataStream>
+#include <QSet>
 #include <bit>
+#include <utility>
 #include "shell/entitymap.h"
 #include "shell/tests/affinefixture.h"
 using namespace fugue;
@@ -48,6 +51,7 @@ bool has(const shell::MapSprites& sprites,uint32_t key) {
 }
 class MapVisibilityTest : public QObject {
     Q_OBJECT
+    bool darknessDataReady_ = false;
 private slots:
     void wireScalarsAndPresence() {
         model::Session session;
@@ -73,58 +77,142 @@ private slots:
         vision({0x20,0}); QCOMPARE(session.world().sight,0u); QCOMPARE(session.world().seeInvisible,uint8_t(50));
     }
     void darknessWireScalars() {
-        QFile file(QFINDTESTDATA("../../tests/data/darkness-world/wire-scalars.json")); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto data=QJsonDocument::fromJson(file.readAll()).object();
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/darkness-world/wire-scalars.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+        const auto data=document.object();
+        const auto appearances=data["appearances"].toArray(),vision=data["vision"].toArray();
+        const auto bounds=data["bounds"].toArray(),rebinds=data["area_rebinds"].toArray();
+        QCOMPARE(appearances.size(),9);QCOMPARE(vision.size(),4);QCOMPARE(bounds.size(),2);QCOMPARE(rebinds.size(),2);
         model::Session session;
         auto ingest=[&](uint16_t type,const QJsonObject& row) {
             const auto bytes=hexDecode(row["body"].toString().toStdString());
-            QVERIFY(bytes); session.ingest(type,*bytes);
+            if (!bytes || bytes->empty()) {error=path+": missing or malformed frame body";return false;}
+            const auto before=session.ingestErrors();session.ingest(type,*bytes);
+            if (session.ingestErrors()!=before) {error=path+": production decoder rejected frame "+QString::number(type,16);return false;}
+            return true;
         };
-        for (const auto& value:data["appearances"].toArray()) {
-            const auto row=value.toObject(); ingest(0x26,row);
-            const auto& a=session.world().appearances.at(uint32_t(row["id"].toInt()));
+        QSet<int> ids;
+        for (const auto& value:appearances) {
+            const auto row=value.toObject();
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{row["id"]},1,1,15),qPrintable(path+": invalid appearance id"));
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{row["luminosity"]},1,0,6),qPrintable(path+": invalid luminosity expectation"));
+            const int id=row["id"].toInt();QVERIFY(!ids.contains(id));ids.insert(id);
+            QVERIFY2(ingest(0x26,row),qPrintable(error));
+            const auto found=session.world().appearances.find(uint32_t(id));
+            QVERIFY2(found!=session.world().appearances.end(),qPrintable(path+": missing decoded appearance "+QString::number(id)));
+            const auto& a=found->second;
             QCOMPARE(a.luminosity(),row["luminosity"].toInt());
         }
+        QCOMPARE(ids,(QSet<int>{1,2,8,10,11,12,13,14,15}));
         QVERIFY(!session.world().haveSeeInDark);
-        for (const auto& value:data["vision"].toArray()) {
-            const auto row=value.toObject(); ingest(7,row);
+        QSet<int> sightValues;
+        for (const auto& value:vision) {
+            const auto row=value.toObject();
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{row["see"]},1,0,6),qPrintable(path+": invalid see_in_dark expectation"));
+            sightValues.insert(row["see"].toInt());
+            QVERIFY2(ingest(7,row),qPrintable(error));
             QVERIFY(session.world().haveSeeInDark); QCOMPARE(int(session.world().seeInDark),row["see"].toInt());
         }
+        QCOMPARE(sightValues,(QSet<int>{0,1,2,6}));
         // An unrelated optional update does not reset dark vision or its presence.
         Bytes invisible{0x80,2,50}; invisible.insert(invisible.end(),10,0); session.ingest(7,invisible);
         QVERIFY(session.world().haveSeeInDark); QCOMPARE(session.world().seeInDark,uint8_t(0));
-        for (const auto& value:data["bounds"].toArray()) {
-            const auto row=value.toObject(); ingest(0x3e,row);
+        QSet<int> widths;
+        for (const auto& value:bounds) {
+            const auto row=value.toObject();
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{row["win"],row["light"],row["view"]},3,1,65535),qPrintable(path+": invalid bounds expectation"));
+            widths.insert(row["win"].toInt());
+            QVERIFY2(ingest(0x3e,row),qPrintable(error));
+            QVERIFY(session.world().bounds.have);
             QCOMPARE(session.world().bounds.winW,row["win"].toInt());
             QCOMPARE(session.world().bounds.lightW,row["light"].toInt());
             QCOMPARE(session.world().bounds.lightH,row["light"].toInt());
             QCOMPARE(session.world().bounds.viewW,row["view"].toInt());
         }
+        QCOMPARE(widths,(QSet<int>{19,21}));
         session.worldMut().tiles[{0,0,0}]=2;
-        for (const auto& value:data["area_rebinds"].toArray()) {
-            const auto row=value.toObject(); ingest(0xf1,row);
-            QCOMPARE(session.world().turfBinds.at(0),uint32_t(row["appid"].toInt()));
-            QCOMPARE(session.world().tiles.at({0,0,0}),2u); // binding-only delta, no tile replacement
+        QSet<int> appids;
+        for (const auto& value:rebinds) {
+            const auto row=value.toObject();
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{row["appid"]},1,1,15),qPrintable(path+": invalid area appearance expectation"));
+            appids.insert(row["appid"].toInt());
+            QVERIFY2(ingest(0xf1,row),qPrintable(error));
+            const auto binding=session.world().turfBinds.find(0);QVERIFY(binding!=session.world().turfBinds.end());
+            QCOMPARE(binding->second,uint32_t(row["appid"].toInt()));
+            const auto tile=session.world().tiles.find({0,0,0});QVERIFY(tile!=session.world().tiles.end());
+            QCOMPARE(tile->second,2u); // binding-only delta, no tile replacement
         }
-        auto unsupported=hexDecode(data["appearances"].toArray().last().toObject()["body"].toString().toStdString());
-        QVERIFY(unsupported); unsupported->back()=7; session.ingest(0x26,*unsupported);
+        QCOMPARE(appids,(QSet<int>{1,8}));
+        QCOMPARE(appearances.last().toObject()["id"].toInt(),15);
+        auto unsupported=hexDecode(appearances.last().toObject()["body"].toString().toStdString());
+        QVERIFY(unsupported && !unsupported->empty()); unsupported->back()=7; session.ingest(0x26,*unsupported);
+        QVERIFY(session.world().appearances.count(15));
         QCOMPARE(session.world().appearances.at(15).luminosity(),-1); // do not approximate unverified values
         model::Session replacement; QVERIFY(!replacement.world().haveSeeInDark);
     }
     void stockDarkness_data() {
+        darknessDataReady_ = false;
         QTest::addColumn<QJsonObject>("row");
-        for (const auto& path:{QFINDTESTDATA("../../tests/data/darkness-world/stock-observations.json"),
-                              QFINDTESTDATA("../../tests/data/darkness-world/extended-observations.json"),
-                              QFINDTESTDATA("../../tests/data/darkness-world/source-window-observations.json")}) {
-            QFile file(path); QVERIFY(file.open(QIODevice::ReadOnly));
-            const auto data=QJsonDocument::fromJson(file.readAll()).object();
-            for (const auto& value:data["cases"].toArray()) {
-                auto row=value.toObject(); row["world_size"]=data["world_size"].toInt(9);
-                QTest::newRow(qPrintable(row["phase"].toString())) << row;
+        struct Recording {const char* name;int cases,size;};
+        const Recording recordings[]={{"stock-observations.json",13,9},{"extended-observations.json",12,9},
+            {"source-window-observations.json",7,17}};
+        const QRegularExpression mask("^(?:[01W]{9}/){8}[01W]{9}\\z"),integer("^-?[0-9]+\\z");
+        const QStringList numeric{"ambient","see","wall","wallx","lamp","lampx","lampy","lamp_invisible","eyex","eyey","offset"};
+        const QStringList positions{"wallx","lampx","lampy","eyex","eyey"};
+        const QStringList sights{"normal","blackness","turfs","objs","ghost","through","self"};
+        QJsonArray retained;QSet<QString> names;
+        for (const auto& recording:recordings) {
+            const QString path=QString(FUGUE_TEST_DATA_DIR)+"/darkness-world/"+recording.name;
+            QJsonDocument document;QString error;
+            QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+            const auto data=document.object();const auto size=data["world_size"];
+            // The first two recordings deliberately omit world_size (the 9x9 default).
+            if (data.contains("world_size") || recording.size!=9)
+                QVERIFY2(testinput::isIntegerTuple(QJsonArray{size},1,recording.size,recording.size),qPrintable(path+": invalid world_size"));
+            const auto cases=data["cases"].toArray();QCOMPARE(cases.size(),recording.cases);
+            for (const auto& value:cases) {
+                auto row=value.toObject();const auto name=row["phase"].toString();
+                const auto context=path+": "+name;
+                QVERIFY2(!name.isEmpty() && name==name.trimmed() && !names.contains(name),qPrintable(context+": missing or duplicate phase"));
+                names.insert(name);
+                QVERIFY2(mask.match(row["mask"].toString()).hasMatch(),qPrintable(context+": expected a 9x9 mask of 0, 1 or W"));
+                QVERIFY2(row["visible_markers"].isArray(),qPrintable(context+": missing visible_markers array"));
+                QSet<QString> markers;
+                for (const auto& marker:row["visible_markers"].toArray()) {
+                    const auto text=marker.toString();
+                    QVERIFY2((text=="target" || text=="lamp" || text=="observer") && !markers.contains(text),qPrintable(context+": invalid or duplicate marker"));
+                    markers.insert(text);
+                }
+                const auto config=row["config"].toString();QVERIFY2(!config.isEmpty(),qPrintable(context+": missing config"));
+                const QUrlQuery query(config);QSet<QString> keys;
+                for (const auto& item:query.queryItems()) {
+                    const auto& key=item.first;const auto& text=item.second;
+                    QVERIFY2(!keys.contains(key) && !text.isEmpty(),qPrintable(context+": duplicate or empty query item "+key));
+                    keys.insert(key);
+                    if (key=="sight") {QVERIFY2(sights.contains(text),qPrintable(context+": unsupported sight"));}
+                    else if (key=="door") {QVERIFY2(text=="open" || text=="closed",qPrintable(context+": invalid door"));}
+                    else if (key!="run") {
+                        bool valid=false;const int number=text.toInt(&valid);
+                        QVERIFY2(numeric.contains(key) && valid && integer.match(text).hasMatch(),qPrintable(context+": invalid numeric query item "+key));
+                        const int low=positions.contains(key) ? 1 : key=="offset" ? -32768 : 0;
+                        const int high=positions.contains(key) ? recording.size : key=="offset" ? 32767 :
+                            key=="ambient" || key=="wall" || key=="lamp_invisible" ? 1 : 6;
+                        QVERIFY2(number>=low && number<=high,qPrintable(context+": query item outside fixture range: "+key));
+                    }
+                }
+                QVERIFY2(keys.contains("ambient") && keys.contains("see") && keys.contains("sight"),qPrintable(context+": missing ambient, see or sight input"));
+                row["world_size"]=recording.size;retained.append(row);
             }
         }
+        for (const auto& value:retained) {
+            const auto row=value.toObject();QTest::newRow(qPrintable(row["phase"].toString())) << row;
+        }
+        darknessDataReady_ = true;
     }
     void stockDarkness() {
+        // QtTest can still enter the body after a failing _data() function.
+        QVERIFY2(darknessDataReady_,"No validated darkness observations");
         QFETCH(QJsonObject,row);
         const QUrlQuery p(row["config"].toString());
         auto number=[&](const char* key,int fallback) { return p.hasQueryItem(key) ? p.queryItemValue(key).toInt() : fallback; };
@@ -231,22 +319,35 @@ private slots:
         QCOMPARE(f->test(spilling,shell::VisibilityFrame::Object,{4,5}),shell::VisibilityOutcome::Unsupported);
         w.sight=0x401; QCOMPARE(visibility.prepare(w)->status,shell::VisibilityOutcome::Unsupported); // BLIND
     }
-    // tests/data/sight-flags-world: stock draws SEE_INFRA and SEE_PIXELS exactly like plain sight.
+    // The retained stock comparisons found no >8-level pixel differences from plain sight.
     void infraAndPixelSightDrawLikePlain() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/sight-flags-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto sets=QJsonDocument::fromJson(file.readAll()).object()["sets"].toObject();
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/sight-flags-world/stock.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+        const auto sets=document.object()["sets"].toObject();
+        QCOMPARE(sets.keys(),(QStringList{"blind","infra","pixels","plain"}));
+        const std::pair<const char*,int> flags[]={{"plain",0},{"blind",1},{"infra",64},{"pixels",256}};
+        for (const auto& [name,sight]:flags) {
+            const auto row=sets[name].toObject();const auto context=path+": "+name;
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{row["sight"]},1,sight,sight),qPrintable(context+": invalid sight input"));
+            if (sight==1) {
+                QVERIFY2(row["allBlack"].isBool(),qPrintable(context+": missing allBlack expectation"));
+                QVERIFY(row["allBlack"].toBool());
+            } else {
+                QVERIFY2(testinput::isIntegerTuple(QJsonArray{row["mapDiffOver8"]},1,0,0),qPrintable(context+": missing zero mapDiffOver8 expectation"));
+            }
+        }
         auto w=world(11); setLuminosity(w.appearances[100], 0); w.seeInDark=0;
         for (int y=0;y<11;++y) w.tiles[{6,uint16_t(y),0}]=2; // an opaque column
         shell::MapVisibility plainVisibility; const auto plain=plainVisibility.prepare(w);
         QCOMPARE(plain->status,shell::VisibilityOutcome::Visible);
         for (const char* name:{"infra","pixels"}) {
-            const auto stock=sets[name].toObject(); QCOMPARE(stock["mapDiffOver8"].toInt(),0);
+            const auto stock=sets[name].toObject();
             w.sight=uint32_t(stock["sight"].toInt());
             shell::MapVisibility visibility; const auto f=visibility.prepare(w);
             QCOMPARE(f->status,shell::VisibilityOutcome::Visible);
             QCOMPARE(f->outcomes,plain->outcomes); QCOMPARE(f->lighting,plain->lighting);
         }
-        QVERIFY(sets["blind"].toObject()["allBlack"].toBool());
     }
     void denseLightingIsBoundedAndReused() {
         auto w=world(129); w.bounds={true,129,129,64,139,139,129,129,139,139}; w.eyeX=w.eyeY=65;
@@ -347,16 +448,33 @@ private slots:
         QCOMPARE(sequence.result().toHex(),QByteArray("24d0c8d4f990f381a3b35f73f29d2f1789041af4afd625e9f7f635721dfac574"));
     }
     void stockFields() {
-        QFile file(QFINDTESTDATA("../../tests/data/visibility-world/stock-masks.json")); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto cases=QJsonDocument::fromJson(file.readAll()).object()["cases"].toArray(); QCOMPARE(cases.size(),80);
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/visibility-world/stock-masks.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+        const auto cases=document.object()["cases"].toArray();QCOMPARE(cases.size(),80);
+        const QRegularExpression mask("^(?:[01]{11}/){11}\\z");
+        QSet<QString> layouts;int index=0;
         for (const auto& value:cases) {
             auto w=world(11); shell::MapVisibility visibility;
-            const auto row=value.toObject();
-            for (const auto& b:row["blocks"].toArray()) {
+            const auto row=value.toObject();const auto context=path+": case "+QString::number(++index);
+            const auto blocks=row["blocks"].toArray();
+            QVERIFY2(blocks.size()>=1 && blocks.size()<=24,qPrintable(context+": expected 1 to 24 blocks"));
+            QSet<QString> points;
+            for (const auto& b:blocks) {
+                QVERIFY2(testinput::isIntegerTuple(b,2,2,10),qPrintable(context+": invalid interior block coordinate"));
+                const auto p=b.toArray();const auto point=QString("%1,%2").arg(p[0].toInt()).arg(p[1].toInt());
+                QVERIFY2(!points.contains(point),qPrintable(context+": duplicate block"));points.insert(point);
+            }
+            QStringList sorted=points.values();sorted.sort();const auto layout=sorted.join(';');
+            QVERIFY2(!layouts.contains(layout),qPrintable(context+": duplicate block layout"));layouts.insert(layout);
+            QVERIFY2(mask.match(row["mask"].toString()).hasMatch(),qPrintable(context+": expected eleven binary 11-cell rows, each ending in /"));
+            for (const auto& b:blocks) {
                 const auto p=b.toArray(); w.tiles[{uint16_t(p[0].toInt()-1),uint16_t(p[1].toInt()-1),0}]=2;
             }
             const auto f=visibility.prepare(w);
             const auto rows=row["mask"].toString().split('/');
+            // The retained view(5,camera), eye=(5,6) comparison covers world X 1..10.
+            // Keep the eleventh mask column outside this supplementary server-view check.
             for (int y=0;y<11;++y) for (int x=0;x<10;++x) {
                 const bool expected=rows[10-y][x]=='1';
                 QCOMPARE(f->cell(x,y)==shell::VisibilityOutcome::Visible,expected);
