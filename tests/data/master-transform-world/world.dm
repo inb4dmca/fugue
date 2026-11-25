@@ -39,11 +39,14 @@ world
     I.plane = 1
     if(findtext(kind, "child-turn")) I.transform = turned(45)
     if(findtext(kind, "child-scale")) I.transform = matrix(2, 0, 0, 0, 1, 0)
+    if(findtext(kind, "child-lean")) I.transform = turned(30)
     if(!findtext(kind, "solo") && !findtext(kind, "fx-")) M.overlays += I
     if(findtext(kind, "group")) M.appearance_flags |= KEEP_TOGETHER
     if(findtext(kind, "master-turn")) M.transform = turned(90)
     if(findtext(kind, "master-scale")) M.transform = matrix(2, 0, 0, 0, 1, 0)
     if(findtext(kind, "master-shift")) M.transform = matrix(1, 0, 16, 0, 1, 8)
+    if(findtext(kind, "master-triple")) M.transform = matrix(3, 0, 0, 0, 1, 0)
+    if(findtext(kind, "master-grow")) M.transform = matrix(1.5, 0, 0, 0, 1.5, 0)
     if(findtext(kind, "scalex2")) M.transform = matrix(2, 0, 0, 0, 1, 0)
     if(findtext(kind, "turn90")) M.transform = turned(90)
     if(findtext(kind, "half")) M.transform = matrix(0.5, 0, 0, 0, 0.5, 0)

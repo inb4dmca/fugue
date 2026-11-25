@@ -1030,6 +1030,69 @@ private slots:
         }
         QVERIFY(overlayClicks >= 2);
     }
+    // The same fixture's clicks.json (stock 516.1689): what stock named, with icon-x/y, for left clicks at MAP pixels on
+    // and round the master's overlay, a 16 px box at 8..23 of its icon. The pointer goes back through the plane's matrix
+    // and the overlay's without being rounded to a pixel in between, which a plane scale of 2, 3 or 1.5 shows.
+    void masterTreeClicksLikeStock() {
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/master-transform-world/clicks.json";
+        QJsonDocument doc; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, doc, error), qPrintable(error));
+        const float c45 = 0.70710677f, c30 = 0.8660254f;
+        QSet<QString> remaining{"master-turn", "master-scale", "master-turn-child-scale", "master-scale-child-turn",
+                                "master-scale-child-lean", "master-triple-child-turn", "master-grow",
+                                "master-grow-child-turn", "master-grow-child-lean"};
+        int onOverlay = 0, offOverlay = 0;
+        for (const auto& value : doc.object()["cases"].toArray()) {
+            const auto row = value.toObject(); const auto name = row["case"].toString();
+            if (!remaining.remove(name)) continue; // filters, a lone master and untransformed trees have their own tests
+            std::array<float,6> master{1,0,0,0,1,0}, child{1,0,0,0,1,0};
+            if (name.contains("master-turn")) master = {0,1,0,-1,0,0};
+            if (name.contains("master-scale")) master = {2,0,0,0,1,0};
+            if (name.contains("master-triple")) master = {3,0,0,0,1,0};
+            if (name.contains("master-grow")) master = {1.5f,0,0,0,1.5f,0};
+            if (name.contains("child-turn")) child = {c45,c45,0,-c45,c45,0};
+            if (name.contains("child-lean")) child = {c30,.5f,0,-.5f,c30,0};
+            if (name.contains("child-scale")) child = {2,0,0,0,1,0};
+            auto w = world(); shell::TurfMap terrain; shell::EntityMap scene;
+            w.bounds = {true, 20, 20, 0, 7, 7, 7, 7}; // the fixture's 7x7 view: the plane turns about its centre
+            w.atoms.clear(); // the fixture's red box is clicked as itself; only the overlay is rebuilt here
+            w.hudOrder = {100}; w.hudAppid[100] = 10; w.hudIdentity[100] = {2,7,11};
+            setFields(w.appearances[10], affinefixture::fields(master,
+                R"(,"appearanceFlags":268435456,"hasPlane":true,"plane":1,"screenLoc":"1,1","overlays":[11])"));
+            w.appearances[11] = w.appearances[1]; w.appearances[11].fields.iconState = "green";
+            setFields(w.appearances[11], affinefixture::fields(child, R"(,"hasPlane":true,"plane":1,"pixelX":64,"pixelY":32)"));
+            const auto frame = terrain.prepare(w, {}, 0, false);
+            QCOMPARE(frame.source.size(), QSize(224, 224));
+            auto sprites = scene.prepare(w, frame, reader(), 0, nullptr, true);
+            const auto overlay = std::find_if(sprites.begin(), sprites.end(), [](const auto& s) {
+                return s.kind == shell::MapSprite::Screen && s.image.pixelColor(16, 16) == QColor(Qt::green); });
+            QVERIFY2(overlay != sprites.end() && overlay->image.size() == QSize(32, 32), qPrintable(name));
+            QImage box(32, 32, QImage::Format_RGBA8888); box.fill(Qt::transparent);
+            for (int y = 8; y < 24; ++y) for (int x = 8; x < 24; ++x) box.setPixelColor(x, y, Qt::green);
+            overlay->image = box;
+            const auto clicks = row["clicks"].toArray();
+            QVERIFY2(!clicks.isEmpty(), qPrintable(name));
+            for (const auto& entry : clicks) {
+                const auto click = entry.toObject(); const auto over = click["over"].toString();
+                const QString context = QString("%1 at %2,%3").arg(name).arg(click["at"][0].toInt()).arg(click["at"][1].toInt());
+                QVERIFY2(testinput::isIntegerTuple(click["at"], 2, 0, 223) &&
+                         testinput::isIntegerTuple(QJsonArray{click["iconX"], click["iconY"]}, 2, 1, 32) &&
+                         (over == "master" || over == "floor" || over == "part"), qPrintable(context));
+                if (over == "part") continue;
+                const auto hit = shell::mapPointerAt(QPointF(click["at"][0].toInt(), click["at"][1].toInt()), frame.source.size(),
+                                                     frame.source.size() / 32, frame.source, frame.geometry, "map", true, sprites);
+                QVERIFY2(hit, qPrintable(context));
+                if (over == "floor") { QVERIFY2(!hit->screen, qPrintable(context)); ++offOverlay; continue; }
+                QVERIFY2(hit->screen && hit->click.iconX == click["iconX"].toInt() && hit->click.iconY == click["iconY"].toInt(),
+                         qPrintable(QString("%1: stock x=%2 y=%3, got%4 x=%5 y=%6").arg(context).arg(click["iconX"].toInt())
+                                    .arg(click["iconY"].toInt()).arg(hit->screen ? "" : " the floor").arg(hit->click.iconX)
+                                    .arg(hit->click.iconY)));
+                ++onOverlay;
+            }
+        }
+        QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + remaining.values().join(", ")));
+        QVERIFY2(onOverlay >= 120 && offOverlay >= 10, qPrintable(QString("%1 on, %2 off").arg(onOverlay).arg(offOverlay)));
+    }
     void hudMasterMaterialAnimation() {
         auto w=world(); shell::TurfMap terrain; shell::EntityMap scene; shell::EntityMap::Stats stats;
         w.hudOrder={100}; w.hudAppid[100]=11; w.hudIdentity[100]={2,7,11};

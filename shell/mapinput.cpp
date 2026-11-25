@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <climits>
+#include <optional>
 #include <set>
 #include <map>
 
@@ -44,11 +45,22 @@ QPoint groupPixel(QPoint pixel, const CompositionPlan::Binding& binding) {
     const auto p = binding.groupInverse->map(QPointF(pixel - binding.groupOrigin)) + QPointF(binding.groupOrigin);
     return {int(std::floor(p.x())), int(std::floor(p.y()))};
 }
-QPoint planePixel(QPoint pixel, int plane, QRect source, const std::map<int, StaticAffine>& transforms, bool center) {
+QPointF planePoint(QPoint pixel, int plane, QRect source, const std::map<int, StaticAffine>& transforms, bool center) {
     const auto it = transforms.find(plane);
     if (it == transforms.end()) return pixel;
-    const auto p = it->second.inverse.map(QPointF(pixel-source.topLeft()) + (center ? QPointF(.5,.5) : QPointF())) + source.topLeft();
+    return it->second.inverse.map(QPointF(pixel-source.topLeft()) + (center ? QPointF(.5,.5) : QPointF())) + source.topLeft();
+}
+QPoint planePixel(QPoint pixel, int plane, QRect source, const std::map<int, StaticAffine>& transforms, bool center) {
+    const auto p = planePoint(pixel, plane, source, transforms, center);
     return {int(std::floor(p.x())), int(std::floor(p.y()))};
+}
+// A part with a matrix of its own on a turned plane takes the pointer through both inverses in one go: the point the
+// plane's inverse gives is not rounded to a pixel in between (stock 516.1689, master-transform-world clicks on
+// master-scale-child-turn, where a half pixel left by the plane's scale decides the icon cell and the ink's edge).
+std::optional<QPointF> turnedPartPoint(const MapSprite& s, QPoint pixel, QRect source,
+                                       const std::map<int, StaticAffine>& transforms) {
+    if (!s.affine || !transforms.count(s.plane)) return {};
+    return planePoint(pixel, s.plane, source, transforms, false);
 }
 bool mouseCandidate(const MapSprite& s, QPoint pixel, const std::set<int>& hidden) {
     return s.kind != MapSprite::Blackness && s.kind != MapSprite::Master &&
@@ -56,7 +68,7 @@ bool mouseCandidate(const MapSprite& s, QPoint pixel, const std::set<int>& hidde
         s.renderSource.isEmpty() && !s.renderTarget.startsWith('*') && s.rect().contains(pixel) &&
         ((s.kind != MapSprite::Screen && s.kind != MapSprite::Image && s.kind != MapSprite::Vis) || s.screenInteractive);
 }
-void nameSprite(MapPointer& out, const MapSprite& s, QPoint pixel) {
+void nameSprite(MapPointer& out, const MapSprite& s, QPoint pixel, std::optional<QPointF> exact = {}) {
     out.planeMousePath.reset();
     out.filteredPlane = false;
     out.masterFallback = false;
@@ -71,7 +83,7 @@ void nameSprite(MapPointer& out, const MapSprite& s, QPoint pixel) {
     c.hasVis = false;
     if (s.affine) {
         // A point on a cell boundary after the inverse (the diagonal of an eighth turn) belongs to the next cell.
-        const QPointF icon = s.affine->inverse.map(QPointF(pixel - s.position)) + QPointF(1e-6, 1e-6);
+        const QPointF icon = s.affine->inverse.map((exact ? *exact : QPointF(pixel)) - s.position) + QPointF(1e-6, 1e-6);
         c.iconX = int(std::floor(icon.x())) + 1;
         c.iconY = s.image.height() - int(std::floor(icon.y()));
         c.hasVis = s.affine->visualCoordinates;
@@ -97,7 +109,7 @@ void nameSprite(MapPointer& out, const MapSprite& s, QPoint pixel) {
 }
 void namePlaneSprite(MapPointer& out, const MapSprite& s, QPoint pixel, QRect source,
                      const std::map<int, StaticAffine>& transforms) {
-    nameSprite(out, s, planePixel(pixel,s.plane,source,transforms,false));
+    nameSprite(out, s, planePixel(pixel,s.plane,source,transforms,false), turnedPartPoint(s,pixel,source,transforms));
     const auto transform = transforms.find(s.plane);
     if (transform == transforms.end() || !transform->second.visualCoordinates) return;
     // Keep source icon coordinates separate from the pointer's visual coordinates.
@@ -419,8 +431,10 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
                 // Preserve childless/image coverage. Stock ordinary root trees
                 // and half-size images test the inverse integer corner, including
                 // visible edge pixels whose corner maps to transparent source alpha.
-                const QPointF sourcePixel = it->affine->inverse.map(QPointF(local) +
-                    (it->smooth || it->rootAffine ? QPointF() : QPointF(.5,.5)));
+                const auto exact = turnedPartPoint(*it,partPixel,source,transforms);
+                // The ink is tested in the cell the click will name: the same boundary nudge as nameSprite().
+                const QPointF sourcePixel = it->affine->inverse.map((exact ? *exact - it->position : QPointF(local)) +
+                    (it->smooth || it->rootAffine ? QPointF() : QPointF(.5,.5))) + (exact ? QPointF(1e-6,1e-6) : QPointF());
                 if (sourcePixel.x() < 0 || sourcePixel.y() < 0 ||
                     sourcePixel.x() >= it->image.width() || sourcePixel.y() >= it->image.height()) continue;
                 sample = {int(std::floor(sourcePixel.x())), int(std::floor(sourcePixel.y()))};

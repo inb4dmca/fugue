@@ -67,9 +67,17 @@ Fugue. `clicks.json` keeps what stock answered.
 - **A master tree's overlay is clicked as the master**, where it is drawn, through the plane's matrix and then its own
   (`master-scale` at 20,170 reads x=10 y=22; `master-turn` at 41,73 reads x=24 y=9), with or without an outline.
 
-Fugue matches every click in `clicks.json` except one: `master-scale-child-turn` at 47,175 reads x=15 where stock reads
-16 (an overlay turned 45 degrees under a scaled master). `composition_test::outlinedTreeInputBoundaries` and
-`entitymap_test::masterTreeTransformsLikeStock` hold the rules.
+- **The pointer is not rounded to a pixel between the two matrices.** Where the plane's inverse leaves a fraction (a
+  scale of 2, 3 or 1.5: `master-scale`, `master-triple`, `master-grow`) and the overlay has a matrix that is more than
+  that same scale (`child-turn`, 45 degrees; `child-lean`, 30 degrees; or the 1.5 it takes from the master), the
+  fraction decides the icon cell and where the box's edge is: `master-scale-child-turn` at 47,175 reads x=16 where
+  rounding down first gives 15, and at 19,172 the box is still hit (x=9). 136 more clicks across six such cases, on the
+  box, on its edge and just outside, were taken to tell the two rules apart; every one fits the unrounded rule, with a
+  point that lands exactly on a cell boundary going to the next cell (`master-grow` at 82,200 is the floor).
+
+Fugue matches every click in `clicks.json`. `composition_test::outlinedTreeInputBoundaries`,
+`entitymap_test::masterTreeTransformsLikeStock` and `entitymap_test::masterTreeClicksLikeStock` (the overlay clicks of
+the `master-*` cases without an outline, through the real hit test) hold the rules.
 
 ## Not covered
 
