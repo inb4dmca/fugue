@@ -41,7 +41,8 @@ endfunction()
 
 # Every GPU and native entry runs on one graphics backend, which its environment names (FUGUE_GPU_BACKEND), so a
 # developer's own environment cannot change it; the suites check the device they got. The tests themselves do not
-# choose. Off-screen devices (tests/gpucomparison.h) are Direct3D 11 or OpenGL; a MapWidget can also use Metal.
+# choose. Off-screen devices (tests/gpucomparison.h) are Direct3D 11, OpenGL or Vulkan; a MapWidget can also use
+# Metal.
 # The machine's own adapter is used; FUGUE_GPU_SOFTWARE=1 in the caller's environment asks for a software one.
 if(WIN32)
   set(_shell_native_platform windows)
@@ -57,8 +58,23 @@ else()
   set(_shell_native_backends opengl)
 endif()
 set(_shell_profile_env "FUGUE_AUDIO=none;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox")
+# Vulkan is tested where the Vulkan headers are installed (vcpkg's vulkan-headers; not a dependency of the build):
+# Qt declares its Vulkan types only with them. fugue_shell_vulkan_headers(<target>) tells an off-screen suite.
+# The off-screen suites then get a _vulkan entry each. The native map suites do not yet: shell_map_native has two
+# failures on Vulkan (docs/RENDERING.md).
+find_package(VulkanHeaders CONFIG QUIET)
+if(TARGET Vulkan::Headers AND NOT APPLE)
+  list(APPEND _shell_gpu_backends vulkan)
+endif()
+function(fugue_shell_vulkan_headers target)
+  if(TARGET Vulkan::Headers)
+    target_link_libraries(${target} PRIVATE Vulkan::Headers)
+    target_compile_definitions(${target} PRIVATE FUGUE_TEST_VULKAN=1)
+  endif()
+endfunction()
 # fugue_shell_gpu_test(<name> <labels> <command...>): <name>_<backend> for each off-screen backend. Direct3D 11
-# draws into textures without a display; OpenGL needs the window-system connection even then (label display).
+# draws into textures without a display; OpenGL and Vulkan need the window-system connection even then (label
+# display).
 function(fugue_shell_gpu_test name labels)
   foreach(backend IN LISTS _shell_gpu_backends)
     fugue_add_test(${name}_${backend} ${ARGN})
@@ -112,6 +128,7 @@ fugue_shell_test(shell_composition composition_test)
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/masteropacity_test.cpp)
   fugue_test_suite(masteropacity_test tests/masteropacity_test.cpp)
   target_link_libraries(masteropacity_test PRIVATE fugue_shell Qt6::Test Qt6::GuiPrivate)
+  fugue_shell_vulkan_headers(masteropacity_test)
   target_compile_definitions(masteropacity_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
   fugue_add_test(shell_masteropacity_portable fugue_tests masteropacity portable lifetimes -o -,txt)
   set_tests_properties(shell_masteropacity_portable PROPERTIES LABELS "master-opacity;portable;fast"
@@ -128,6 +145,7 @@ endif()
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/compositiongpu_test.cpp)
   fugue_test_suite(compositiongpu_test tests/compositiongpu_test.cpp)
   target_link_libraries(compositiongpu_test PRIVATE fugue_shell Qt6::Test Qt6::GuiPrivate)
+  fugue_shell_vulkan_headers(compositiongpu_test)
   target_compile_definitions(compositiongpu_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
   fugue_shell_gpu_test(shell_composition_stock_gpu "composition;gpu" fugue_tests compositiongpu stockParityReplay -o -,txt)
   fugue_shell_gpu_test(shell_composition_transform_gpu "composition;gpu" fugue_tests compositiongpu masterTransformFilters -o -,txt)

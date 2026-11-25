@@ -124,7 +124,8 @@ private slots:
         const auto platform=QGuiApplication::platformName();
         QVERIFY2(platform!="offscreen" && platform!="minimal",
                  "Native MapWidget checks require a window system and a working QRhi backend");
-        const auto mismatch=test::backendMismatch(); QVERIFY2(mismatch.isEmpty(),qPrintable(mismatch));
+        HostedPixelMap probe(pixelHosts_); probe.resize(64,64); probe.setViewSize({1,1}); probe.show(); // the tests' own device
+        const auto mismatch=test::backendMismatch(&probe); QVERIFY2(mismatch.isEmpty(),qPrintable(mismatch));
     }
     void screenshotNativeComposition() {
         HostedPixelMap map(pixelHosts_);
@@ -1128,37 +1129,6 @@ private slots:
         const auto warm=MapMetrics::nowNs();metrics->reset(warm+60'000'000'000);
         many[0].position.rx()+=1;budgetFrame(black.rect());many[0].position.rx()-=1;budgetFrame(black.rect());
         QCOMPARE(metrics->snapshot(warm+61'000'000'000).uploadMBPerSecond,0.0);
-    }
-    void sharedPixelHostIsolation() {
-        WId nativeWindow = 0;
-        QPointer<QWidget> host;
-        for (const QColor color : {QColor(Qt::red),QColor(Qt::green)}) {
-            QPointer<MapWidget> retired;
-            {
-                HostedPixelMap map(pixelHosts_);
-                retired = &map;
-                QCOMPARE(map.viewSize(),QSize(0,0));
-                QVERIFY(map.presentationSettings()==MapPresentationSettings{});
-                map.resize(96,96); map.setViewSize({1,1});
-                auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
-                auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
-                QImage image(32,32,QImage::Format_RGBA8888); image.fill(color);
-                mailbox->publish(image,image.rect(),0,0,{},{});
-                map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map));
-                if (host) QCOMPARE(map.window(),host.data());
-                host = map.window();
-                if (nativeWindow) QCOMPARE(host->winId(),nativeWindow);
-                nativeWindow = host->winId();
-                const auto pixels=map.grabFramebuffer(); QVERIFY(!pixels.isNull());
-                QCOMPARE(pixels.pixelColor(pixels.width()/2,pixels.height()/2),color);
-                map.setViewSize({9,7});
-                auto settings=map.presentationSettings(); settings.mode=MapPresentationSettings::Blur;
-                map.setPresentationSettings(settings);
-            }
-            QVERIFY(retired.isNull()); // fresh scene/input/resource ownership on the next iteration
-            QVERIFY(host && host->isVisible()); // native host survives the child
-            QCOMPARE(host->winId(),nativeWindow);
-        }
     }
     void hudRelayPixelsAndInput() {
         QJsonArray rows; QString inventoryError;

@@ -3,8 +3,11 @@
 #include <rhi/qrhi.h>
 #include <rhi/qrhi_platform.h>
 #include <QOffscreenSurface>
-// Qt declares its Vulkan types only when the Vulkan headers are there at build time.
-#define FUGUE_TEST_VULKAN (QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>))
+// Qt declares its Vulkan types only when the Vulkan headers are there at build time: the build says whether they
+// are (shell/CMakeLists.txt), the same for every file that includes this.
+#ifndef FUGUE_TEST_VULKAN
+#define FUGUE_TEST_VULKAN 0
+#endif
 #if FUGUE_TEST_VULKAN
 #include <QVulkanInstance>
 #endif
@@ -28,8 +31,8 @@ struct GpuComparison {
     std::unique_ptr<QRhiTextureRenderTarget> target;
     SpriteRenderer reference{false}, bounded{true};
     uint64_t uploaded=0;
-    // The backend is the test entry's (FUGUE_GPU_BACKEND: opengl, or d3d11 on Windows; unset: the platform's usual
-    // one), on the machine's own adapter unless FUGUE_GPU_SOFTWARE=1 asks for a software one. False when that
+    // The backend is the process's (FUGUE_GPU_BACKEND: opengl, vulkan where the build has its headers, or d3d11 on
+    // Windows), on the machine's own adapter unless FUGUE_GPU_SOFTWARE=1 asks for a software one. False when that
     // backend is not available here: a test never runs on another backend than its entry names.
     bool initialize(QSize size) {
         ::initGpuResources();

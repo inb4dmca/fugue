@@ -277,6 +277,10 @@ Each GPU and native entry runs on one graphics backend, named at the end of its 
 they get is another backend's. They use the machine's own adapter. Set `FUGUE_GPU_SOFTWARE=1` to ask for a software
 adapter instead (Direct3D 11's WARP), as CI does; some stock comparisons hold only on a graphics card.
 
+Vulkan is experimental and optional. Where the Vulkan headers are installed (`vcpkg install vulkan-headers`; they are
+not in `vcpkg.json`), the off-screen GPU suites also get a `_vulkan` entry, which needs a Vulkan driver to run. The
+native map suites have no Vulkan entry yet; `docs/RENDERING.md` says why.
+
 GPU checks that need a window-system connection also carry `display`. On Windows,
 `-L gpu -LE display` selects the Direct3D 11 checks, which can run without a desktop.
 Native Windows checks need an unlocked interactive desktop.
