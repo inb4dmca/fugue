@@ -1,6 +1,7 @@
 // A HUD plane master (plane 1, screen_loc 1,1) owning an overlay image and a world object on its plane, with a matrix on
 // the master or on the overlay, or (cases starting "fx-") a master with a matrix, filters or both and no overlay; run
-// with -params "set=<case>" (see set_master()).
+// with -params "set=<case>" (see set_master()). The "fx-grid-" cases put one view-sized icon on the plane in place of
+// the box, under the matrix shape() names.
 world
     name = "Master transform probe"
     maxx = 7
@@ -23,6 +24,10 @@ world
     icon = 'full.png'
     plane = 1
     name = "edge"
+/obj/grid
+    icon = 'grid.png'
+    plane = 1
+    name = "grid"
 /obj/master
     appearance_flags = PLANE_MASTER
     plane = 1
@@ -32,6 +37,32 @@ world
     var/matrix/M = matrix()
     M.Turn(angle)
     return M
+// The matrix of an fx-grid case, named by the case's last part.
+/proc/shape(name)
+    switch(name)
+        if("plain") return matrix()
+        if("s75") return matrix(0.75, 0, 0, 0, 0.75, 0)
+        if("s50") return matrix(0.5, 0, 0, 0, 0.5, 0)
+        if("s25") return matrix(0.25, 0, 0, 0, 0.25, 0)
+        if("s60") return matrix(0.6, 0, 0, 0, 0.6, 0)
+        if("s40") return matrix(0.4, 0, 0, 0, 0.4, 0)
+        if("sx50") return matrix(0.5, 0, 0, 0, 1, 0)
+        if("sy50") return matrix(1, 0, 0, 0, 0.5, 0)
+        if("sx50y75") return matrix(0.5, 0, 0, 0, 0.75, 0)
+        if("s50t90")
+            var/matrix/M = matrix(0.5, 0, 0, 0, 0.5, 0)
+            M.Turn(90)
+            return M
+        if("s50t30")
+            var/matrix/M = matrix(0.5, 0, 0, 0, 0.5, 0)
+            M.Turn(30)
+            return M
+        if("s50m") return matrix(0.5, 0, 16, 0, 0.5, 8)
+        if("s50m3") return matrix(0.5, 0, 3, 0, 0.5, -5)
+        if("s150") return matrix(1.5, 0, 0, 0, 1.5, 0)
+        if("s200") return matrix(2, 0, 0, 0, 2, 0)
+    world.log << "UNKNOWN SHAPE [name]"
+    return matrix()
 /proc/set_master(obj/master/M, kind)
     var/image/I = image('blue.png')
     I.pixel_x = 64
@@ -50,6 +81,7 @@ world
     if(findtext(kind, "scalex2")) M.transform = matrix(2, 0, 0, 0, 1, 0)
     if(findtext(kind, "turn90")) M.transform = turned(90)
     if(findtext(kind, "half")) M.transform = matrix(0.5, 0, 0, 0, 0.5, 0)
+    if(findtext(kind, "grid")) M.transform = shape(copytext(kind, findlasttext(kind, "-") + 1))
     if(findtext(kind, "pxs")) M.appearance_flags |= PIXEL_SCALE
     if(findtext(kind, "outline1")) M.filters += filter(type = "outline", size = 1, color = "#00ff00")
     if(findtext(kind, "outline4")) M.filters += filter(type = "outline", size = 4, color = "#00ff00")
@@ -64,7 +96,8 @@ world
 world/New()
     ..()
     world.log = file("events.log")
-    new /obj/part(locate(5, 4, 1))
+    if(findtext(world.params["set"], "grid")) new /obj/grid(locate(1, 1, 1))
+    else new /obj/part(locate(5, 4, 1))
     if(findtext(world.params["set"], "edge")) new /obj/edge(locate(7, 4, 1))
 /mob/observer
     invisibility = 101

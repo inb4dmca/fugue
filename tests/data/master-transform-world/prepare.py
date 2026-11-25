@@ -28,3 +28,8 @@ Image.new('RGBA', (32, 32), (40, 80, 230, 255)).save(t / 'full.png')  # a whole 
 mask = Image.new('RGBA', (32, 32), (0, 0, 0, 0))                       # left half opaque, for the fx-*mask cases
 ImageDraw.Draw(mask).rectangle((0, 0, 15, 31), fill=(255, 255, 255, 255))
 mask.save(t / 'mask.png')
+# The whole view, for the fx-grid cases: red is the pixel's column and green its row, so every pixel names the source
+# pixel it came from; blue is a one-pixel checker, which bilinear sampling greys and nearest sampling keeps.
+grid = Image.new('RGBA', (224, 224))
+grid.putdata([(x, y, 255 if (x + y) % 2 == 0 else 0, 255) for y in range(224) for x in range(224)])
+grid.save(t / 'grid.png')

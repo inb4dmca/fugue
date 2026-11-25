@@ -251,8 +251,19 @@ void main() {
         }
         return;
     }
+    vec2 at = uv;
+    if (texel.w > 0.5) {
+        // A PIXEL_SCALE master's turned plane (texel.xy: one over its size). Stock 516.1689 takes the texel the
+        // pixel's centre falls in and, exactly on a boundary, the one before it on each axis (master-transform-world
+        // fx-grid-pxs-s50: a half-size plane keeps the even columns and rows). The margin absorbs interpolation
+        // error, which is far smaller; past the surface's edge nothing is drawn.
+        vec2 dimensions = round(vec2(1.0)/texel.xy);
+        vec2 t = floor(uv*dimensions-vec2(1.0/1024.0));
+        if (any(lessThan(t,vec2(0.0))) || any(greaterThanEqual(t,dimensions))) { result = vec4(0.0); return; }
+        at = (t+vec2(0.5))*texel.xy;
+    }
     // Solid coverage uses geometry, not a per-frame mask texture.
-    vec4 pixel = options.x > 1.5 ? vec4(0.0, 0.0, 0.0, 1.0) : iconAt(uv);
+    vec4 pixel = options.x > 1.5 ? vec4(0.0, 0.0, 0.0, 1.0) : iconAt(at);
     if (effect.x == 1.0) {
         // Stock scalar-master tint: nearest-byte premultiplied coefficient.
         result = pixel * vec4(floor(color.rgb*color.a*255.0+0.5)/255.0,color.a);

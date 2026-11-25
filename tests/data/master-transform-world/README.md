@@ -58,6 +58,48 @@ right). So does a master tree, the first set's master with its overlay: `master-
 
 Fugue now does all of this for every filter kind, with or without a tree.
 
+## Which pixel a matrix takes (`fx-grid-*` cases)
+
+Stock **516.1689**, 2026-11-25. In place of the box, one 224 px icon (`grid.png`, written by `prepare.py`) covers the
+whole view on plane 1: a pixel's red is its column, its green its row, and its blue a one-pixel checker (255 where
+column + row is even). Every pixel of a grab so names the plane pixel it came from, and a grey checker shows bilinear
+sampling. The case's last part names the master's matrix (`shape()` in `world.dm`): `s75`, `s60`, `s50`, `s40`, `s25`
+scale both ways by 0.75 .. 0.25, `sx50`, `sy50` and `sx50y75` one way or unevenly, `s50t90` and `s50t30` halve and
+then turn 90 or 30 degrees, `s50m` and `s50m3` halve and move 16,8 and 3,-5 px, `s150` and `s200` enlarge, `plain`
+is the identity; each is grabbed with PIXEL_SCALE on the master (`fx-grid-pxs-<shape>`) and without. All thirty were
+taken in one run:
+`stockprobe.py --world tests/data/master-transform-world --stock-only --map 224x224 --params set={} --still 0.5 --live
+--jobs 4 pair fx-grid-<shape> fx-grid-pxs-<shape> ...`, the `<case>-stock.png` files renamed to `filters/<case>.png`.
+
+- **A shrinking PIXEL_SCALE plane is sampled nearest-neighbour too, about the same pivot**: nothing is displaced. The
+  plane lies where the matrix puts it about the view's centre (`fx-grid-pxs-s50`: 56..167 both ways, like
+  `fx-grid-s50`; `s25`: 84..139; `s75`: 28..195; `s50m`: 72..183 by 48..159), every pixel is a whole plane pixel
+  (the checker stays 0 or 255), and the pixel taken is the one the pixel's centre falls in.
+- **On a texel boundary it takes the texel before it**, on each axis, left and up on the screen. Halving puts every
+  pixel centre on a boundary: `fx-grid-pxs-s50` keeps columns and rows 0, 2, 4 .. 222 (pixel 56 takes 0, not 1);
+  `s25` keeps 1, 5, 9 .. 221; `s75` takes 0, 1, 3, 4, 5, 7 ..; and enlarging by 1.5 has its own ties (`s150`, pixel 2
+  takes 38). A pixel whose centre is not on a boundary takes the pixel it falls in (`s60`, `s40`, `s200`, `s50t30`).
+  Every pixel of the twelve axis-aligned PIXEL_SCALE grabs and of `s50t30` fits this rule exactly.
+- **A pixel whose centre lies outside the plane is not drawn**: no half-pixel border (`s60`: column 44 maps to -0.5
+  and shows the floor).
+- **Under a quarter turn the boundary goes the other way one time in seven** (`fx-grid-pxs-s50t90`: 1792 of its
+  12544 pixels, sixteen whole columns, take the texel after the boundary). The columns are evenly spaced (every
+  seventh pixel), which reads as the rounding of stock's own interpolation, not as a rule of the matrix.
+- **Clicks follow the pointer's corner, not the drawing**, and are unchanged by this: `fx-grid-pxs-s25` at 85,85 reads
+  x=5 y=220 although pixel 85 draws plane pixel 5,5 (icon x=6); `fx-grid-pxs-s50t90` at 56,56 hits the floor although
+  that pixel draws the grid. Fugue already answered every one of 29 such clicks (`fx-grid-pxs-s50`, `-s75`, `-s25`,
+  `-s50t90`, `fx-grid-s50`, at the plane's edges and inside) as stock did; they are not kept in `clicks.json`.
+- **Enlarging a bilinear plane** (`fx-grid-s200`): the view's outermost row and column are sampled as though the
+  plane ended at the view's edge (pixel 0,0 is plane pixel 56,56 unmixed, where the bilinear weights give a quarter of
+  its neighbours). Fugue does not do this yet; the test expects it to fail.
+
+`compositiongpu_test::masterTransformFilters` rebuilds each grid scene from one sprite and compares every pixel with
+the grab (8 levels); for `fx-grid-pxs-s50t90` a pixel on a texel boundary may take either of the two texels.
+
+Fugue before this left the choice on a boundary to its GPU's sampler, which took the texel after it in some columns
+and the one before it in others (`fx-grid-pxs-s50`: 1260 pixels off, every 2nd to 3rd column), and drew half a texel
+past the plane's edge (`s60`); the renderer now picks the texel itself (`sprite.frag`, texel.w) by stock's rule.
+
 ## Clicks (`clicks.json`)
 
 Every atom logs `Click()` with its name and icon-x/y; `stockprobe.py click` clicks the same MAP pixels in stock and in
@@ -90,6 +132,5 @@ the `master-*` cases without an outline, through the real hit test) hold the rul
 Nested
 masters with a matrix (still refused), animated master matrices, and non-32 px worlds. For filters with a matrix:
 turns that are not quarter turns, a master with a render target, an alpha mask from a render target, animated
-filters, and PIXEL_SCALE on a master that shrinks its plane (under `half` stock keeps other rows and columns than
-Fugue's nearest sampling). For clicks: right-click menus, mouse-opacity 2, and images or vis_contents on a
+filters, and the view-edge clamp of an enlarged bilinear plane (`fx-grid-s200`). For clicks: right-click menus, mouse-opacity 2, and images or vis_contents on a
 turned plane.

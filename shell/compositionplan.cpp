@@ -651,8 +651,10 @@ void CompositionPlan::plan() {
             composite.tint = {1,1,1,1}; composite.color = identityColor;
             composite.affine = StaticAffine::make(*effects->matrix, source.size());
             // Stock 516.1689 samples the turned plane bilinearly, or nearest under the master's PIXEL_SCALE
-            // (master-transform-world fx-scalex2, fx-pxs-scalex2).
+            // (master-transform-world fx-scalex2, fx-pxs-scalex2). Nearest takes the texel the pixel's centre falls in,
+            // and on a texel boundary the one before it (fx-grid-pxs-*; see the renderer).
             composite.smooth = !master.nearest;
+            composite.nearest = master.nearest;
             // The pivot is the view's centre however far the filters grew the surface, and what they drew past
             // the view turns with the rest (stock 516.1689, master-transform-world turn90-shadow6,
             // half-edge-outline4).
