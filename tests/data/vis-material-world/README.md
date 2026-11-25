@@ -3,7 +3,7 @@
 Independent DreamSeeker/DreamDaemon 516.1688, port 18439, 2026-11-02.
 No game assets. `prepare.py` generates eight deliberately different RGBA patches;
 `stock.json` retains actual stock center samples and captured wire material/filter
-fields. `map_test::visMaterialPixels` consumes all samples on default/OpenGL,
+fields. `mapnative_test::visMaterialPixels` consumes all samples on default/OpenGL,
 through worker publication and normal QRhi, with ≤1 channel tolerance and zero
 warm texture uploads. `viscontents_test` checks admission, immutable publications,
 matrix/reset tree refusal, finite values and exact filter envelopes.

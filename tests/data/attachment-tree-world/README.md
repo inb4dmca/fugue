@@ -3,7 +3,7 @@
 Independent DreamSeeker/DreamDaemon **516.1688**, 2026-11-02, port 18441.
 No game assets or screenshots in Git. `prepare.py` generates four 32×32 solid
 RGBA source tiles. `stock.json` retains **42 phases × 24 stock pixel samples** and
-two stock Click callbacks. `map_test::attachmentTreePixels` consumes every phase
+two stock Click callbacks. `mapnative_test::attachmentTreePixels` consumes every phase
 on default/OpenGL through worker publication and the normal mailbox/QRhi path,
 with ≤1 channel tolerance and zero warm texture uploads during movement and
 sampled grouped offset/alpha animation. `viscontents_test` and

@@ -1,6 +1,6 @@
 # Stock outer-shadow regression
 
-Independent BYOND **516.1688** observations for `MapTest::stockShadowPixels`.
+Independent BYOND **516.1688** observations for `MapNativeTest::stockShadowPixels`.
 Sources/assets are synthetic. Captured player display names use the same-length
 synthetic `TestGuest`; all other retained wire bytes are unchanged. This does not
 establish guest-account isolation.

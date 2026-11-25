@@ -1,7 +1,7 @@
 # Stock standalone-blur fixtures
 
 Independent Windows BYOND **516.1688** pixel expectations for
-`MapTest::standaloneBlurPixels`. Two synthetic patterns—a centered opaque white
+`MapNativeTest::standaloneBlurPixels`. Two synthetic patterns—a centered opaque white
 256x256 square and an opaque white left half-plane—use transparent remaining
 pixels, black backing and one plane-master blur. Four corner markers calibrate a
 **992x672** native-resolution MAP at DPI **144**.

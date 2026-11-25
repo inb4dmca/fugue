@@ -81,4 +81,4 @@ Adjust the executable path for a single-config generator and supply the configur
 Qt/dependency DLL directories on PATH. The recorder explicitly refuses port 1337. Preserve full `.wire` files locally;
 the checked-in replay drops handshake/resource-transfer frames and retains the
 current model's normal server frames. Regression coverage lives in
-`composition_test`, `entitymap_test`, `mapinput_test`, and native `map_test`.
+`composition_test`, `entitymap_test`, `mapinput_test`, and native `mapnative_test`.

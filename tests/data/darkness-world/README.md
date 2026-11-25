@@ -75,7 +75,7 @@ For example, compare `ambient=1&see=0&sight=normal` with
 The 32 recorded phases are in `stock-observations.json`,
 `extended-observations.json` and `source-window-observations.json`. Captured
 scalar/presence and area-rebind messages are in `wire-scalars.json`.
-`mapvisibility_test` consumes these fixtures; native `map_test` separately covers
+`mapvisibility_test` consumes these fixtures; native `mapnative_test` separately covers
 pixels, last-rendered picking and warm zero uploads. The masks come from
 **stock MAP screenshots**, not server `view()` output:
 rows run north-to-south, columns west-to-east; `1` = floor, `W` = wall,

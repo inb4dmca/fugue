@@ -3,7 +3,7 @@
 Independent stock DreamSeeker/DreamDaemon **516.1688**, Windows DPI **144**.
 `stock.json` contains measured source-pixel bounds and actual Click coordinates,
 consumed by `MapInputTest::stockHudAnchorsAndPassMouse` and native
-`MapTest::hudRelayPixelsAndInput` (default/OpenGL, pending-frame input and zero
+`MapNativeTest::hudRelayPixelsAndInput` (default/OpenGL, pending-frame input and zero
 warm uploads). Generated icons have an alpha hole; no game assets or screenshots
 are exported. `wide-mouse.json` retains independent plaintext stock packets for
 Click/DoubleClick/Down/Up/Hover/Wheel/Drag/Drop, consumed by

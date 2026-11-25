@@ -7,7 +7,7 @@ a separate path.
 
 ## Automated consumers
 
-`PlaneSourceFixture` and tests in `map_test`, `mapinput_test`, `entitymap_test` and
+`PlaneSourceFixture` and tests in `mapnative_test`, `mapinput_test`, `entitymap_test` and
 `compositionplan_test` consume the retained JSON observations:
 
 - `matrix.json`: decoded fields, sparse stock pixels and Click coordinates for

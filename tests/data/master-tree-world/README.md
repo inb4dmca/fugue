@@ -13,13 +13,13 @@ anonymization does not establish guest-account isolation.
 - `stock-observations.json`, `stock-group-observations.json` and the three
   `stock-outline*-observations.json` files: phase names, sampled source points and
   actual stock Click receipts, consumed by `MasterTreeFixture`.
-- `stock-*.png`: independent stock MAP crops used by native `map_test` rows.
+- `stock-*.png`: independent stock MAP crops used by native `mapnative_test` rows.
   Byte-identical crops share `stock-overlay.png` through
   `MasterTreeFixture::goldenFile()`; an absent alias is not a missing expectation.
 - `stock-placement.json` and placement crops: independent expectations for
   `MasterPlacementFixture`'s explicit root/child placement mutations.
 
-`composition_test`, `entitymap_test`, `mapinput_test` and `map_test` exercise
+`composition_test`, `entitymap_test`, `mapinput_test` and `mapnative_test` exercise
 supported/refused structures, original-ink coordinates, immutable publications,
 stale lifetimes and warm-cache behavior. The fixture helpers and test methods
 specify the admitted combinations; this is not arbitrary master-tree parity.

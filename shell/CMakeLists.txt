@@ -156,10 +156,18 @@ if(TARGET mapinput_test)
   target_compile_definitions(mapinput_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
 endif()
 fugue_shell_test(shell_mapmailbox mapmailbox_test) # coalesced notifications and newest-frame delivery
-fugue_shell_test(shell_map      map_test)         # server view dimensions and skin rebuilds
+fugue_shell_test(shell_map      map_test)         # portable configuration, routing and skin rebuilds
 if(TARGET map_test)
-  target_compile_definitions(map_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
-  target_link_libraries(map_test PRIVATE fugue_proto)
+  set_tests_properties(shell_map PROPERTIES LABELS "map;portable"
+    TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:")
+endif()
+fugue_shell_test(shell_map_native mapnative_test) # rendering, presentation and input through a real MapWidget
+if(TARGET mapnative_test)
+  target_compile_definitions(mapnative_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
+  target_link_libraries(mapnative_test PRIVATE fugue_proto Qt6::GuiPrivate)
+  set_tests_properties(shell_map_native PROPERTIES LABELS "map;native" RUN_SERIAL TRUE
+    TIMEOUT 300 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
+    ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
 endif()
 fugue_shell_test(shell          shell_test)       # shell input routing
 fugue_shell_test(shell_skincolor skincolor_test)  # winset colours -> widgets

@@ -42,6 +42,6 @@ Manual cases:
   are consumed by stock's menu; compare right dragging with popup-off separately.
 
 Automated native submission, cancellation, pending-frame and stale-identity tests
-live in `shell/tests/map_test.cpp`, `mapinput_test.cpp`, and `entitymap_test.cpp`.
+live in `shell/tests/mapnative_test.cpp`, `mapinput_test.cpp`, and `entitymap_test.cpp`.
 See [renderer input contracts](../../../docs/RENDERING.md#presentation-and-input)
 for the rendered-frame and identity/lifetime requirements.

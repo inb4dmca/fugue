@@ -22,7 +22,7 @@ Local evidence: `build/plane-target-budget-probe/stock-observations.json`,
 owned screenshots. Before the fix, the baseline rendered but adding unused targets
 blacked out the entire frame. Stock and the fixed client match all four phases.
 
-`MapTest::planeCompositingPixels` additionally checks 80 unused targets, reachable
+`MapNativeTest::planeCompositingPixels` additionally checks 80 unused targets, reachable
 sources, 32 identity captures, refusal of a genuinely oversized reachable graph,
 missing/cyclic sources, premultiplied alpha, and no texture uploads for changes
 confined to unused targets, on native-default and OpenGL backends.

@@ -6,7 +6,7 @@ block) and `shape.png` (the filter fixtures' box with a white corner). `tools/st
 `-params set=<a|b|c>`, stock and Fugue on the same server and grabs both at 1:1; `compare.py <dir> a b c` keeps up to
 16 stock pixels per case where the filter changed the plain icon, Fugue's difference from stock per 96 px crop, and
 each case's wire records, in `stock.json`. `entitymap_test::filterTypesDecodeLikeStock`,
-`entitymap_test::filterParametersTweenLikeStock` and `map_test::filterTypesPixelsLikeStock` (native only) consume it.
+`entitymap_test::filterParametersTweenLikeStock` and `mapnative_test::filterTypesPixelsLikeStock` (native only) consume it.
 
 ## Wire records
 
