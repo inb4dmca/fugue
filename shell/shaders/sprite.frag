@@ -92,6 +92,12 @@ vec4 blurByte(ivec2 p, ivec2 axis, float x) {
     return mix(floor(borderAt(p+axis*b)*255.0+0.5),
                floor(borderAt(p+axis*(b+1))*255.0+0.5),f)/255.0;
 }
+// effect.x is the operation. The composition planner sets all but 8, which the renderer substitutes for an item that
+// samples an earlier pass through a matrix, bilinearly:
+//   0 plain sprite            1 scalar-master tint          3, 4 small blur, across and down
+//   5 outline step            7 capture or chain entry copy  8 turned surface, transparent past its edge
+//   9, 10 large blur cascade  11, 12 shadow copy and seed    13 byte capture       14 recover source bytes
+//   15 wave   16 ripple       17 bloom threshold             18 bloom spread       20 bloom glow
 void main() {
     if (effect.x > 2.5) {
         vec4 src = iconAt(uv);
