@@ -63,7 +63,7 @@ DecodedEntityAppearance decodeEntityAppearance(const proto::Appearance& fields, 
             out.renderTarget = QString::fromStdString(fields.renderTarget);
             out.screenLoc = QString::fromStdString(fields.screenLoc);
             out.screenTarget = ScreenLoc::target(out.screenLoc);
-            out.screenPlacement = out.screenTarget ? ScreenLoc::parse(out.screenTarget->location) : std::nullopt;
+            out.screenPlacement = out.screenTarget ? ScreenLoc::parse(out.screenTarget->location, &out.screenMalformed) : std::nullopt;
             out.maptext = QString::fromStdString(net::plainText(fields.maptext));
             out.maptextSize = QSize(fields.maptextW, fields.maptextH);
             out.maptextOffset = QPoint(fields.maptextX, -fields.maptextY);

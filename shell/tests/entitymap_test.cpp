@@ -716,7 +716,8 @@ private slots:
             R"("appearanceFlags":268435456,"overlays":[1])",
             R"("appearanceFlags":268435456,"renderTarget":"*cap")"};
         for (const auto& effect : effects) {
-            for (const std::string loc : {"", R"(,"screenLoc":"")", R"(,"screenLoc":"  ")"}) {
+            // "bogus" is not coordinates: stock ignores that master too.
+            for (const std::string loc : {"", R"(,"screenLoc":"")", R"(,"screenLoc":"  ")", R"(,"screenLoc":"bogus")"}) {
                 setFields(w.appearances[10], "{" + effect + loc + "}");
                 QVERIFY2(samePixelsAndMetadata(draw(),absent), (effect + loc).c_str());
             }
@@ -724,6 +725,46 @@ private slots:
             const auto placed=draw();
             QVERIFY2(std::any_of(placed.begin(),placed.end(),[](const auto& s) { return s.kind==shell::MapSprite::Master; }),
                      effect.c_str());
+        }
+    }
+    // A master with a range acts once and draws its overlay at every position (stock 516.1689,
+    // master-screen-loc-world "1,1 to 3,3|ov" and "|ov-outline": nine overlays, the plane outlined once).
+    void masterRangeDrawsOverlaysAtEveryPosition() {
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/master-screen-loc-world/stock-observations.json";
+        QJsonDocument doc; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, doc, error), qPrintable(error));
+        std::map<QString,int> overlayPixels;
+        for (const auto& value : doc.object()["phases"].toArray())
+            overlayPixels[value.toObject()["phase"].toString()] = value.toObject()["counts"].toObject()["overlay"].toInt(-1);
+        // The counted crop cuts the bottom row's overlays in half: six whole and three halves against one half.
+        QVERIFY(overlayPixels["1,1|ov"] > 0);
+        QCOMPARE(overlayPixels["1,1 to 3,3|ov"], 15 * overlayPixels["1,1|ov"]);
+        auto w=world(); shell::TurfMap terrain; shell::EntityMap scene;
+        auto draw=[&] { return scene.prepare(w,terrain.prepare(w,{},0,false),reader(),0,nullptr,true); };
+        w.hudOrder={100}; w.hudAppid[100]=10; w.hudIdentity[100]={2,7,11};
+        const std::string outline = R"(,"filters":[{"type":2,"paramMask":35,"flags":1,"params":"0000803fffffffff0000"}])";
+        for (const std::string& effect : {std::string(), outline}) {
+            auto overlays=[&](const std::string& loc) {
+                setFields(w.appearances[10], std::string("{\"appearanceFlags\":268435456,\"hasPlane\":true,\"plane\":1,\"overlays\":[1],\"screenLoc\":\"") +
+                    loc + "\"" + effect + "}"); // (no raw string: moc misreads one that ends in a quote)
+                std::vector<QPoint> at; int masters=0;
+                for (const auto& s : draw()) {
+                    if (s.kind==shell::MapSprite::Master) {
+                        ++masters;
+                        if (!s.planeEffects || !s.planeEffects->supported || s.planeEffects->filters.size()!=(effect.empty() ? 0u : 1u)) masters=-100;
+                    } else if (s.kind==shell::MapSprite::Screen) at.push_back(s.position);
+                }
+                return std::pair{masters,at};
+            };
+            const auto [oneMaster,one]=overlays("1,1");
+            QCOMPARE(oneMaster,1); QCOMPARE(one.size(),size_t(1));
+            auto [rangeMasters,nine]=overlays("1,1 to 3,3");
+            QCOMPARE(rangeMasters,1); QCOMPARE(nine.size(),size_t(9));
+            std::vector<QPoint> expected;
+            for (int x=0;x<3;++x) for (int y=0;y<3;++y) expected.push_back(one[0]+QPoint(32*x,-32*y));
+            auto order=[](const QPoint& a,const QPoint& b) { return a.x()!=b.x() ? a.x()<b.x() : a.y()<b.y(); };
+            std::sort(nine.begin(),nine.end(),order); std::sort(expected.begin(),expected.end(),order);
+            QCOMPARE(nine,expected);
         }
     }
     // HUD plane-master trees with matrices (tests/data/master-transform-world, stock 516.1688): the root master's matrix
@@ -2913,10 +2954,15 @@ private slots:
         for (const auto& sprite : f.sprites) QVERIFY(sprite.kind != shell::MapSprite::Master);
         setFields(f.world.appearances[2], local); f.refresh();
         QVERIFY(samePixelsAndMetadata(f.sprites,baseline));
-        // Do not replace the existing leaf-master rule with "must parse coordinates".
-        fields["screenLoc"]="unsupported";
+        // A leaf master acts whatever coordinates it has, including a form this does not place.
+        fields["screenLoc"]="1,1 TO 2:3,1";
         setFields(f.world.appearances[2], QJsonDocument(fields).toJson(QJsonDocument::Compact).toStdString());
         f.refresh(); QVERIFY(samePixelsAndMetadata(f.sprites,baseline));
+        // Text that is not coordinates makes it no master (stock 516.1689, master-screen-loc-world "bogus").
+        fields["screenLoc"]="unsupported";
+        setFields(f.world.appearances[2], QJsonDocument(fields).toJson(QJsonDocument::Compact).toStdString());
+        f.refresh();
+        for (const auto& sprite : f.sprites) QVERIFY(sprite.kind != shell::MapSprite::Master);
     }
     void namedMapCompositionIsolation() {
         shell::test::PlaneSourceFixture f;

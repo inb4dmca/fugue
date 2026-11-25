@@ -450,7 +450,23 @@ private slots:
         f.setLocation("");
         QVERIFY(std::none_of(f.sprites.begin(),f.sprites.end(),[](const auto& s) {
             return s.kind==MapSprite::Master || s.kind==MapSprite::Screen; }));
-        for(const auto* invalid:{"1,1 TO 2,1","invalid","8,1"}) {f.setLocation(invalid);QVERIFY(refused());}
+        // Text that is not coordinates does the same ("bogus" there).
+        f.setLocation("invalid");
+        QVERIFY(std::none_of(f.sprites.begin(),f.sprites.end(),[](const auto& s) {
+            return s.kind==MapSprite::Master || s.kind==MapSprite::Screen; }));
+        // A range acts once and draws the overlay at each position ("1,1 to 3,3" there).
+        auto counts=[&] {
+            std::pair<int,int> n{0,0};
+            for(const auto& s:f.sprites) {
+                if(s.kind==MapSprite::Master) {++n.first;if(!s.planeEffects || !s.planeEffects->supported) n.first=-100;}
+                if(s.kind==MapSprite::Screen) ++n.second;
+            }
+            return n;
+        };
+        f.setLocation("1,1");const auto single=counts();QCOMPARE(single.first,1);QVERIFY(single.second>0);
+        f.setLocation("1,1 TO 2,1");QCOMPARE(counts(),std::pair(1,2*single.second));
+        // A range this does not place, and a position off the view, are still refused (not measured in stock).
+        for(const auto* invalid:{"1,1 TO 2:3,1","8,1"}) {f.setLocation(invalid);QVERIFY(refused());}
         auto& w=f.session.worldMut();w.bounds.maxX=std::max(w.bounds.maxX,9);w.bounds.maxY=std::max(w.bounds.maxY,9); // a world the view fits in
         w.bounds.viewW=9;w.bounds.viewH=9;f.refresh();
         QVERIFY(!refused()); // Same cached template becomes placeable in the larger view.
@@ -540,7 +556,7 @@ private slots:
             if(key=="transform") {changed["hasTransform"]=true;changed["transform"]=QJsonArray{};}
             if(key=="target") changed["renderTarget"]="*refused";
             if(key=="text") changed["maptext"]="refused";
-            if(key=="placement") changed["screenLoc"]="1,1 TO 2,1";
+            if(key=="placement") changed["screenLoc"]="1,1 TO 2:3,1"; // a range this does not place
             if(key=="offset") changed["pixelX"]=7;
             auto children=fields["overlays"].toArray();
             if(key=="cycle") children.append(int(rootId));

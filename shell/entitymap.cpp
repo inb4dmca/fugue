@@ -534,7 +534,7 @@ EntityMap::Template EntityMap::TemplateBuilder::construct(const TemplateRequest&
                 !ap.colorValid || ap.blend > 4 || !ap.renderSource.isEmpty() ||
                 (!ap.renderTarget.isEmpty() && !(root && captureLeafMaster)) || !ap.maptext.isEmpty() || ap.invisibility || imageParent ||
                 visContext || flick ||
-                (root ? !treeRoot.screenPlacement || treeRoot.screenPlacement->range || treeRoot.mouseOpacity > 1
+                (root ? !treeRoot.screenPlacement || treeRoot.mouseOpacity > 1
                       : !ap.screenLoc.isEmpty()) ||
                 (ap.master && (!ap.planeEffects || !ap.planeEffects->supported || !ap.offset.isNull() || ap.mouseOpacity > 1 ||
                                (!root && std::bit_cast<float>(ap.layerBits) != -1))) ||
@@ -1223,7 +1223,8 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
         return atomTargets->count(name) != 0;
     };
     enum class WorldPlacement { Turf, Entity };
-    struct HudPlacement { QPoint position; uint32_t order; const model::Atom::Chain* chain = nullptr; };
+    // placed: position is a master's own, one of its range. repeat: a later one, which draws only what the master owns.
+    struct HudPlacement { QPoint position; uint32_t order; const model::Atom::Chain* chain = nullptr; bool placed = false, repeat = false; };
     using Location = std::variant<WorldPlacement, HudPlacement>;
     struct ImagePlacement { const model::World::ImageInstance& image; Location location; };
     // Images can be world or HUD. Vis copies reserve their entire template and
@@ -1402,11 +1403,10 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                 // commands stay viewport-wide; the renderer ignores their origin.
                 const auto positions = ap.screenPlacement && !ap.screenPlacement->range ?
                     ap.screenPlacement->positions({inner.width() / tile_, inner.height() / tile_}, tile_, around) : std::vector<QPoint>{};
-                // A refused tree drops its plane. That only approximates stock 516.1689: a master with an invalid
-                // screen_loc does nothing (the plane draws plainly), and one with a range acts, its filter applied once
-                // and its overlays drawn at every position (master-screen-loc-world).
+                // A tree whose one position is off the view, or whose screen_loc is a form this does not place, is
+                // refused, which drops its plane; what stock draws for those was not measured.
                 if (positions.size() == 1) screenPosition = positions.front();
-                else screenMasterPlacementRefused = ap.keepTogether || ap.keepApart ||
+                else if (!hud->placed) screenMasterPlacementRefused = ap.keepTogether || ap.keepApart ||
                     !ap.underlays.empty() || !ap.overlays.empty() ||
                     (ap.planeEffects && ap.planeEffects->boundedTreeFilters());
             }
@@ -1518,6 +1518,7 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                 std::map<const AppearanceGroup*, std::shared_ptr<const AppearanceGroup>> joinedGroups;
                 for (const auto& part : shape.parts) {
                     if (refuseMasterPlacement && !part.master) continue;
+                    if (hud && hud->repeat && part.master) continue;
                     MapSprite sprite{part.image ? *part.image : QImage(), origin + part.position, origin + shape.iconBottom, cell,
                                      uint32_t(key), atom.key, atom.haveKey, part.plane, part.layer, part.tint};
                     sprite.kind = part.master ? MapSprite::Master : kind;
@@ -2194,9 +2195,10 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
         // vis. Invalid coordinates may still select a LOCAL leaf master, but a
         // different MAP never may, even when its placement is unsupported.
         if (!ap.screenTarget || ap.screenTarget->map != mapName_) continue;
-        // A plane master without a screen_loc is no master: its plane draws as if it were absent, with none of its
-        // filters, colour, alpha, overlays or render target (stock 516.1689, master-screen-loc-world).
-        if (ap.master && ap.screenTarget->location.isEmpty()) continue;
+        // A plane master without a screen_loc, or with one that is not coordinates, is no master: its plane draws as
+        // if it were absent, with none of its filters, colour, alpha or overlays, and without a screen_loc no render
+        // target (stock 516.1689, master-screen-loc-world; "bogus" is the only such text that was tried).
+        if (ap.master && (ap.screenTarget->location.isEmpty() || ap.screenMalformed)) continue;
         const auto object = w.atoms.find(key);
         const auto* chain = object != w.atoms.end() && (!object->second.chain.steps.empty() || object->second.chain.rejected) ?
             &object->second.chain : nullptr;
@@ -2212,8 +2214,13 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
         // A master selects its planes once, even when placement is invalid.
         // place() resolves its single child anchor or publishes refusal markers;
         // it must not repeat plane selection for an unverified screen_loc range.
-        const auto positions = ap.master ? std::vector<QPoint>{{}} : ap.screenPlacement ?
+        // A master with a range acts once on its plane and draws what it owns at every position (stock 516.1689,
+        // master-screen-loc-world "1,1 to 3,3"): the first placement carries the master, the others only its parts.
+        const bool masterRange = ap.master && ap.screenPlacement && ap.screenPlacement->range;
+        auto positions = ap.master && !masterRange ? std::vector<QPoint>{{}} : ap.screenPlacement ?
             ap.screenPlacement->positions({inner.width() / tile_, inner.height() / tile_}, tile_, around) : std::vector<QPoint>{};
+        const bool placedRange = masterRange && !positions.empty();
+        if (ap.master && positions.empty()) positions = {{}}; // a range off the view: left to place()
         if (!ap.master && ap.screenPlacement) { // what the next frame's scene must hold (TurfMap::prepare)
             const QSize icon = builder.get({atom.appid, 0}).iconSize;
             const auto m = ap.screenPlacement->outside({inner.width() / tile_, inner.height() / tile_},
@@ -2236,7 +2243,7 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
         for (size_t i = 0; i < positions.size(); ++i) {
             const QPoint position = positions[i] + aligned;
             if (!hudOverrides.count(key))
-                place((uint64_t(i) << 40) | (uint64_t(2) << 32) | key, atom, HudPlacement{position, screenOrder, chain});
+                place((uint64_t(i) << 40) | (uint64_t(2) << 32) | key, atom, HudPlacement{position, screenOrder, chain, placedRange, placedRange && i > 0});
             placeParticles((uint64_t(i) << 40) | (uint64_t(2) << 32) | key, key, atom, nullptr, true);
             if (object!=w.atoms.end() && w.vis.lists.count(key)) {
                 auto root=object->second; root.appid=atom.appid;root.key=atom.key;root.haveKey=atom.haveKey;

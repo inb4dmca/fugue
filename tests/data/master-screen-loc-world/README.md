@@ -28,10 +28,12 @@ a second capture 0.3 s later.
 - `screen_loc = "1,1 to 3,3"`: the master acts. The plane is outlined once (64 pixels, as at 1,1), `alpha = 0`
   hides it, and an overlay is drawn at each of the nine positions, outlined too.
 
-Fugue implements the null/empty case (`EntityMapTest::masterWithoutScreenLocIsInert`). An invalid text and a range
-on a master tree (filters, KEEP_TOGETHER/KEEP_APART or attachments) are still refused, which drops the plane; stock
-draws the plane plainly for the first and acts for the second. The parser cannot yet tell an invalid screen_loc from
-a valid form it does not support, so that case stays refused.
+Fugue does all three. A master with no screen_loc, or with text that is not coordinates, is skipped
+(`EntityMapTest::masterWithoutScreenLocIsInert`); `bogus` is the only such text that was tried, and anything the
+screen_loc grammar cannot read as two axes is treated like it. A master with a range acts once and draws what it owns
+at every position (`EntityMapTest::masterRangeDrawsOverlaysAtEveryPosition`). Still refused, which drops the plane,
+and not measured in stock: a master tree whose one position is off the view, and a range form Fugue does not place
+(different pixel offsets at its ends, percent ends).
 
 ## Reproduction
 

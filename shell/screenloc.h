@@ -45,13 +45,15 @@ struct ScreenLoc {
         return Target{{}, text};
     }
     // Coordinate-only grammar. Call target() first for client.screen routing.
-    static std::optional<ScreenLoc> parse(QString text) {
+    // malformed: set when the text is not coordinates at all ("bogus"), as opposed to a form this does not place.
+    static std::optional<ScreenLoc> parse(QString text, bool* malformed = nullptr) {
+        if (malformed) *malformed = false;
         if (text.size() > 256) return {};
         text = text.trimmed().toUpper(); // stock reads center-6 and Center like CENTER
         ScreenLoc result;
         const auto ends = text.split(" TO ");
         if (ends.size() > 2) return {};
-        auto point = [](QString s) -> std::optional<Point> {
+        auto point = [malformed](QString s) -> std::optional<Point> {
             s = s.trimmed();
             if (s == "CENTER") s = "CENTER,CENTER";
             else if (s == "SOUTHWEST") s = "WEST,SOUTH";
@@ -63,7 +65,7 @@ struct ScreenLoc {
             else if (s == "BOTTOMLEFT") s = "LEFT,BOTTOM";
             else if (s == "BOTTOMRIGHT") s = "RIGHT,BOTTOM";
             auto parts = s.split(',');
-            if (parts.size() != 2) return {};
+            if (parts.size() != 2) { if (malformed) *malformed = true; return {}; }
             // Whitespace belongs to the separators, not to an axis token. Normalize
             // every axis before detecting its orientation, including range endpoints.
             for (auto& part : parts) part = part.trimmed();
@@ -76,7 +78,7 @@ struct ScreenLoc {
             Point p;
             for (int i = 0; i < 2; ++i) {
                 const auto m = expression.match(parts[i]);
-                if (!m.hasMatch()) return {};
+                if (!m.hasMatch()) { if (malformed) *malformed = true; return {}; }
                 Axis& a = i ? p.y : p.x;
                 const auto base = m.captured(1);
                 if (base == "CENTER") { a.tiles = .5; a.relative = .5; }

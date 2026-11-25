@@ -28,6 +28,7 @@ struct EntityAppearanceFields {
     bool maptextEffects = false, animationEffects = false, surfaceFilters = false, identityFilters = true;
     std::optional<ScreenLoc::Target> screenTarget;
     std::optional<ScreenLoc> screenPlacement;
+    bool screenMalformed = false; // screen_loc is not coordinates at all
     float scaleX = 1, scaleY = 1;
     std::array<double, 6> matrix{1,0,0,0,1,0};
     bool affine = false, transformValid = true, transformEffects = false;
