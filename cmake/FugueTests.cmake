@@ -2,13 +2,26 @@
 # CTest still starts a fresh process for each registered command.
 add_executable(fugue_tests ${PROJECT_SOURCE_DIR}/tests/runner.cpp)
 target_include_directories(fugue_tests PRIVATE ${PROJECT_BINARY_DIR})
-target_link_libraries(fugue_tests PRIVATE Qt6::Core)
+target_link_libraries(fugue_tests PRIVATE Qt6::Core Qt6::Test)
 
 function(fugue_add_test name)
   add_test(NAME ${name} COMMAND ${ARGN})
   set_tests_properties(${name} PROPERTIES LABELS portable TIMEOUT 120
     FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;FUGUE_AUDIO=none;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+endfunction()
+
+# fugue_add_sharded_test(<name> <count> <command...>): <count> entries, <name>_1of<count> and so on, that
+# together run the suite once, so `ctest -j` spreads a long CPU-bound suite over cores. The runner chooses each
+# entry's test functions (--shard, tests/runner.cpp); only suites using a FUGUE_TEST_*MAIN entry accept it.
+# Their names are returned in <name>_SHARDS.
+function(fugue_add_sharded_test name count)
+  set(shards)
+  foreach(part RANGE 1 ${count})
+    fugue_add_test(${name}_${part}of${count} ${ARGN} --shard=${part}/${count})
+    list(APPEND shards ${name}_${part}of${count})
+  endforeach()
+  set(${name}_SHARDS ${shards} PARENT_SCOPE)
 endfunction()
 
 function(fugue_test_entry name entry)

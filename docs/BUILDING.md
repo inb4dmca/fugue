@@ -213,6 +213,12 @@ the build root for single-config builds and its configuration subdirectory for
 multi-config builds, such as `build/Release/fugue_tests.exe`. Prefer CTest for normal
 runs because it applies each entry's arguments and environment.
 
+A long CPU-bound suite is registered as several entries (`shell_entitymap_1of4` ... `_4of4`) so that
+`ctest -j` runs its parts side by side. Each entry passes `--shard=K/N`, and the runner deals the suite's test
+functions out among the N parts in declaration order, so every function runs in exactly one entry and a new
+function needs no registration. `ctest -R shell_entitymap` selects all parts; `fugue_tests entitymap` still runs
+the whole suite in one process.
+
 ### Test profiles
 
 CTest entries declare their requirements with these labels:

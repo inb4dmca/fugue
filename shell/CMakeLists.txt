@@ -23,7 +23,8 @@ qt_add_shaders(fugue_shell mapshaders
 
 # Suites are compiled separately and linked into the shared test runner.
 set(CMAKE_AUTOMOC ON)
-# fugue_shell_test(<ctest name> <source stem>)
+# fugue_shell_test(<ctest name> <source stem> [<shards>])
+# With <shards> the suite runs as that many entries, <ctest name>_1of<shards> and so on (fugue_add_sharded_test).
 function(fugue_shell_test name stem)
   if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/${stem}.cpp)
     return()
@@ -31,7 +32,11 @@ function(fugue_shell_test name stem)
   fugue_test_suite(${stem} tests/${stem}.cpp)
   target_link_libraries(${stem} PRIVATE fugue_shell Qt6::Test Qt6::Network)
   string(REGEX REPLACE "_test$" "" suite "${stem}")
-  fugue_add_test(${name} fugue_tests ${suite} -o -,txt)
+  if(ARGC GREATER 2)
+    fugue_add_sharded_test(${name} ${ARGV2} fugue_tests ${suite} -o -,txt)
+  else()
+    fugue_add_test(${name} fugue_tests ${suite} -o -,txt)
+  endif()
 endfunction()
 
 # GPU readback can use software D3D11 without a display on Windows. OpenGL
@@ -131,7 +136,8 @@ foreach(animation_test clientanim_test movanim_test visanim_test runechat_test c
     target_link_libraries(${animation_test} PRIVATE fugue_proto)
   endif()
 endforeach()
-fugue_shell_test(shell_entitymap entitymap_test) # immutable world sprites, movement, ordering and picking
+# The longest CPU-bound suite, and independent test functions: four entries for `ctest -j`.
+fugue_shell_test(shell_entitymap entitymap_test 4) # immutable world sprites, movement, ordering and picking
 if(TARGET entitymap_test)
   target_link_libraries(entitymap_test PRIVATE fugue_proto) # include decoder registrations for ingest-clock tests
   target_compile_definitions(entitymap_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
