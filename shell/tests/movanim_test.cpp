@@ -1,36 +1,16 @@
-// animate() chains on objs, mobs and a client.image against stock DreamDaemon 516.1684 (tests/data/movanim-world). Every
-// frame is ingested at the tick of the "@N" chat marker before it; the suite starts at tick 11. The expected offsets are
-// what stock DreamSeeker drew on the same world (pixel oracle, read at whole ticks): a step with a StepDelay opens its own
-// sequence (a parallel runs alongside, a head takes over from where the chain is), delay holds the From, loop repeats a
-// sequence, and a Count = 0 frame stops a looping chain.
-// Offsets truncate the eased change toward zero (tests/data/parallel-world, read against a clock in the same frame).
-// Six samples here sit within half a pixel of a whole pixel; their earlier rounded values are one pixel further along
-// the motion, as a frame drawn slightly after its nominal tick would show. They hold the truncated value.
+// animate() chains on objs, mobs and a client.image from retained DreamDaemon 516.1684 wire (tests/data/movanim-world).
+// Frames arrive at their preceding "@N" tick; checkpoints below are seconds after the suite starts at tick 11.
+// Numeric, colour and width expectations are historical source assertions, not independently retained stock output.
+// See the fixture README for their provenance and the six historical rounding corrections.
 #include <QtTest>
 #include "tests/testmain.h"
-#include <fstream>
 #include "model/world.h"
-#include "net/bytes.h"
+#include "shell/tests/replayfixture.h"
 #include "shell/tests/animationfixture.h"
 
 using namespace fugue;
 
 namespace {
-Bytes unhex(const std::string& h) {
-    Bytes b;
-    auto v = [](char c) { return c <= '9' ? c - '0' : (c | 32) - 'a' + 10; };
-    for (size_t i = 0; i + 1 < h.size(); i += 2) b.push_back(uint8_t(v(h[i]) << 4 | v(h[i + 1])));
-    return b;
-}
-std::string slurp(const std::string& p) {
-    std::ifstream f(p, std::ios::binary);
-    return std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-}
-constexpr int64_t kT0 = 1'000'000'000'000'000'000;
-constexpr int64_t kTick = 100'000'000;
-constexpr uint32_t kRes = 0x9fdb5839;
-constexpr double kStart = 11;  // the tick the suite's chains arrive on
-int64_t at(double tick) { return kT0 + int64_t(tick * double(kTick)); }
 // Slot i's colour (mkdmi.py), slot 6 is "white", and the image is "img".
 uint32_t slotColour(int i) {
     if (i == 6) return 0xf0f0f0;
@@ -53,30 +33,48 @@ class MovAnim : public QObject {
         int tick;
     };
     std::vector<Frame> frames_;
-    std::string resBytes_;
-    AnimationFixture renderer_;
-    std::map<int, model::Session> upTo_;
+    std::unique_ptr<shell::test::ReplayFixture> replay_;
+    size_t nextFrame_ = 0;
+    double sampledTick_ = -1;
+    int64_t originNs_ = 0, tickNs_ = 0;
+    int startTick_ = 0;
+    QSize viewport_;
 
-    const model::Session& s(double tick) {
-        int last = int(tick);
-        auto [it, fresh] = upTo_.try_emplace(last);
-        if (!fresh) return it->second;
-        for (const Frame& f : frames_) {
-            if (f.tick > last) break;
-            it->second.setIngestClockNs(at(f.tick));
-            it->second.ingest(f.typ, f.body);
-        }
-        it->second.noteResource(kRes, Bytes(resBytes_.begin(), resBytes_.end()), "");
-        return it->second;
+    int64_t at(double tick) const { return originNs_ + int64_t(tick * double(tickNs_)); }
+    double tickAt(double seconds) const { return startTick_ + seconds * (1'000'000'000.0 / double(tickNs_)); }
+    void reset() {
+        replay_ = std::make_unique<shell::test::ReplayFixture>();
+        nextFrame_ = 0;
+        sampledTick_ = -1;
     }
-
-    QImage image(double tick) { return renderer_.image(s(tick).world(), kRes, resBytes_, at(tick)); }
+    QImage image(double tick) {
+        if (!replay_ || tick < sampledTick_) reset();
+        while (nextFrame_ < frames_.size() && frames_[nextFrame_].tick <= int(tick)) {
+            const auto& frame = frames_[nextFrame_++];
+            replay_->ingest(frame.typ, frame.body, at(frame.tick));
+        }
+        // Resource arrival times were not retained; supply the static bytes after wire ingest.
+        if (!replay_->loadResources("movanim-world")) {
+            QTest::qFail(qPrintable(replay_->error), __FILE__, __LINE__);
+            return {};
+        }
+        replay_->refresh(at(tick));
+        sampledTick_ = tick;
+        const QImage rendered = AnimationFixture::raster(replay_->frame, replay_->sprites);
+        if (rendered.size() != viewport_) {
+            const auto error = QString("tick %1: expected retained viewport %2x%3, got %4x%5")
+                .arg(tick).arg(viewport_.width()).arg(viewport_.height()).arg(rendered.width()).arg(rendered.height());
+            QTest::qFail(qPrintable(error), __FILE__, __LINE__);
+            return {};
+        }
+        return rendered;
+    }
     static uint32_t rgb(const QImage& img, int x, int y) { return img.pixel(x, y) & 0xffffff; }
 
     // Slot `i`'s drawn offset from its tile (+x east, +y north) `t` seconds into the suite, from the top-left corner of
     // its colour; with `width`, its drawn width instead of y.
     QPoint offset(int i, double t, bool width = false) {
-        QImage img = image(kStart + t * 10);
+        QImage img = image(tickAt(t));
         int x0 = INT_MAX, y0 = INT_MAX, x1 = -1;
         for (int y = 0; y < img.height(); y++)
             for (int x = 0; x < img.width(); x++)
@@ -91,37 +89,64 @@ class MovAnim : public QObject {
     }
     // The colour drawn at the centre of slot `i`'s tile.
     uint32_t centre(int i, double t) {
-        QImage img = image(kStart + t * 10);
+        QImage img = image(tickAt(t));
         QPoint tile = slotTile(i);
         return img.width() ? rgb(img, tile.x() + 16, tile.y() + 16) : 0;
     }
 
 private slots:
     void initTestCase() {
-        std::string dir = std::string(FUGUE_TEST_DATA_DIR) + "/movanim-world";
-        std::ifstream f(dir + "/frames.txt");
-        QVERIFY(f);
-        std::string line;
-        std::getline(f, line);  // header
+        QFile file(QString(FUGUE_TEST_DATA_DIR) + "/movanim-world/manifest.json");
+        QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(file.fileName()));
+        QJsonParseError parseError;
+        const auto manifest = QJsonDocument::fromJson(file.readAll(), &parseError).object();
+        QCOMPARE(parseError.error, QJsonParseError::NoError);
+        originNs_ = manifest["clock_unix_ns"].toInteger();
+        tickNs_ = manifest["tick_ns"].toInteger();
+        startTick_ = manifest["start_tick"].toInt();
+        QVERIFY(originNs_ > 0 && tickNs_ > 0 && startTick_ > 0);
+        const auto viewport = manifest["viewport"].toObject();
+        viewport_ = QSize(viewport["w"].toInt(), viewport["h"].toInt());
+        QVERIFY(viewport_.width() > 0 && viewport_.height() > 0);
+        const int expectedFrames = manifest["frames"].toInt();
+        const int expectedResources = manifest["resources"].toInt();
+        const auto resourceNames = manifest["resource_names"].toObject();
+        QVERIFY(expectedFrames > 0 && expectedResources > 0);
+        QCOMPARE(resourceNames.size(), expectedResources);
+
+        shell::test::ReplayFixture recording;
         int tick = 0;
-        while (std::getline(f, line)) {
-            QVERIFY(line.rfind("0x", 0) == 0);
-            size_t sp = line.find(' ', line.find("len="));
-            Frame fr{uint16_t(std::stoul(line.substr(2, 4), nullptr, 16)),
-                     sp == std::string::npos ? Bytes{} : unhex(line.substr(sp + 1)), 0};
-            if (fr.typ == S2C::Text && fr.body.size() > 1 && fr.body[0] == '@')
-                tick = std::stoi(std::string(fr.body.begin() + 1, fr.body.end()));
-            fr.tick = tick;
-            frames_.push_back(std::move(fr));
+        bool ordered = true;
+        QVERIFY2(recording.readFrames("frames.txt", "movanim-world", [&](uint16_t type, const Bytes& body) {
+            if (type == S2C::Text && body.size() > 1 && body[0] == '@') {
+                bool valid = false;
+                const int next = QByteArray(reinterpret_cast<const char*>(body.data() + 1), qsizetype(body.size() - 1))
+                    .split('\0').front().toInt(&valid);
+                ordered = ordered && valid && next >= tick;
+                tick = next;
+            }
+            frames_.push_back({type, body, tick});
+        }), qPrintable(recording.error));
+        QVERIFY2(ordered, "Recorded tick markers must be valid and ordered");
+        QCOMPARE(int(frames_.size()), expectedFrames);
+        QVERIFY2(recording.loadResources("movanim-world"), qPrintable(recording.error));
+        QCOMPARE(recording.resources.size(), size_t(expectedResources));
+        int64_t resourceBytes = 0;
+        for (auto entry = resourceNames.begin(); entry != resourceNames.end(); ++entry) {
+            bool valid = false;
+            const uint32_t id = entry.key().toUInt(&valid, 16);
+            QVERIFY(valid && !entry.value().toString().isEmpty());
+            QVERIFY2(recording.resources.count(id), qPrintable("Missing resource: " + entry.key()));
+            const auto& bytes = recording.resources.at(id);
+            QVERIFY(!bytes.isEmpty());
+            resourceBytes += bytes.size();
         }
-        QCOMPARE(int(frames_.size()), 844);
-        char n[16];
-        std::snprintf(n, sizeof n, "%08x", kRes);
-        resBytes_ = slurp(dir + "/res/" + n);
-        QVERIFY(!resBytes_.empty());
+        QCOMPARE(resourceBytes, manifest["resource_bytes"].toInteger());
         // Known-good unanimated control validates the adapter before chains.
         QCOMPARE(offset(0, -.1), QPoint(0, 0));
     }
+
+    void init() { reset(); }
 
     // animate(pixel_x = 32, 10); animate(pixel_y = 32, 10): one sequence, its steps in turn.
     void sequentialSteps() {
