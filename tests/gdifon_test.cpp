@@ -172,6 +172,8 @@ private slots:
     void hostSmallFontsMatchesTheLayout() {
         const QString directory = qEnvironmentVariable("FUGUE_FONT_DIR");
         QFile f(QDir(directory.isEmpty() ? QString("/usr/share/wine/fonts") : directory).filePath("smalle.fon"));
+        // Without FUGUE_FONT_DIR this checks Wine's copy, which only some hosts have.
+        if (directory.isEmpty() && !f.exists()) QSKIP(qPrintable(f.fileName() + " is not installed; set FUGUE_FONT_DIR to check a host font"));
         QVERIFY2(f.open(QIODevice::ReadOnly), qPrintable(f.fileName() + ": " + f.errorString()));
         const QByteArray d = f.readAll();
         QVERIFY2(f.error() == QFileDevice::NoError, qPrintable(f.fileName() + ": " + f.errorString()));

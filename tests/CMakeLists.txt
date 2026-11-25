@@ -27,4 +27,6 @@ endif()
 
 fugue_test_entry(gdifon_host fugue_run_gdifon_host)
 fugue_add_test(gdifon_host fugue_tests gdifon_host -o -,txt)
-set_tests_properties(gdifon_host PROPERTIES LABELS font)
+# The one suite that may skip: it checks a font only some hosts have.
+set_tests_properties(gdifon_host PROPERTIES LABELS font
+  FAIL_REGULAR_EXPRESSION "" SKIP_REGULAR_EXPRESSION "SKIP[ \t]*:")
