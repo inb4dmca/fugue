@@ -6,6 +6,13 @@
 #include "shell/tests/opacityfixture.h"
 using namespace fugue::shell;
 using namespace iconfixture;
+// A recipe gets a 2 ms slice per preparation and is finished by later ones, so a test that wants a generated icon
+// prepares until it is ready.
+static IconCache::Result finish(IconCache& cache,const IconCache::Resources& resources,const IconCache::Read& read,uint32_t index) {
+    IconCache::Result done; int preparations=0;
+    do { cache.begin(resources,read); done=cache.lookup(index); } while(!done.ready && ++preparations<1000);
+    return done;
+}
 class IconCacheTest : public QObject {
     Q_OBJECT
 private slots:
@@ -127,7 +134,7 @@ private slots:
         for (float factor : {0.f,.5f,1.f,2.f,10000.f}) {
             IconCache cache; IconCache::Resources resources{{10,3},{20,12}};
             auto read = [&](uint32_t id,QByteArray& out) { out = id==10 ? bytes : opacityfixture::recipe(0,factor); return true; };
-            cache.begin(resources,read); const auto result = cache.lookup(1); QVERIFY(result.ready);
+            const auto result = finish(cache,resources,read,1); QVERIFY(result.ready);
             const auto& icon = cache.icon(20); QVERIFY(!icon.sheet.isNull()); QVERIFY(icon.generated);
             QCOMPARE(icon.cell,QSize(32,32));
             for (int i=0;i<8;++i) QCOMPARE(icon.sheet.pixelColor(i,0).alpha(),expected[row][i]);
@@ -164,10 +171,10 @@ private slots:
         auto read=[&](uint32_t id,QByteArray& out) { if(!data.count(id)) return false; out=data.at(id);return true; };
         cache.begin(resources,read); QVERIFY(!cache.lookup(0).ready);
         resources.push_back({20,3}); cache.begin(resources,read); QVERIFY(!cache.lookup(0).ready);
-        data[20]=animation(); cache.begin(resources,read); const auto first=cache.lookup(0); QVERIFY(first.ready);
+        data[20]=animation(); const auto first=finish(cache,resources,read,0); QVERIFY(first.ready);
         const auto retained=cache.icon(10).sheet;
-        resources[1]={30,3}; data[30]=flickAsset(); cache.begin(resources,read);
-        QVERIFY(cache.lookup(0).revision != first.revision); QVERIFY(cache.icon(10).state("pulse"));
+        resources[1]={30,3}; data[30]=flickAsset(); const auto second=finish(cache,resources,read,0);
+        QVERIFY(second.ready); QVERIFY(second.revision != first.revision); QVERIFY(cache.icon(10).state("pulse"));
         QCOMPARE(retained.size(),QSize(128,96));
         resources[1]={10,12}; cache.begin(resources,read); QVERIFY(!cache.lookup(0).ready); // cycle
         // Whole-sheet allocation, not just the selected cell, is preflighted.
@@ -217,8 +224,7 @@ private slots:
     }
     void generatedAnimationRetainsPlayback() {
         IconCache cache; IconCache::Resources resources{{10,3},{20,12}};
-        cache.begin(resources,[](uint32_t id,QByteArray& out){out=id==10?animation(2,true):recipe(select(0,"",2));return true;});
-        QVERIFY(cache.lookup(1).ready);
+        QVERIFY(finish(cache,resources,[](uint32_t id,QByteArray& out){out=id==10?animation(2,true):recipe(select(0,"",2));return true;},1).ready);
         const auto& icon = cache.icon(20);
         QCOMPARE(icon.state("")->frames,3);
         QCOMPARE(icon.state("")->loop,2); QVERIFY(icon.state("")->rewind);
@@ -234,14 +240,14 @@ private slots:
         resources.push_back({20,3}); cache.begin(resources,read);
         const auto missing=cache.lookup(0); QVERIFY(!missing.ready);
         cache.begin(resources,read); QCOMPARE(cache.lookup(0),missing);
-        data[20]=sheet(); cache.begin(resources,read);
-        const auto result=cache.lookup(0); QVERIFY(result.ready);
+        data[20]=sheet();
+        const auto result=finish(cache,resources,read,0); QVERIFY(result.ready);
         const auto first=cache.icon(10).frame("retained-old-state",8);
         QCOMPARE(first.size(),QSize(32,32)); QCOMPARE(first.pixelColor(0,0),QColor(Qt::transparent));
         QCOMPARE(first.pixelColor(20,0),QColor(Qt::red));
         cache.begin(resources,read); QCOMPARE(cache.lookup(0),result); QCOMPARE(cache.reads(),uint64_t(0));
         resources[1]={30,3}; cache.begin(resources,read); QVERIFY(!cache.lookup(0).ready);
-        data[30]=sheet(Qt::blue); cache.begin(resources,read); const auto changed=cache.lookup(0);
+        data[30]=sheet(Qt::blue); const auto changed=finish(cache,resources,read,0);
         QVERIFY(changed.ready); QVERIFY(changed.revision!=result.revision);
         QCOMPARE(cache.icon(10).frame("",2).pixelColor(20,0),QColor(Qt::blue));
         QCOMPARE(first.pixelColor(20,0),QColor(Qt::red));
@@ -253,9 +259,9 @@ private slots:
         std::map<uint32_t,QByteArray> data{{10,png(source)}};
         IconCache cache; IconCache::Resources resources{{10,3}};
         for(int i=0;i<8;++i) { resources.push_back({uint32_t(20+i),12}); data[20+i]=recipe(select(0,"eight",i)); }
-        cache.begin(resources,[&](uint32_t id,QByteArray& out){out=data.at(id);return true;});
+        const IconCache::Read read=[&](uint32_t id,QByteArray& out){out=data.at(id);return true;};
         for(int i=0;i<8;++i) {
-            QVERIFY(cache.lookup(i+1).ready);
+            QVERIFY(finish(cache,resources,read,uint32_t(i+1)).ready);
             for(int dir:{1,2,4,8}) QCOMPARE(cache.icon(20+i).frame("old-state",dir).pixelColor(0,0),QColor(i*30,50,100));
         }
     }
@@ -270,8 +276,8 @@ private slots:
         auto swap=recipe(select(0,"a",0)+QByteArray::fromHex("03ff00ffff03123456784801"));
         std::map<uint32_t,QByteArray> data{{10,png(input)},{20,overlay},{30,swap}};
         IconCache cache; IconCache::Resources resources{{10,3},{20,12},{30,12}};
-        cache.begin(resources,[&](uint32_t id,QByteArray& out){out=data.at(id);return true;});
-        QVERIFY(cache.lookup(1).ready); QVERIFY(cache.lookup(2).ready);
+        const IconCache::Read read=[&](uint32_t id,QByteArray& out){out=data.at(id);return true;};
+        QVERIFY(finish(cache,resources,read,1).ready); QVERIFY(finish(cache,resources,read,2).ready);
         const auto image=cache.icon(20).sheet;
         const QColor expected[]={Qt::white,Qt::black,QColor(40,80,120,192),QColor(66,48,198,255),QColor(21,54,231,255),
             QColor(40,80,120,192),QColor(50,100,35,255),QColor(255,0,255,255)};
@@ -299,12 +305,12 @@ private slots:
         IconCache cache; IconCache::Resources resources{{10,12},{20,12},{30,3}};
         std::map<uint32_t,QByteArray> data{{10,recipe(select(1,""))},{20,masked(2)},{30,sheet()}};
         auto read=[&](uint32_t id,QByteArray& out){out=data.at(id);return true;};
-        cache.begin(resources,read); QVERIFY(cache.lookup(0).ready);
+        QVERIFY(finish(cache,resources,read,0).ready);
         QCOMPARE(cache.icon(10).sheet.pixelColor(20,0),QColor(Qt::red));
         const auto retained=cache.icon(10).sheet;
         // A remap deep in the graph invalidates every dependent image, not just the leaf.
-        resources[2]={40,3}; data[40]=sheet(Qt::blue); cache.begin(resources,read);
-        QVERIFY(cache.lookup(0).ready); QCOMPARE(cache.icon(10).sheet.pixelColor(20,0),QColor(Qt::blue));
+        resources[2]={40,3}; data[40]=sheet(Qt::blue);
+        QVERIFY(finish(cache,resources,read,0).ready); QCOMPARE(cache.icon(10).sheet.pixelColor(20,0),QColor(Qt::blue));
         QCOMPARE(retained.pixelColor(20,0),QColor(Qt::red));
         IconCache deep; resources.clear(); data.clear();
         for(uint32_t i=0;i<64;++i) {resources.push_back({100+i,12});data[100+i]=recipe(select(i+1,""));}
@@ -408,12 +414,7 @@ private slots:
         auto source=png(large);
         IconCache cache; IconCache::Resources resources{{10,12},{20,3}};
         auto read=[&](uint32_t id,QByteArray& out){out=id==10?bytes:source;return true;};
-        auto finish=[&] {
-            IconCache::Result result;
-            for(int i=0;i<1000;++i) { cache.begin(resources,read); result=cache.lookup(0); if(result.ready) break; }
-            return result;
-        };
-        auto result=finish(); QCOMPARE(result.status,IconCache::Status::SafetyLimit);
+        auto result=finish(cache,resources,read,0); QCOMPARE(result.status,IconCache::Status::SafetyLimit);
         QVERIFY(cache.icon(10).sheet.isNull());
         const auto work=cache.metrics().workPixels;
         for(int i=0;i<3;++i) { cache.begin(resources,read); QCOMPARE(cache.lookup(0).revision,result.revision); }
@@ -423,12 +424,12 @@ private slots:
         bytes=recipe(body); cache.begin(resources,read); QVERIFY(!cache.lookup(0).ready);
         // Change a dependency while the job is suspended: no stale red publication.
         large.fill(Qt::blue); source=png(large); resources[1]={30,3};
-        result=finish(); QCOMPARE(result.status,IconCache::Status::Ready);
+        result=finish(cache,resources,read,0); QCOMPARE(result.status,IconCache::Status::Ready);
         QCOMPARE(cache.icon(10).sheet,large);
         QVERIFY(cache.metrics().starts >= 3);
         // Evicting a suspended job must also release it, not permanently block the cache.
         cache.trim(0,0); cache.begin(resources,read); cache.lookup(0);
-        cache.trim(0,0); result=finish(); QCOMPARE(result.status,IconCache::Status::Ready);
+        cache.trim(0,0); result=finish(cache,resources,read,0); QCOMPARE(result.status,IconCache::Status::Ready);
     }
     void emptyIconsAndRecipeLimits() {
         IconCache cache; IconCache::Resources resources{{10,12},{20,12},{30,3}};
@@ -438,19 +439,13 @@ private slots:
         const auto insert=recipe(QByteArray::fromHex("010000000008010200000008050041ffff00000000004402"));
         const auto source=animation(2,true);
         auto read=[&](uint32_t id,QByteArray& out) { out=id==10?empty:id==20?insert:source;return true; };
-        // A recipe gets a 2 ms slice per preparation and is finished by later ones.
-        auto finish=[&](IconCache& c,const IconCache::Read& r) {
-            IconCache::Result done; int preparations=0;
-            do { c.begin(resources,r); done=c.lookup(1); } while(!done.ready && ++preparations<1000);
-            return done;
-        };
-        const auto result=finish(cache,read);
+        const auto result=finish(cache,resources,read,1);
         QCOMPARE(result.status,IconCache::Status::Ready); QVERIFY(result.ready);
         QCOMPARE(cache.icon(20).state("")->frames,3); QCOMPARE(cache.icon(20).state("")->dirs,4);
         QCOMPARE(cache.icon(20).state("")->loop,2); QVERIFY(cache.icon(20).state("")->rewind);
         QCOMPARE(*cache.icon(20).state("")->ends,*cache.icon(30).state("")->ends);
         const auto retained=cache.icon(20).sheet;
-        cache.trim(0,0); QVERIFY(finish(cache,read).ready);
+        cache.trim(0,0); QVERIFY(finish(cache,resources,read,1).ready);
         QCOMPARE(cache.icon(20).sheet,retained);
         for (const auto& body : {
                 select(2,"")+QByteArray::fromHex("4bff7fff7f"), // huge Scale
@@ -460,7 +455,7 @@ private slots:
                 select(2,"")+QByteArray::fromHex("4a10")+QByteArray(64,'\0'), // unsupported matrix
                 select(2,"")+QByteArray::fromHex("06")}) {
             IconCache bounded;
-            const auto refused=finish(bounded,[&](uint32_t id,QByteArray& out){out=id==20?recipe(body):animation();return true;});
+            const auto refused=finish(bounded,resources,[&](uint32_t id,QByteArray& out){out=id==20?recipe(body):animation();return true;},1);
             QVERIFY(refused.status==IconCache::Status::SafetyLimit || refused.status==IconCache::Status::UnsupportedRecipe);
             QVERIFY(bounded.icon(20).sheet.isNull());
         }
@@ -470,7 +465,7 @@ private slots:
         std::map<uint32_t,QByteArray> data{{10,recipe(select(1,""))},{20,recipe(select(0,""))},{30,sheet()}};
         auto read=[&](uint32_t id,QByteArray& out){out=data.at(id);return true;};
         for(int i=0;i<3;++i) { cache.begin(resources,read); QVERIFY(!cache.lookup(0).ready); }
-        resources[1]={30,3}; cache.begin(resources,read); QVERIFY(cache.lookup(0).ready);
+        resources[1]={30,3}; QVERIFY(finish(cache,resources,read,0).ready);
         // Missing-state icon() leaves the source unchanged (f_nostate corpus);
         // ordinary selection still has no default state to draw.
         QVERIFY(cache.icon(10).frame("",2).isNull());
