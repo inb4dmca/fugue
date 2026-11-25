@@ -3,7 +3,10 @@
 // captures, not renderer-generated reference output.
 #include <QtTest>
 #include "tests/testmain.h"
+#include "tests/recordedinput.h"
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTextStream>
 #include <cmath>
 #include "model/world.h"
@@ -84,15 +87,18 @@ class AssetRecoveryTest : public QObject {
     }
 private slots:
     void initTestCase() {
-        for (const auto& line : load("ddmiops-world/frames.txt").split('\n')) {
-            if (!line.startsWith("0x")) continue;
-            const auto at = line.indexOf(' ',line.indexOf("len="));
-            const auto bytes = at < 0 ? QByteArray() : QByteArray::fromHex(line.mid(at+1));
-            session_.ingest(line.mid(2,4).toUShort(nullptr,16), Bytes(bytes.begin(),bytes.end()));
-        }
-        QDir dir(QString(FUGUE_TEST_DATA_DIR) + "/ddmiops-world/res");
-        for (const auto& name : dir.entryList(QDir::Files))
-            resources_.emplace(name.toUInt(nullptr,16),load("ddmiops-world/res/"+name));
+        const auto dir=QString(FUGUE_TEST_DATA_DIR)+"/ddmiops-world";
+        std::vector<testinput::RecordedFrame> frames;
+        QString error;
+        QJsonParseError parseError;
+        const auto manifest=QJsonDocument::fromJson(load("ddmiops-world/manifest.json"),&parseError).object();
+        QCOMPARE(parseError.error,QJsonParseError::NoError);
+        QVERIFY(manifest["frames"].toInt()>0 && manifest["resources"].toInt()>0);
+        QVERIFY2(testinput::readRecordedFrames(dir+"/frames.txt",frames,error),qPrintable(error));
+        QCOMPARE(frames.size(),size_t(manifest["frames"].toInt()));
+        for (const auto& frame:frames) session_.ingest(frame.type,frame.body);
+        QVERIFY2(testinput::readRecordedResources(dir+"/res",resources_,error),qPrintable(error));
+        QCOMPARE(resources_.size(),size_t(manifest["resources"].toInt()));
         QVERIFY(!session_.world().resources.empty());
         // Known-good raw source establishes resource-list/replay adapter correctness.
         begin(); const auto control = cache_.lookup(1); QVERIFY(control.ready);

@@ -1,5 +1,6 @@
 #pragma once
 #include "tests/appearancejson.h"
+#include "tests/recordedinput.h"
 #include "shell/entitymap.h"
 #include "shell/localtargets.h"
 #include "shell/mapinput.h"
@@ -37,16 +38,10 @@ struct ReplayFixture {
     }
     template<class Consume>
     bool readFrames(const QString& frames, const QString& fixture, Consume consume) {
-        error.clear();
         const QString dir=QString(FUGUE_TEST_DATA_DIR)+'/'+fixture;
-        QFile wire(dir+'/'+frames);
-        if (!wire.open(QIODevice::ReadOnly)) { error="Cannot read "+wire.fileName(); return false; }
-        for (const auto& line:wire.readAll().split('\n')) {
-            if (!line.startsWith("0x")) continue;
-            const int at=int(line.indexOf(' ',line.indexOf("len=")));
-            const auto body=at<0 ? QByteArray{} : QByteArray::fromHex(line.mid(at+1));
-            consume(uint16_t(line.mid(2,4).toUInt(nullptr,16)),Bytes(body.begin(),body.end()));
-        }
+        std::vector<::fugue::testinput::RecordedFrame> recorded;
+        if (!::fugue::testinput::readRecordedFrames(dir+'/'+frames,recorded,error)) return false;
+        for (const auto& recordedFrame:recorded) consume(recordedFrame.type,recordedFrame.body);
         return true;
     }
     void ingest(uint16_t type, const Bytes& body, int64_t arrivalNs) {
@@ -54,13 +49,11 @@ struct ReplayFixture {
         session.ingest(type,body);
     }
     bool loadResources(const QString& fixture) {
-        error.clear();
         const QString resDir=QString(FUGUE_TEST_DATA_DIR)+'/'+fixture+"/res";
-        if (!QDir(resDir).exists()) { error="Missing resources: "+resDir; return false; }
-        for (const auto& name:QDir(resDir).entryList(QDir::Files)) {
-            QFile file(resDir+'/'+name);
-            if (!file.open(QIODevice::ReadOnly)) { error="Cannot read "+file.fileName(); return false; }
-            const auto data=file.readAll(); const auto id=name.toUInt(nullptr,16); resources[id]=data;
+        std::map<uint32_t,QByteArray> recorded;
+        if (!::fugue::testinput::readRecordedResources(resDir,recorded,error)) return false;
+        for (const auto& [id,data]:recorded) {
+            resources[id]=data;
             session.noteResource(id,Bytes(data.begin(),data.end()),"");
         }
         return true;

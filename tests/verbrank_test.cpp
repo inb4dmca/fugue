@@ -15,6 +15,7 @@
 // DreamSeeker 516.1684 did for each typed line in its own fresh session: the frame, the `<Verb> word` listbox (and the
 // frame for a pick), the dialog, what it printed, or the command bar after a space.
 #include <QtTest>
+#include "tests/recordedinput.h"
 #include "tests/testmain.h"
 #include <fstream>
 #include <regex>
@@ -28,21 +29,6 @@ using namespace fugue;
 using proto::enc::VerbArg;
 
 namespace {
-Bytes unhex(const std::string& h) {
-    Bytes b;
-    auto v = [](char c) { return c <= '9' ? c - '0' : (c | 32) - 'a' + 10; };
-    for (size_t i = 0; i + 1 < h.size(); i += 2) b.push_back(uint8_t(v(h[i]) << 4 | v(h[i + 1])));
-    return b;
-}
-std::string hex(const Bytes& b) {
-    static const char* d = "0123456789abcdef";
-    std::string o;
-    for (uint8_t c : b) {
-        o += d[c >> 4];
-        o += d[c & 15];
-    }
-    return o;
-}
 std::vector<std::string> split(const std::string& s, char sep) {
     std::vector<std::string> o;
     for (size_t p = 0, q; p <= s.size(); p = q + 1) {
@@ -56,18 +42,16 @@ std::vector<std::string> split(const std::string& s, char sep) {
 struct Recorded {
     model::Session sess;
     net::InputModel im;
+    QString error;
     bool load(const std::string& world = "verbrank-world") {
-        std::ifstream f(std::string(FUGUE_TEST_DATA_DIR) + "/" + world + "/frames.txt");
-        if (!f) return false;
-        std::string line;
-        while (std::getline(f, line)) {
-            if (line.rfind("0x", 0) != 0) continue;
-            uint16_t typ = uint16_t(std::stoul(line.substr(2, 4), nullptr, 16));
-            size_t sp = line.find(' ', line.find("len="));
-            Bytes body = sp == std::string::npos ? Bytes{} : unhex(line.substr(sp + 1));
-            im.onFrame(typ, body);
-            sess.ingest(typ, body);
+        const auto path = QString(FUGUE_TEST_DATA_DIR) + '/' + QString::fromStdString(world) + "/frames.txt";
+        std::vector<testinput::RecordedFrame> frames;
+        if (!testinput::readRecordedFrames(path, frames, error)) return false;
+        for (const auto& frame : frames) {
+            im.onFrame(frame.type, frame.body);
+            sess.ingest(frame.type, frame.body);
         }
+        if (!sess.world().haveSelf) error = path + ": Recorded world has no player";
         return sess.world().haveSelf;
     }
     // The app's resolver (app/sessionworker.cpp srcFor).
@@ -191,7 +175,7 @@ private slots:
     static void sameAsDreamSeeker(const std::string& world, const std::vector<Ds>& ds, int wantSends, int wantBoxes,
                                   int wantRefusals = 0) {
         Recorded r;
-        QVERIFY(r.load(world));
+        QVERIFY2(r.load(world), qPrintable(r.error));
         const model::World& w = r.sess.world();
         std::string self = r.selfName();  // empty in a world with no verb on the own mob
         int sends = 0, boxes = 0, refusals = 0;
@@ -235,9 +219,9 @@ private slots:
             // A client src goes out as ref 0 (stock sent a per-session ref here; the kind is what is graded).
             uint32_t ref = d.ref == "self" ? w.selfRef : d.ref == "client" ? 0 : uint32_t(std::stoul(d.ref));
             Bytes want = proto::enc::encodeVerb(d.verb, d.kind, ref, d.args);
-            QVERIFY2(hex(res.frames[0].body) == hex(want),
-                     qPrintable(QString::fromStdString(d.line + " " + d.pick + ": got " + hex(res.frames[0].body) +
-                                                       ", DreamSeeker " + hex(want))));
+            QVERIFY2(res.frames[0].body == want,
+                     qPrintable(QString::fromStdString(d.line + " " + d.pick + ": got " + hexEncode(res.frames[0].body) +
+                                                       ", DreamSeeker " + hexEncode(want))));
             sends++;
         }
         QCOMPARE(sends, wantSends);
@@ -311,7 +295,7 @@ private slots:
     // A bare line that leaves an argument out asks for it, on the verb stock picked.
     void aMissingArgumentAsksTheVerbDreamSeekerPicked() {
         Recorded r;
-        QVERIFY(r.load());
+        QVERIFY2(r.load(), qPrintable(r.error));
         int n = 0;
         for (const Ds& d : ds_) {
             if (d.what != "dialog") continue;
@@ -332,7 +316,7 @@ private slots:
 
     void spaceCompletesAsDreamSeeker() {
         Recorded r;
-        QVERIFY(r.load());
+        QVERIFY2(r.load(), qPrintable(r.error));
         int n = 0;
         for (const Ds& d : ds_) {
             if (d.what != "completes") continue;
