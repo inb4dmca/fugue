@@ -175,12 +175,12 @@ bool EntityMap::AnimationSampler::sample(const model::Atom::Chain& chain, uint32
         Appearance ap = appearance(id);
         valid &= ap.present && ap.valid;
         if (hudMaster) {
-            // Material animation on a stable HUD master tree. Endpoints must not
-            // silently introduce filter/placement/group/ownership transitions.
-            // Fixed matrices (including no-op matrix tweens) are supported;
-            // changing matrices need an independent stock interpolation oracle.
-            valid &= ap.master && ap.colorValid && ap.color == liveMaster.color && !ap.hasTransform && !ap.animationEffects && ap.planeEffects &&
-                ap.planeEffects->supported && ap.planeEffects->filters.empty() &&
+            // Material, matrix and filter animation on a stable HUD master tree: the plane is drawn with the filters
+            // at their tweened parameters, then turned by the tweened matrix, as a settled master with those values is
+            // (stock 516.1689, tests/data/master-transform-world ax-*). Endpoints must not silently introduce
+            // placement/group/ownership transitions.
+            valid &= ap.master && ap.colorValid && ap.color == liveMaster.color && !ap.visFlags && ap.planeEffects &&
+                ap.planeEffects->supported &&
                 ap.renderSource.isEmpty() && ap.renderTarget.isEmpty() &&
                 ap.screenLoc == liveMaster.screenLoc && ap.hasPlane == liveMaster.hasPlane && ap.plane == liveMaster.plane &&
                 ap.offset == liveMaster.offset && ap.layerBits == liveMaster.layerBits && ap.blend == liveMaster.blend &&
@@ -212,6 +212,8 @@ bool EntityMap::AnimationSampler::sample(const model::Atom::Chain& chain, uint32
         ap.matrix = animation::interpolate(from.matrix, to.matrix, f, (flags & 0x2u) != 0);
         if (from.atomFilters != to.atomFilters)
             if (auto filters = tweenFilters(from.atomFilters, to.atomFilters, from.atomFilters, f)) ap.atomFilters = filters;
+        if (from.planeEffects && to.planeEffects && from.planeEffects->filters != to.planeEffects->filters)
+            if (auto filters = tweenFilters(from.planeEffects, to.planeEffects, from.planeEffects, f)) ap.planeEffects = filters;
         // A colour-matrix tween blends every element by the eased factor, a plain colour counting as its diagonal
         // matrix (stock 516.1688, tests/data/color-tween-world).
         if (from.color != identityColor || to.color != identityColor) {
@@ -244,6 +246,8 @@ bool EntityMap::AnimationSampler::sample(const model::Atom::Chain& chain, uint32
         if (from.blend != to.blend || base.blend != to.blend) ap.blend = to.blend;
         if (step.atomFilters != base.atomFilters)
             if (auto filters = tweenFilters(ap.atomFilters, step.atomFilters, base.atomFilters, 1)) ap.atomFilters = filters;
+        if (ap.planeEffects && step.planeEffects && base.planeEffects && step.planeEffects->filters != base.planeEffects->filters)
+            if (auto filters = tweenFilters(ap.planeEffects, step.planeEffects, base.planeEffects, 1)) ap.planeEffects = filters;
     };
     uint32_t lastTo = 0;
     composing = animation::composeChain(chain, nowNs, get, lerp, add, out, lastTo);
@@ -272,11 +276,22 @@ bool EntityMap::AnimationSampler::sample(const model::Atom::Chain& chain, uint32
     // 516.1689, tests/data/stock-parity-world animated-groups).
     const bool surface = attachment && out.affine && out.transformValid && out.keepTogether && out.renderSource.isEmpty() &&
                          out.renderTarget.isEmpty();
+    // A master's matrix turns its plane: it travels in the plane effects, as decodePlaneEffects puts a settled one there,
+    // and the master's own placement treats it as decodeEntityAppearance does.
+    const bool masterSurface = hudMaster && out.master && out.planeEffects && !out.keepTogether;
+    if (masterSurface) {
+        auto effects = std::make_shared<PlaneEffects>(*out.planeEffects);
+        effects->matrix.reset();
+        if (out.hasTransform) effects->matrix = out.matrix;
+        effects->supported = effects->valid({32, 32});
+        out.planeEffects = std::move(effects);
+        if (out.affine && out.transformValid) { out.transformValid = false; out.transformEffects = true; }
+    }
     if (surface) { out.transformValid = false; out.transformEffects = true; }
     else if (out.affine && (out.keepTogether || !out.renderSource.isEmpty() || !out.renderTarget.isEmpty()))
         out.transformValid = out.matrixValid = false;
     out.imageUnsupported = out.imageParentUnsupported;
-    return valid && (!hudMaster || finiteColor(out.color)) && (out.transformValid || surface) &&
+    return valid && (!hudMaster || finiteColor(out.color)) && (out.transformValid || surface || (masterSurface && out.matrixValid)) &&
         std::abs(out.offset.x()) <= 1'000'000 && std::abs(out.offset.y()) <= 1'000'000;
 }
 

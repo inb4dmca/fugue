@@ -1,6 +1,7 @@
 // A HUD plane master (plane 1, screen_loc 1,1) owning an overlay image and a world object on its plane, with a matrix on
 // the master or on the overlay, or (cases starting "fx-") a master with a matrix, filters or both and no overlay; run
-// with -params "set=<case>" (see set_master()).
+// with -params "set=<case>" (see set_master()). Cases starting "ax-" animate such a master (see animate_master()); only
+// those with "tree" in the name keep the overlay.
 world
     name = "Master transform probe"
     maxx = 7
@@ -40,7 +41,7 @@ world
     if(findtext(kind, "child-turn")) I.transform = turned(45)
     if(findtext(kind, "child-scale")) I.transform = matrix(2, 0, 0, 0, 1, 0)
     if(findtext(kind, "child-lean")) I.transform = turned(30)
-    if(!findtext(kind, "solo") && !findtext(kind, "fx-")) M.overlays += I
+    if(!findtext(kind, "solo") && !findtext(kind, "fx-") && (!findtext(kind, "ax-") || findtext(kind, "tree"))) M.overlays += I
     if(findtext(kind, "group")) M.appearance_flags |= KEEP_TOGETHER
     if(findtext(kind, "master-turn")) M.transform = turned(90)
     if(findtext(kind, "master-scale")) M.transform = matrix(2, 0, 0, 0, 1, 0)
@@ -60,7 +61,36 @@ world
     if(findtext(kind, "bloom")) M.filters += filter(type = "bloom", threshold = rgb(100, 0, 0), size = 3, offset = 2, alpha = 255)
     if(findtext(kind, "swap")) M.filters += filter(type = "color", color = list(0,1,0, 1,0,0, 0,0,1))
     if(findtext(kind, "mask")) M.filters += filter(type = "alpha", icon = icon('mask.png'), x = 32, y = 0)
+    if(findtext(kind, "ax-")) animate_master(M, kind)
     world.log << "CASE [kind]"
+// ax-*: the master above, then animated. Each animation takes half a second and then holds its end for ten minutes
+// (a second step to the same value), so a grab taken seconds after login sees the end of the first step while the
+// animation is still running. With "mid" the first step takes a minute instead and there is no hold.
+/proc/animate_master(obj/master/M, kind)
+    var/time = findtext(kind, "mid") ? 600 : 5
+    var/hold = !findtext(kind, "mid")
+    var/parallel = 0
+    if(findtext(kind, "grow2x") || findtext(kind, "spin90"))
+        var/matrix/T = findtext(kind, "grow2x") ? matrix(2, 0, 0, 0, 1, 0) : turned(90)
+        animate(M, transform = T, time = time)
+        if(hold) animate(transform = T, time = 6000)
+        parallel = ANIMATION_PARALLEL
+    if(findtext(kind, "toshadow"))
+        var/shadow = filter(type = "drop_shadow", x = 6, y = 0, size = 0, color = "#ffffff")
+        animate(M, filters = shadow, time = time, flags = parallel)
+        if(hold) animate(filters = shadow, time = 6000)
+        return
+    var/f = length(M.filters) ? M.filters[1] : null
+    if(!f) return
+    if(findtext(kind, "size4"))
+        animate(f, size = 4, time = time, flags = parallel)
+        if(hold) animate(size = 4, time = 6000)
+    if(findtext(kind, "left"))
+        animate(f, x = -6, time = time, flags = parallel)
+        if(hold) animate(x = -6, time = 6000)
+    if(findtext(kind, "phase"))
+        animate(f, offset = 0.5, time = time, flags = parallel)
+        if(hold) animate(offset = 0.5, time = 6000)
 world/New()
     ..()
     world.log = file("events.log")

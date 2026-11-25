@@ -1,7 +1,7 @@
 # Plane-master trees with matrices
 
-Independent DreamSeeker/DreamDaemon **516.1688**, 2026-11-14, port 18660. No game assets in Git; `filters/` holds
-stock grabs of this synthetic world (see below).
+Independent DreamSeeker/DreamDaemon **516.1688**, 2026-11-14, port 18660. No game assets in Git; `filters/` and
+`replay/` hold stock grabs of this synthetic world (see below).
 `prepare.py <dir>` writes the world, a 224x224 skin, a floor and two boxes (`box.png` red, `blue.png`, 16x16 at
 8..23). A HUD plane master (plane 1, `screen_loc = "1,1"`) carries an overlay image (`blue.png`, pixel offset 64,32,
 plane 1); a world object (`box.png`) stands on plane 1 at (5,4). `tools/stockprobe/stockprobe.py pair` runs dd with
@@ -58,6 +58,41 @@ right). So does a master tree, the first set's master with its overlay: `master-
 
 Fugue now does all of this for every filter kind, with or without a tree.
 
+## Animated filters and matrices on the master (`ax-*` cases)
+
+Stock **516.1689**, 2026-11-25. The `fx-*` master (no overlay; `tree` in the name keeps the first set's overlay) is
+animated by `animate_master()` in `world.dm`: the filter's parameters (`animate(M.filters[1], size = 4)`: `size4`; a
+shadow's `x = -6`: `left`; a wave's `offset = 0.5`: `phase`), the master's matrix (`animate(M, transform = ...)`: to a
+2x horizontal scale, `grow2x`, or a quarter turn, `spin90`) or both (the filter step `ANIMATION_PARALLEL`). So that the
+grabbed frame is well defined, each first step takes half a second and is followed by a second step to the same values
+for ten minutes: a grab taken seconds after login sees the end of the first step while the animation is still running.
+`replay/` holds, for the ten `ax-*` cases without `mid`, stock's 224 px map grabbed six seconds after login and what
+DreamDaemon sent this client (`stockprobe.py --params set={} --map 224x224 --jobs 4 record <case>...`, which writes
+`replay/<case>.png`, `replay/<case>.txt`, `replay/res/` and `replay/recorded.tsv`, as for stock-parity-world).
+
+- **Stock keeps drawing the master's filters and its matrix while they animate**, at their animated values: every held
+  `ax-*` grab is pixel-identical to the settled master with the end values where one was grabbed
+  (`ax-scalex2-outline1-size4` = `fx-scalex2-outline4`, `ax-outline1-spin90` = `fx-turn90-outline1`,
+  `ax-outline1-grow2x` = `fx-scalex2-outline1`, `ax-shadow6-spin90` = `fx-turn90-shadow6`), and the tree's overlay
+  takes the grown outline and the matrix too (`ax-tree-scalex2-outline1-size4`).
+- **Mid-flight** (`mid` in the name: a one-minute first step and no hold, grabbed about six seconds in, with
+  `stockprobe.py pair` and no `--still`) stock draws the outline round a plane turned part of the way
+  (`ax-mid-outline1-spin90`), a grown outline under the scale (`ax-mid-scalex2-outline1-size4`) and the shadow
+  moving across under the turn (`ax-mid-turn90-shadow6-left`). These are not kept: the frame depends on when it is
+  grabbed. Fugue's grabs from the same server agreed with stock's within that timing (0, 63 and 16 pixels over 8
+  levels, at the moving edges).
+- `animate(M, filters = ...)` changes nothing that is drawn: `ax-outline1-toshadow` keeps the outline, with no shadow,
+  in stock and in Fugue (not kept).
+
+Fugue drew none of this before: an animating master with a filter or a matrix was refused as a whole, so its plane was
+drawn plain, with no filter, no matrix and no overlay (`stockprobe.py pair` of four cases: 580 to 3876 pixels off).
+Now the sampled master carries its filters at their tweened parameters (the atom filter tween: numbers and colours move
+with the eased factor when both ends have the same filter list, any other change switches at the step's midpoint) and
+its tweened matrix in its plane effects. Every `ax-*` case matches stock within 1 level in `stockprobe.py pair`.
+`compositiongpu_test::animatedMasterReplay` replays each `replay/` case through the real scene assembly and compares
+every pixel with stock's grab (at most 8 levels per channel); `entitymap_test::animatedMasterKeepsFiltersAndMatrix`
+holds the tweened values mid-flight, in one step and in a parallel one.
+
 ## Clicks (`clicks.json`)
 
 Every atom logs `Click()` with its name and icon-x/y; `stockprobe.py click` clicks the same MAP pixels in stock and in
@@ -88,8 +123,8 @@ the `master-*` cases without an outline, through the real hit test) hold the rul
 ## Not covered
 
 Nested
-masters with a matrix (still refused), animated master matrices, and non-32 px worlds. For filters with a matrix:
-turns that are not quarter turns, a master with a render target, an alpha mask from a render target, animated
-filters, and PIXEL_SCALE on a master that shrinks its plane (under `half` stock keeps other rows and columns than
+masters with a matrix (still refused), and non-32 px worlds. For filters with a matrix:
+turns that are not quarter turns, a master with a render target, an alpha mask from a render target, and PIXEL_SCALE on a master that shrinks its plane (under `half` stock keeps other rows and columns than
 Fugue's nearest sampling). For clicks: right-click menus, mouse-opacity 2, and images or vis_contents on a
-turned plane.
+turned plane. For animation: no mid-flight frame is kept or compared pixel for pixel (only the holds are), clicks on
+an animating master were not taken, and a KEEP_TOGETHER master with an animating matrix is still refused.

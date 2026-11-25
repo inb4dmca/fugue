@@ -137,6 +137,66 @@ private slots:
         QFAIL(qPrintable(QString("%1 pixels differ from stock, the first at %2,%3; drawn: %4")
                              .arg(off).arg(first.x()).arg(first.y()).arg(saved)));
     }
+    // tests/data/master-transform-world/replay: a plane master whose filter, matrix or both are animating, replayed
+    // through the real scene assembly from what DreamDaemon 516.1689 sent (stockprobe.py record, as for
+    // stock-parity-world) and drawn six seconds after login, inside the ten-minute hold that follows each half-second
+    // first step (world.dm, animate_master()). Stock draws the plane with the filters at their animated values and
+    // turned by the animated matrix; no channel of any pixel may be more than 8 levels from stock's grab.
+    void animatedMasterReplay_data() {
+        QTest::addColumn<QString>("set");
+        const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-transform-world/replay");
+        QFile recorded(directory.filePath("recorded.tsv"));
+        QVERIFY2(recorded.open(QIODevice::ReadOnly),qPrintable(recorded.fileName()));
+        QStringList sets;
+        for (const auto& raw:recorded.readAll().split('\n')) {
+            const auto line=QString::fromUtf8(raw).trimmed();
+            if (!line.isEmpty() && !line.startsWith('#')) sets.push_back(line.section('\t',0,0));
+        }
+        sets.sort();
+        QCOMPARE(sets.size(),10);
+        for (const auto& suffix:{QString(".png"),QString(".txt")}) {
+            QStringList expected;
+            for (const auto& set:sets) expected.push_back(set+suffix);
+            QCOMPARE(directory.entryList({"*"+suffix},QDir::Files,QDir::Name),expected);
+        }
+        for (const auto& set:sets) QTest::newRow(qPrintable(set)) << set;
+    }
+    void animatedMasterReplay() {
+        QFETCH(QString, set);
+        const QString dir = QString(FUGUE_TEST_DATA_DIR) + "/master-transform-world/replay/";
+        const int64_t login = 1'000'000'000'000'000'000, grabbed = login + 6'000'000'000;
+        test::ReplayFixture fixture;
+        fixture.session.setIngestClockNs(login);
+        QVERIFY2(fixture.load(set + ".txt", "master-transform-world/replay", {}, grabbed), qPrintable(fixture.error));
+        const auto master = std::find_if(fixture.sprites.begin(), fixture.sprites.end(),
+                                         [](const auto& s) { return s.kind == MapSprite::Master; });
+        QVERIFY2(master != fixture.sprites.end() && master->planeEffects && !master->planeEffects->filters.empty(),
+                 "the animating master and its filter reach the scene");
+        QImage stock(dir + set + ".png"); stock = stock.convertToFormat(QImage::Format_RGBA8888);
+        QCOMPARE(fixture.frame.source.size(), stock.size());
+        auto& gpu = transformGpu_;
+        if (!gpu) {
+            gpu = std::make_unique<GpuComparison>();
+            if (!gpu->initialize(stock.size())) {
+                gpu.reset();
+                QFAIL("Required GPU backend could not be initialized");
+            }
+        }
+        const QImage drawn = gpu->render(gpu->bounded, fixture.sprites, fixture.frame.source, Qt::black);
+        QCOMPARE(drawn.size(), stock.size());
+        int off = 0, worst = 0; QPoint first;
+        for (int y = 0; y < stock.height(); ++y) for (int x = 0; x < stock.width(); ++x) {
+            const QRgb a = drawn.pixel(x, y), b = stock.pixel(x, y);
+            const int d = std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
+            worst = std::max(worst, d);
+            if (d > 8 && !off++) first = {x, y};
+        }
+        if (!off) return;
+        const QString saved = QDir::temp().filePath("fugue-animated-master-" + set + ".png");   // to look at beside stock's
+        drawn.save(saved);
+        QFAIL(qPrintable(QString("%1 pixels differ from stock (worst %2), the first at %3,%4; drawn: %5")
+                             .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved)));
+    }
     // tests/data/master-transform-world/filters: the map stock DreamSeeker 516.1689 drew for a plane master with a
     // matrix, a filter of each kind or both over a red 16 px box at (5,4) and, for "edge", a blue tile at (7,4);
     // "pxs" adds PIXEL_SCALE to the master.
