@@ -624,10 +624,12 @@ private slots:
             for (const auto& row:recorded) rows.append(row);
         }
         test::PlaneSourceFixture f;
+        int clickCount=0;
         for (const auto& value:rows) {
             const auto row=value.toObject(); f.sourceObservation(row);
             for (const auto& click:row["clicks"].toArray()) {
                 const auto c=click.toArray(); const QPoint p(c[0].toInt(),c[1].toInt()); const auto hit=f.at(p);
+                ++clickCount;
                 QVERIFY2(bool(hit.relayHit)==c[2].toBool(),qPrintable(row["name"].toString()));
                 QCOMPARE(hit.click.iconX,c[3].toInt()); QCOMPARE(hit.click.iconY,c[4].toInt());
                 QCOMPARE(hit.click.hasVis,c[5].toInt()!=0);
@@ -656,6 +658,7 @@ private slots:
                 f.sourceObservation(row); QVERIFY(mapPointerCurrent(hit,f.world,17));
             }
         }
+        QCOMPARE(clickCount,574);
         const test::PlaneSourceFixture plain;
         const auto original=plain.sprites;
         for (float alpha:{0.f,1.f/255,0.13f,0.5f,1.f}) {

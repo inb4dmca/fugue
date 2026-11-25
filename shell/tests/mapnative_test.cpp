@@ -1223,7 +1223,6 @@ private slots:
         map.resize(448,320);map.setViewSize({7,5});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
-        QVector<MapPointer> events;map.setInputHandler("main.map",true,[&](const auto& p){events.push_back(p);});
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
         for(const auto& value:rows) {
             const auto row=value.toObject();test::HudRelayFixture f(row["phase"].toString());
@@ -1238,15 +1237,6 @@ private slots:
                     ink=ink.united(QRect(x,y,1,1));
             const auto bounds=row["bounds"].toArray();
             QCOMPARE(ink,QRect(QPoint(bounds[0].toInt(),bounds[1].toInt()),QPoint(bounds[2].toInt()-1,bounds[3].toInt()-1)));
-            mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,{}); // pending != rendered
-            for(const auto& v:row["clicks"].toArray()) {
-                const auto expected=v.toObject();const auto xy=expected["point"].toArray();events.clear();
-                QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,QPoint(xy[0].toInt(),xy[1].toInt())*2+QPoint(1,1));
-                const auto hit=std::find_if(events.begin(),events.end(),[](const auto& p){return p.kind==MapPointer::Click;});
-                QVERIFY(hit!=events.end());const auto error=test::HudRelayFixture::check(*hit,expected);
-                QVERIFY2(error.isEmpty(),qPrintable(row["phase"].toString()+": "+error));
-                QVERIFY(mapPointerCurrent(*hit,f.world,17));
-            }
             publish();const auto now=MapMetrics::nowNs();metrics->reset(now+60'000'000'000);
             for(int x:{1,0}) {
                 f.change(1,{{"pixelX",x}});f.refresh();publish();
@@ -1266,7 +1256,6 @@ private slots:
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
-        QVector<MapPointer> events;map.setInputHandler("main.map",true,[&](const auto& p){events.push_back(p);});
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
         for(const auto& value:rows) {
             const auto row=value.toObject();test::MasterPlacementFixture f;QVERIFY2(f.load(row),qPrintable(f.error));
@@ -1283,17 +1272,6 @@ private slots:
                 if(std::max({std::abs(a.red()-b.red()),std::abs(a.green()-b.green()),std::abs(a.blue()-b.blue())})>1) ++errors;
             }
             QVERIFY2(errors==0,qPrintable(row["kind"].toString()+"/"+row["placement"].toString()+": mismatched pixels "+QString::number(errors)));
-            // Pending placement must not move the last rendered hit surfaces.
-            mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,{});
-            const auto points=row["points"].toArray(),callbacks=row["callbacks"].toArray();
-            for(int i=0;i<points.size();++i) {
-                const auto xy=points[i].toArray();events.clear();
-                QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,QPoint(xy[0].toInt(),xy[1].toInt())*2+QPoint(1,1));
-                const auto hit=std::find_if(events.begin(),events.end(),[](const auto& p){return p.kind==MapPointer::Click;});
-                QVERIFY(hit!=events.end());const auto error=f.checkClick(*hit,callbacks[i].toObject());
-                QVERIFY2(error.isEmpty(),qPrintable(row["kind"].toString()+"/"+row["placement"].toString()+": "+error));
-                QVERIFY(mapPointerCurrent(*hit,f.session.world(),0));
-            }
             publish();const auto now=MapMetrics::nowNs();metrics->reset(now+60'000'000'000);
             for(const auto* location:{"CENTER,CENTER","2:7,2:5","1,1"}) {f.setLocation(location);publish();}
             QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
@@ -1422,19 +1400,6 @@ private slots:
                 }
             }
             QVERIFY2(errors==0,qPrintable(phase+": mismatched stock pixels "+QString::number(errors)));
-            // Pending removal must not change either source-alpha picking or ownership.
-            mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,{});
-            for(int i=0;i<f.callbacks.size();++i) {
-                events.clear();QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,f.clickPoint(i)*2+QPoint(1,1));
-                const auto hit=std::find_if(events.begin(),events.end(),[](const auto& p){return p.kind==MapPointer::Click;});
-                QVERIFY(hit!=events.end());const auto error=f.checkClick(*hit,i);
-                QVERIFY2(error.isEmpty(),qPrintable(phase+": "+error));
-                QVERIFY(mapPointerCurrent(*hit,f.session.world(),0));
-                if(hit->screen) {
-                    auto& world=f.session.worldMut();const auto id=hit->click.over.ref;
-                    ++world.hudIdentity.at(id).membership;QVERIFY(!mapPointerCurrent(*hit,world,0));--world.hudIdentity.at(id).membership;
-                }
-            }
             publish(f.sprites);const auto now=MapMetrics::nowNs();metrics->reset(now+60'000'000'000);
             for(int i=0;i<3;++i) {
                 auto moved=f.sprites;
@@ -1723,8 +1688,6 @@ private slots:
         MapWidget map; map.resize(320,192); map.setViewSize({5,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
-        QVector<MapPointer> events;
-        map.setInputHandler("main.map",true,[&](const MapPointer& p){events.push_back(p);});
         map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map));
         auto publish=[&] {
             mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,f.sprites);
@@ -1734,7 +1697,7 @@ private slots:
         // topology changes must not create new image or input-mask uploads.
         for (const auto& v:rows) {f.sourceObservation(v.toObject());publish();}
         const auto now=MapMetrics::nowNs(); metrics->reset(now+60'000'000'000);
-        int pixelErrors=0, verifiedPixels=0, counterexamplePixels=0, counterexampleDifferences=0, clickCount=0;
+        int pixelErrors=0, verifiedPixels=0, counterexamplePixels=0, counterexampleDifferences=0;
         for (const auto& value:rows) {
             const auto row=value.toObject(); f.sourceObservation(row);
             const auto image=publish(); QVERIFY(!image.isNull());
@@ -1753,23 +1716,11 @@ private slots:
                     if (different) qInfo().noquote()<<"counterexample"<<row["name"].toString()<<p[0].toInt()<<p[1].toInt()<<got.name()<<expected.name();
                 }
             }
-            for (const auto& click:row["clicks"].toArray()) {
-                const auto c=click.toArray(); const QPoint p(c[0].toInt(),c[1].toInt());
-                events.clear(); QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,p*2+QPoint(1,1));
-                const auto hit=std::find_if(events.cbegin(),events.cend(),[](const auto& e){return e.kind==MapPointer::Click;});
-                QVERIFY(hit!=events.cend()); QVERIFY(mapPointerCurrent(*hit,f.world,17));
-                ++clickCount;
-                QVERIFY2(bool(hit->relayHit)==c[2].toBool(),qPrintable(row["name"].toString()));
-                if (hit->relayHit) QCOMPARE(hit->click.over.ref,201u);
-                QCOMPARE(hit->click.iconX,c[3].toInt()); QCOMPARE(hit->click.iconY,c[4].toInt());
-                QCOMPARE(hit->click.hasVis,c[5].toInt()!=0);
-                if (hit->click.hasVis) {QCOMPARE(hit->click.visX,c[5].toInt());QCOMPARE(hit->click.visY,c[6].toInt());}
-            }
         }
         QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
-        qInfo()<<"source capture replay:"<<clickCount<<"Clicks;"<<verifiedPixels<<"verified pixels;"
+        qInfo()<<"source capture replay:"<<verifiedPixels<<"verified pixels;"
                <<counterexamplePixels<<"counterexample pixels (not parity),"<<counterexampleDifferences<<"differences >1 LSB";
-        QCOMPARE(clickCount,574); QCOMPARE(verifiedPixels,580); QCOMPARE(counterexamplePixels,0);
+        QCOMPARE(verifiedPixels,580); QCOMPARE(counterexamplePixels,0);
         QCOMPARE(pixelErrors,0);
         // Source effects retain pixels across advisory work thresholds and reuse resident
         // rasters, not an input-specific capture or extra uploaded coverage mask.

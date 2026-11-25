@@ -400,6 +400,10 @@ private slots:
                 QVERIFY(hit); const auto error=f.checkClick(*hit,i);
                 QVERIFY2(error.isEmpty(),qPrintable(phase+": "+error));
                 QVERIFY(mapPointerCurrent(*hit,f.session.world(),0));
+                if(hit->screen) { // a HUD hit names this membership of the screen, not a later one
+                    auto& world=f.session.worldMut();const auto id=hit->click.over.ref;
+                    ++world.hudIdentity.at(id).membership;QVERIFY(!mapPointerCurrent(*hit,world,0));--world.hudIdentity.at(id).membership;
+                }
             }
         }
     }
