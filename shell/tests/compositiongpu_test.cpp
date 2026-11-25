@@ -79,8 +79,9 @@ private slots:
     // xvfb-run with QT_QPA_PLATFORM=xcb; the offscreen platform has no OpenGL). A missing device fails this GPU check.
 private:
     std::unique_ptr<GpuComparison> replayGpu_;   // one device for every set
+    std::unique_ptr<GpuComparison> transformGpu_;   // and one for every master transform grab
 private slots:
-    void cleanupTestCase() { replayGpu_.reset(); }
+    void cleanupTestCase() { replayGpu_.reset(); transformGpu_.reset(); }
     void initTestCase() {
         const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/stock-parity-world/replay");
         QFile recorded(directory.filePath("recorded.tsv"));
@@ -197,14 +198,20 @@ private slots:
         auto master=test::master(1); master.planeEffects=effects;
         master.nearest=name.contains("pxs"); // PIXEL_SCALE on the master
         scene.push_back(master);
-        GpuComparison gpu;
+        auto& gpu = transformGpu_;
+        if (!gpu) {
+            gpu = std::make_unique<GpuComparison>();
 #ifdef Q_OS_WIN
-        const bool gl = false;
+            const bool gl = false;
 #else
-        const bool gl = true;
+            const bool gl = true;
 #endif
-        QVERIFY2(gpu.initialize(gl,source.size(),true), "Required GPU backend could not be initialized");
-        const QImage drawn = gpu.render(gpu.bounded, scene, source, QColor(16,16,16));
+            if (!gpu->initialize(gl, source.size(), true)) {
+                gpu.reset();
+                QFAIL("Required GPU backend could not be initialized");
+            }
+        }
+        const QImage drawn = gpu->render(gpu->bounded, scene, source, QColor(16,16,16));
         QCOMPARE(drawn.size(), stock.size());
         int off = 0, worst = 0; QPoint first;
         for (int y = 0; y < stock.height(); ++y) for (int x = 0; x < stock.width(); ++x) {
