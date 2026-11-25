@@ -229,7 +229,7 @@ private slots:
         QVERIFY(!cache.lookup(0).ready); QVERIFY(cache.icon(10).sheet.isNull());
     }
     void legacyV4Structure() {
-        // Structural regression for the recovered parser, not a new stock capture:
+        // Structural regression for the version 4 parser, not a new stock capture:
         // two frames, the second a vertical-flip back-reference; R,B,G palette.
         QByteArray bytes=QByteArray::fromHex("04444d49010200000000ff4020010001000200030000010000070000000000");
         bytes += QByteArray(64,'\xff') + QByteArray(64,'\0');

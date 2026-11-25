@@ -2563,7 +2563,7 @@ private slots:
         auto stable=scene.prepare(w,geometry,read,1800000000,&stats);
         QCOMPARE(scene.prepare(w,geometry,read,1810000000,&stats).constData(),stable.constData());
         QCOMPARE(stats.templateBuilds,uint64_t(0)); QCOMPARE(stats.sortedSprites,uint64_t(0));
-        // Recovered animate() changes instance geometry/RGBA, not resident image
+        // animate() changes instance geometry/RGBA, not resident image
         // contents. Exercise the normal mailbox and both native QRhi backends.
         w.appearances[2]=ap;
         setFields(w.appearances[2], affinefixture::fields({1.5f,0,0,0,1.5f,0},
