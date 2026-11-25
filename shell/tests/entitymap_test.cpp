@@ -16,6 +16,7 @@
 #include <limits>
 #include <random>
 #include "shell/entitymap.h"
+#include "shell/animation.h"
 #include "shell/namedmap.h"
 #include "shell/compositionplan.h"
 #include "shell/mapmailbox.h"
@@ -1114,6 +1115,52 @@ private slots:
             QVERIFY2(master->nearest == pixelScale, qPrintable(context));
         }
     }
+    // An animating plane master keeps its filters and its matrix: both reach the master sprite at their tweened values,
+    // in a single step and in a parallel one, and hold at their ends (stock 516.1689, master-transform-world ax-*: the
+    // held ends draw what a settled master with those values draws, and mid-flight the plane keeps its outline and turns).
+    void animatedMasterKeepsFiltersAndMatrix() {
+        auto w = world(); shell::TurfMap terrain; shell::EntityMap scene;
+        w.hudOrder = {100}; w.hudIdentity[100] = {2,7,11};
+        auto master = [](std::array<float,6> matrix, const char* size) {
+            return affinefixture::fields(matrix, std::string(R"(,"appearanceFlags":268435456,"hasPlane":true,"plane":1,"screenLoc":"1,1")") +
+                R"(,"filters":[{"type":2,"paramMask":35,"flags":1,"params":")" + size + R"(00ff00ff0000"}])");
+        };
+        const std::array<float,6> plain{1,0,0,0,1,0}, wide{2,0,0,0,1,0}, turn{0,1,0,-1,0,0};
+        setFields(w.appearances[10], master(plain, "0000803f")); // outline 1
+        setFields(w.appearances[11], master(wide, "00008040"));  // outline 4, scaled 2x across
+        setFields(w.appearances[12], master(turn, "0000803f"));
+        setFields(w.appearances[13], master(turn, "00008040"));
+        const auto map = terrain.prepare(w, {}, 0, false);
+        auto sprite = [&](int64_t now) -> std::optional<shell::MapSprite> {
+            const auto sprites = scene.prepare(w, map, reader(), now, nullptr, true);
+            const auto it = std::find_if(sprites.begin(), sprites.end(), [](const auto& s) { return s.kind == shell::MapSprite::Master; });
+            if (it == sprites.end()) return std::nullopt;
+            return *it;
+        };
+        auto check = [&](int64_t now, double size, std::array<double,6> matrix) {
+            const auto s = sprite(now);
+            const auto context = QString("at %1").arg(now);
+            QVERIFY2(s && s->planeEffects && s->planeEffects->supported, qPrintable(context));
+            QVERIFY2(s->planeEffects->filters.size() == 1 && s->planeEffects->ignoredFilters == 0, qPrintable(context));
+            QVERIFY2(std::abs(s->planeEffects->filters[0].size - size) < 1e-6, qPrintable(context));
+            QVERIFY2(s->planeEffects->matrix, qPrintable(context));
+            for (int i = 0; i < 6; ++i) QVERIFY2(std::abs((*s->planeEffects->matrix)[i] - matrix[i]) < 1e-6, qPrintable(context));
+        };
+        // One step: outline 1 -> 4 and identity -> 2x across, then a hold at the end, as world.dm's ax-* cases do.
+        auto& atom = w.atoms[100];
+        w.hudAppid[100] = atom.appid = 11;
+        atom.chain = {1000, 100, {{10, 11, std::bit_cast<uint32_t>(10.f), 0, 0, 1, 1000}, {11, 11, std::bit_cast<uint32_t>(100.f), 0, 0, 1, 0}}};
+        check(1500, 2.5, {1.5,0,0,0,1,0});
+        check(1750, 3.25, {1.75,0,0,0,1,0});
+        check(2500, 4, {2,0,0,0,1,0});   // held
+        check(20000, 4, {2,0,0,0,1,0});  // settled
+        // A turn with a parallel step on the outline (ax-outline1-size4-spin90): the matrix rotates, the outline grows.
+        w.hudAppid[100] = atom.appid = 13;
+        atom.chain = {1000, 100, {{10, 12, std::bit_cast<uint32_t>(10.f), 0, 0, 1, 1000}, {12, 13, std::bit_cast<uint32_t>(10.f), 0, 4, 1, 1000}}};
+        const auto half = shell::animation::interpolate({1,0,0,0,1,0}, {0,1,0,-1,0,0}, .5, false);
+        check(1500, 2.5, half);
+        check(2500, 4, {0,1,0,-1,0,0});
+    }
     void hudMasterMaterialAnimation() {
         auto w=world(); shell::TurfMap terrain; shell::EntityMap scene; shell::EntityMap::Stats stats;
         w.hudOrder={100}; w.hudAppid[100]=11; w.hudIdentity[100]={2,7,11};
@@ -1164,11 +1211,18 @@ private slots:
         for(uint8_t easing:{2,5}) { atom.chain.steps[0].easing=easing; QCOMPARE(draw(1500).size(),3); } // CIRCULAR, ELASTIC animate
         atom.chain.steps[0].easing=63; QCOMPARE(draw(1500).size(),1); // unknown curve
         atom.chain.steps[0].easing=0;
-        // Placement/effect/ownership transitions are not material interpolation.
-        for(const auto* addition:{",\"pixelX\":1",",\"plane\":2,\"hasPlane\":true",
-                ",\"filters\":[{\"type\":1,\"flags\":1,\"paramMask\":1,\"params\":{\"bstr\":\"0000803f\"}}]"}) {
+        // Placement/ownership transitions are not material interpolation.
+        for(const auto* addition:{",\"pixelX\":1",",\"plane\":2,\"hasPlane\":true"}) {
             auto json=scalar(255); json.insert(json.size()-1,addition); setFields(w.appearances[10], json);
             QCOMPARE(draw(1500).size(),1);
+        }
+        // A filter list that is not the same at both ends switches at the step's midpoint, as on an atom.
+        {
+            auto json=scalar(255);
+            json.insert(json.size()-1,",\"filters\":[{\"type\":1,\"flags\":1,\"paramMask\":1,\"params\":{\"bstr\":\"0000803f\"}}]");
+            setFields(w.appearances[10], json);
+            QCOMPARE(master(draw(1400)).planeEffects->filters.size(),size_t(1));
+            QVERIFY(master(draw(1600)).planeEffects->filters.empty());
         }
         w.appearances[10]=saved;
         auto bad=start; bad[1]=std::numeric_limits<float>::infinity(); setFields(w.appearances[10], fields(bad));
