@@ -149,13 +149,13 @@ private slots:
                              .arg(off).arg(first.x()).arg(first.y()).arg(saved)));
     }
     // tests/data/master-transform-world/filters: the map stock DreamSeeker 516.1689 drew for a plane master with a
-    // matrix, filters or both over a red 16 px box at (5,4) and, for "edge", a blue tile at (7,4). Rebuilt here from
-    // sprites; no channel of any pixel may be more than 8 levels from stock's.
+    // matrix, a filter of each kind or both over a red 16 px box at (5,4) and, for "edge", a blue tile at (7,4).
+    // Rebuilt here from sprites; no channel of any pixel may be more than 8 levels from stock's.
     void masterTransformFilters_data() {
         QTest::addColumn<QString>("name");
         const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-transform-world/filters");
         const auto files=directory.entryList({"fx-*.png"},QDir::Files,QDir::Name);
-        QVERIFY2(files.size()==13,qPrintable(directory.path()+": expected 13 stock grabs"));
+        QVERIFY2(files.size()==28,qPrintable(directory.path()+": expected 28 stock grabs"));
         for (const auto& file:files) QTest::newRow(qPrintable(file.chopped(4))) << file.chopped(4);
     }
     void masterTransformFilters() {
@@ -180,7 +180,18 @@ private slots:
         if (name.contains("outline")) { f.kind=PlaneFilter::Outline; f.size=name.contains("outline4") ? 4 : 1; f.color={0,1,0,1}; }
         if (name.contains("blur2")) f.size=2;
         if (name.contains("shadow6")) { f.kind=PlaneFilter::Shadow; f.x=6; f.color={1,1,1,1}; }
-        if (name.contains("outline") || name.contains("blur") || name.contains("shadow")) effects->filters={f};
+        // As the decoder reads the records of world.dm's filters (y is screen-down).
+        if (name.contains("wave")) { f.kind=PlaneFilter::Wave; f.x=16; f.size=3; f.flags=1; } // WAVE_SIDEWAYS
+        if (name.contains("ripple")) { f.kind=PlaneFilter::Ripple; f.size=6; f.repeat=16; f.radius=24; f.falloff=1; }
+        if (name.contains("bloom")) { f.kind=PlaneFilter::Bloom; f.size=3; f.offset=2; f.color={100.f/255,0,0,1}; }
+        if (name.contains("swap")) { f.kind=PlaneFilter::Color; f.material={0,1,0,0, 1,0,0,0, 0,0,1,0, 0,0,0,1, 0,0,0,0}; }
+        if (name.contains("mask")) {
+            QImage mask(32,32,QImage::Format_RGBA8888); mask.fill(Qt::transparent);
+            for (int y=0;y<32;++y) for (int x=0;x<16;++x) mask.setPixelColor(x,y,Qt::white);
+            f.kind=PlaneFilter::AlphaMask; f.icon=1; f.image=std::make_shared<const QImage>(mask); f.x=32;
+        }
+        if (!name.endsWith("plain") && !name.endsWith("scalex2") && !name.endsWith("turn90") && !name.endsWith("half-edge"))
+            effects->filters={f};
         QVERIFY(effects->valid(source.size()));
         auto master=test::master(1); master.planeEffects=effects; scene.push_back(master);
         GpuComparison gpu;

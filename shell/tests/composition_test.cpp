@@ -242,14 +242,14 @@ private slots:
             transform.append(QJsonObject{{"f32",QString("0x%1").arg(std::bit_cast<uint32_t>(value),8,16,QLatin1Char('0'))}});
         const QJsonObject affine{{"hasTransform",true},{"transform",transform}};
         const auto transformed=decode({outline},affine);
-        // A matrix keeps blur, outline and drop shadow (master-transform-world filters); other kinds are left out.
+        // A matrix keeps the filters, whatever their kind (master-transform-world filters).
         QVERIFY(transformed.supported);QVERIFY(transformed.matrix);QCOMPARE(transformed.filters,decode({outline}).filters);
         QCOMPARE(transformed.ignoredFilters,size_t(0));QCOMPARE(transformed.matrix,decode({},affine).matrix);
         QVERIFY(!transformed.boundedTreeFilters());
         const QJsonObject wave{{"type",5},{"flags",1},{"paramMask",0x3d},{"params","0000803f0000803f00000000000000000000"}};
         QCOMPARE(decode({wave}).filters.size(),size_t(1));
         const auto waved=decode({outline,wave},affine);
-        QVERIFY(waved.supported);QVERIFY(waved.matrix);QVERIFY(waved.filters.empty());QCOMPARE(waved.ignoredFilters,size_t(2));
+        QVERIFY(waved.supported);QVERIFY(waved.matrix);QCOMPARE(waved.filters.size(),size_t(2));QCOMPARE(waved.ignoredFilters,size_t(0));
         for(const QJsonObject fields:{QJsonObject{{"hasTransform",true},{"transform",QJsonArray{}}},
                 QJsonObject{{"renderSource","*unsupported"}},QJsonObject{{"maptext","unsupported"}}})
             QVERIFY(!decode({unknown},fields).supported); // no structural fail-open

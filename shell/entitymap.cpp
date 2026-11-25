@@ -716,7 +716,9 @@ EntityMap::Template EntityMap::TemplateBuilder::construct(const TemplateRequest&
             // underlying tree; structural tree/leaf checks above still apply.
             if (masterTree && ap.master && ap.planeEffects && ap.planeEffects->supported) {
                 auto effects = std::make_shared<PlaneEffects>(*ap.planeEffects);
-                if (!effects->filters.empty() && !effects->boundedTreeFilters()) effects->ignoreFilters();
+                // The tree's filters run before its matrix, like a lone master's (master-transform-world).
+                auto unturned = *effects; unturned.matrix.reset();
+                if (!effects->filters.empty() && !unturned.boundedTreeFilters()) effects->ignoreFilters();
                 effects->treeSourceAlphaInput = effects->boundedTreeFilters();
                 part.planeEffects = std::move(effects);
             }

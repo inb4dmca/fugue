@@ -47,6 +47,11 @@ world
     if(findtext(kind, "outline4")) M.filters += filter(type = "outline", size = 4, color = "#00ff00")
     if(findtext(kind, "blur2")) M.filters += filter(type = "blur", size = 2)
     if(findtext(kind, "shadow6")) M.filters += filter(type = "drop_shadow", x = 6, y = 0, size = 0, color = "#ffffff")
+    if(findtext(kind, "wave")) M.filters += filter(type = "wave", x = 16, y = 0, size = 3, flags = WAVE_SIDEWAYS)
+    if(findtext(kind, "ripple")) M.filters += filter(type = "ripple", x = 0, y = 0, size = 6, repeat = 16, radius = 24, falloff = 1)
+    if(findtext(kind, "bloom")) M.filters += filter(type = "bloom", threshold = rgb(100, 0, 0), size = 3, offset = 2, alpha = 255)
+    if(findtext(kind, "swap")) M.filters += filter(type = "color", color = list(0,1,0, 1,0,0, 0,0,1))
+    if(findtext(kind, "mask")) M.filters += filter(type = "alpha", icon = icon('mask.png'), x = 32, y = 0)
     world.log << "CASE [kind]"
 world/New()
     ..()

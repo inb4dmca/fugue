@@ -44,13 +44,19 @@ and compares every pixel with the grab (at most 8 levels per channel).
   2 px wide, right of the halved tile (`fx-half-edge-outline4`).
 - **A scaled plane is sampled bilinearly**: the box under `fx-scalex2` has half-covered columns at 159 and 192.
 
-Fugue now does all four for blur, outline and drop shadow on a master without a tree. Other filter kinds with a
-matrix are still left out (the plane is turned, unfiltered), as are filters on a master tree with a matrix. A plane
-with both is not clickable.
+The other filter kinds behave the same under `scalex2` and `turn90`: wave (`fx-*wave`), ripple, bloom, a colour
+matrix (`swap`, red and green exchanged) and an alpha mask from an icon (`mask`, the left half of a tile, moved 32 px
+right). So does a master tree, the first set's master with its overlay: `master-turn-outline1`,
+`master-scale-outline1`, `master-scale-blur2` and `master-turn-shadow6` were grabbed from stock and Fugue together
+(`stockprobe.py pair`) and match within 8 levels, as do the fifteen `fx-*` grabs of the other kinds, which are kept in
+`filters/` as well.
+
+Fugue now does all of this for every filter kind, with or without a tree. A plane with both a matrix and filters is
+not clickable.
 
 ## Not covered
 
 Clicks on a transformed master tree (the plane's inverse matrix is used for input as before, not checked here). Nested
 masters with a matrix (still refused), animated master matrices, and non-32 px worlds. For filters with a matrix:
-wave, ripple, bloom, alpha mask and colour filters, turns that are not quarter turns, a master with a render target,
-PIXEL_SCALE on the master, and clicks.
+turns that are not quarter turns, a master with a render target, an alpha mask from a render target, animated
+filters, PIXEL_SCALE on the master, and clicks.

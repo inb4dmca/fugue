@@ -767,6 +767,27 @@ private slots:
             QCOMPARE(nine,expected);
         }
     }
+    // A master tree keeps its filters under a matrix: they run before it (stock 516.1689, master-transform-world
+    // master-turn-outline1, master-scale-outline1, master-scale-blur2, master-turn-shadow6 match in the client).
+    void masterTreeKeepsFiltersUnderMatrix() {
+        auto w = world(); shell::TurfMap terrain; shell::EntityMap scene;
+        w.hudOrder = {100}; w.hudAppid[100] = 10; w.hudIdentity[100] = {2,7,11};
+        w.appearances[11] = w.appearances[1];
+        setFields(w.appearances[11], R"({"hasPlane":true,"plane":1,"pixelX":64,"pixelY":32})");
+        const std::string outline = R"(,"filters":[{"type":2,"paramMask":35,"flags":1,"params":"0000803f00ff00ff0000"}])";
+        for (const auto& matrix : {std::array<float,6>{1,0,0,0,1,0}, std::array<float,6>{0,1,0,-1,0,0}, std::array<float,6>{2,0,0,0,1,0}}) {
+            setFields(w.appearances[10], affinefixture::fields(matrix,
+                R"(,"appearanceFlags":268435456,"hasPlane":true,"plane":1,"screenLoc":"1,1","overlays":[11])" + outline));
+            const auto sprites = scene.prepare(w, terrain.prepare(w, {}, 0, false), reader(), 0, nullptr, true);
+            const auto master = std::find_if(sprites.begin(), sprites.end(), [](const auto& s) { return s.kind == shell::MapSprite::Master; });
+            QVERIFY(master != sprites.end());
+            QVERIFY(master->planeEffects && master->planeEffects->supported);
+            QCOMPARE(master->planeEffects->filters.size(), size_t(1));
+            QCOMPARE(master->planeEffects->ignoredFilters, size_t(0));
+            const bool turned = matrix != std::array<float,6>{1,0,0,0,1,0};
+            QCOMPARE(bool(master->planeEffects->matrix), turned);
+        }
+    }
     // HUD plane-master trees with matrices (tests/data/master-transform-world, stock 516.1688): the root master's matrix
     // turns its plane (the plane relay) and also each overlay about its own pivot; an overlay's own matrix applies first.
     // With KEEP_TOGETHER a master matrix draws nothing, and the overlay is hidden with or without a matrix.
