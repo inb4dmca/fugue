@@ -90,9 +90,10 @@ private slots:
         const auto dir=QString(FUGUE_TEST_DATA_DIR)+"/ddmiops-world";
         std::vector<testinput::RecordedFrame> frames;
         QString error;
-        QJsonParseError parseError;
-        const auto manifest=QJsonDocument::fromJson(load("ddmiops-world/manifest.json"),&parseError).object();
-        QCOMPARE(parseError.error,QJsonParseError::NoError);
+        QJsonDocument manifestDocument;
+        QVERIFY2(testinput::readRecordedJson(dir+"/manifest.json",manifestDocument,error),qPrintable(error));
+        QVERIFY(manifestDocument.isObject());
+        const auto manifest=manifestDocument.object();
         QVERIFY(manifest["frames"].toInt()>0 && manifest["resources"].toInt()>0);
         QVERIFY2(testinput::readRecordedFrames(dir+"/frames.txt",frames,error),qPrintable(error));
         QCOMPARE(frames.size(),size_t(manifest["frames"].toInt()));

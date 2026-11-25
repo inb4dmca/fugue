@@ -1,5 +1,6 @@
 #pragma once
 #include "tests/appearancejson.h"
+#include "tests/recordedinput.h"
 #include "shell/tests/replayfixture.h"
 #include "shell/mapinput.h"
 #include "model/verbmenu.h"
@@ -8,6 +9,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <array>
 namespace fugue::shell::test {
 struct MasterTreeFixture : ReplayFixture {
     static QString goldenFile(const QString& file) {
@@ -22,67 +24,103 @@ struct MasterTreeFixture : ReplayFixture {
             "stock-q-overlay-group-apart-size2.png"};
         return aliases.contains(file) ? "stock-overlay.png" : file;
     }
-    static QStringList outlinePhases(bool sizeTwo = false) {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/master-tree-world/"+
-            (sizeTwo ? "stock-outline2-observations.json" : "stock-outline-observations.json"));
-        if (!file.open(QIODevice::ReadOnly)) return {};
+private:
+    struct ObservationFile { const char* name; int phases, points; };
+    // Retained phase and Click inventories; selected tests validate the same
+    // expectations as a full replay instead of accepting a shortened loop.
+    static constexpr std::array<ObservationFile,5> observationFiles{{
+        {"stock-observations.json",15,4}, {"stock-group-observations.json",32,9},
+        {"stock-outline-observations.json",16,13}, {"stock-outline2-observations.json",16,19},
+        {"stock-outline-wide-observations.json",22,19}}};
+    static const QRegularExpression& clickPattern() {
+        static const QRegularExpression pattern(
+            "^CLICK the (.+?) loc=(.*?) icon-x=(-?\\d+);icon-y=(-?\\d+);left=1;button=left;"
+            "screen-loc=((-?\\d+):(-?\\d+),(-?\\d+):(-?\\d+))$");
+        return pattern;
+    }
+    static QStringList receipts(const QJsonObject& row) {
         QStringList out;
-        for (const auto& value : QJsonDocument::fromJson(file.readAll()).array())
-            out.push_back(value.toObject()["phase"].toString());
+        for (const auto& raw:row["events"].toString().split('\n')) {
+            const auto line=raw.trimmed();
+            if (!line.isEmpty()) out.push_back(line);
+        }
         return out;
     }
-    static QStringList wideOutlinePhases() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/master-tree-world/stock-outline-wide-observations.json");
-        if (!file.open(QIODevice::ReadOnly)) return {};
-        QStringList out;
-        for (const auto& value : QJsonDocument::fromJson(file.readAll()).array())
-            out.push_back(value.toObject()["phase"].toString());
-        return out;
+    static bool observations(const ObservationFile& file,QJsonArray& out,QString& error) {
+        out={};
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/master-tree-world/"+file.name;
+        QJsonDocument document;
+        if (!::fugue::testinput::readRecordedJson(path,document,error)) return false;
+        auto fail=[&](const QString& reason) {error=path+": "+reason;return false;};
+        if (!document.isArray() || document.array().size()!=file.phases)
+            return fail(QString("Expected %1 retained phases").arg(file.phases));
+        const auto rows=document.array();
+        QStringList names;
+        for (const auto& value:rows) {
+            const auto row=value.toObject();const auto name=row["phase"].toString();
+            if (!value.isObject() || name.isEmpty() || name!=name.trimmed() || names.contains(name))
+                return fail("Missing, invalid or duplicate phase name: "+name);
+            names.push_back(name);
+            const auto points=row["pixelsTopLeft"].toArray();
+            if (points.size()!=file.points)
+                return fail(QString("%1: expected %2 sample points").arg(name).arg(file.points));
+            for (const auto& point:points) {
+                if (!::fugue::testinput::isIntegerTuple(point,2,0,223))
+                    return fail(name+": expected two integer sample coordinates inside the 224x224 source");
+            }
+            const auto clicks=receipts(row);
+            if (!row["events"].isString() || clicks.size()!=file.points)
+                return fail(QString("%1: expected %2 Click receipts").arg(name).arg(file.points));
+            for (const auto& click:clicks) {
+                const auto match=clickPattern().match(click);
+                bool valid=match.hasMatch();
+                for (int field:{3,4,6,7,8,9}) {
+                    bool integer=false;match.captured(field).toInt(&integer);valid=valid && integer;
+                }
+                if (!valid)
+                    return fail(name+": invalid retained Click receipt: "+click);
+            }
+        }
+        out=rows;return true;
     }
-    static QStringList phases() {
-        return QStringList{"overlay","overlay-tint","overlay-under-tint","overlay-alpha","overlay-zero",
-            "nested","nested-tint","nested-zero","nested-same-tint","nested-deep-tint",
-            "nested-childzero","overlay-nested-tint",
-            "overlay-group-tint","nested-group-tint","overlay-nested-group-tint",
-            "g-overlay-group", "g-overlay-group-tint", "g-overlay-group-alpha",
-            "g-overlay-group-zero", "g-overlay-group-ownicon", "g-overlay-group-leafplane",
-            "g-overlay-group-offset", "g-overlay-group-apart-offset",
-            "g-overlay-group-apart", "g-overlay-under-group-apart-tint",
-            "g-overlay-group-apart-alpha", "g-overlay-group-apart-leafalpha",
-            "g-overlay-group-apart-leafplane", "g-overlay-group-apart-leafoffset",
-            "g-overlay-group-apart-zero", "g-overlay-nested-group-overlap",
-            "g-overlay-nested-group-overlap-alpha", "g-overlay-nested-group-overlap-tint",
-            "g-overlay-nested-group-apart-overlap-alpha", "g-overlay-nested-group-childapart-overlap-alpha",
-            "g-overlay-nested-group-childgroup-overlap-alpha", "g-overlay-nested-group-same-overlap-alpha",
-            "g-overlay-nested-group-deep-overlap-alpha", "g-overlay-nested-group-childzero-overlap",
-            "g-overlay-leafplane", "g-overlay-leafplane-tint", "g-overlay-nested-group-leafplane-tint",
-            "g-overlay-group-leafoffset", "g-overlay-group-apart-leafcenter-alpha",
-            "g-overlay-group-leafcenter-alpha", "g-overlay-group-apart-clear",
-            "g-overlay-nested-childgroup-overlap-alpha"} + outlinePhases() + outlinePhases(true) + wideOutlinePhases();
+public:
+    static bool phases(QStringList& out,QString& error) {
+        out.clear();error.clear();
+        QStringList names;
+        for (const auto& file:observationFiles) {
+            QJsonArray rows;
+            if (!observations(file,rows,error)) return false;
+            for (const auto& value:rows) {
+                const auto name=value.toObject()["phase"].toString();
+                if (names.contains(name)) {error="Duplicate master-tree phase across observation files: "+name;return false;}
+                names.push_back(name);
+            }
+        }
+        out=names;return true;
     }
     static QPoint point(int i) { return std::array<QPoint,4>{{{104,104},{136,104},{40,168},{60,168}}}[i]; }
     QStringList callbacks;
     QList<QPoint> points;
     QPoint clickPoint(int i) const { return points.at(i); }
     bool load(const QString& phase) {
-        if (!ReplayFixture::load("frames-"+phase+".txt","master-tree-world")) return false;
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/master-tree-world/"+
-            (phase.startsWith("w-") ? "stock-outline-wide-observations.json" :
-             phase.startsWith("q-") ? "stock-outline2-observations.json" :
-             phase.startsWith("o-") ? "stock-outline-observations.json" :
-             phase.startsWith("g-") ? "stock-group-observations.json" : "stock-observations.json"));
-        if (!file.open(QIODevice::ReadOnly)) return false;
-        for (const auto& value : QJsonDocument::fromJson(file.readAll()).array()) {
+        points.clear();callbacks.clear();error.clear();
+        const auto& file=observationFiles[phase.startsWith("w-") ? 4 : phase.startsWith("q-") ? 3 :
+            phase.startsWith("o-") ? 2 : phase.startsWith("g-") ? 1 : 0];
+        QJsonArray rows;
+        if (!observations(file,rows,error)) return false;
+        for (const auto& value:rows) {
             const auto row=value.toObject();
             if(row["phase"].toString()==phase) {
+                if (!ReplayFixture::load("frames-"+phase+".txt","master-tree-world")) return false;
                 for(const auto& point:row["pixelsTopLeft"].toArray()) {
                     const auto xy=point.toArray();points.push_back({xy[0].toInt(),xy[1].toInt()});
                 }
-                for(auto line:row["events"].toString().split('\n'))
-                    if(line.startsWith("CLICK ")) callbacks.push_back(line.trimmed());
+                callbacks=receipts(row);
+                return true;
             }
         }
-        return !points.empty() && callbacks.size()==points.size();
+        error=QString(FUGUE_TEST_DATA_DIR)+"/master-tree-world/"+file.name+": missing phase "+phase;
+        return false;
     }
     QString checkClick(const MapPointer& p,int i) const {
         const auto& ref=p.click.over; const auto& loc=p.click.loc;
@@ -90,7 +128,7 @@ struct MasterTreeFixture : ReplayFixture {
         const auto ap=session.world().appearances.find(target.appid);
         const QString name=ap==session.world().appearances.end() ? "" :
             QString::fromStdString(model::plainAtomName(model::parseJson(fieldsJson(ap->second))["name"].bytesOrStr()));
-        const auto match=QRegularExpression("CLICK the (.*?) loc=(.*?) icon-x=(-?\\d+);icon-y=(-?\\d+);.*screen-loc=(.*)").match(callbacks[i]);
+        const auto match=clickPattern().match(callbacks[i]);
         if(!match.hasMatch()) return "invalid retained callback";
         if(name!=match.captured(1)) return "target: "+name+" expected "+match.captured(1);
         if(p.screen!=match.captured(2).isEmpty()) return "location ownership";

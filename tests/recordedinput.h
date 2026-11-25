@@ -2,7 +2,10 @@
 #include "net/bytes.h"
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QRegularExpression>
+#include <cmath>
 #include <map>
 
 namespace fugue::testinput {
@@ -95,6 +98,42 @@ inline bool readRecordedResources(const QString& path, std::map<uint32_t, QByteA
         resources.emplace(id, std::move(data));
     }
     out = std::move(resources);
+    return true;
+}
+
+// Parse without defaults. Each fixture validates its own required shape and
+// observation inventory before replaying or iterating over expectations.
+inline bool readRecordedJson(const QString& path, QJsonDocument& out, QString& error) {
+    out = {};
+    error.clear();
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        error = path + ": Cannot read JSON: " + file.errorString();
+        return false;
+    }
+    const auto bytes = file.readAll();
+    if (file.error() != QFileDevice::NoError) {
+        error = path + ": Cannot read JSON: " + file.errorString();
+        return false;
+    }
+    QJsonParseError parseError;
+    auto document = QJsonDocument::fromJson(bytes, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        error = QString("%1: Invalid JSON at byte %2: %3").arg(path).arg(parseError.offset).arg(parseError.errorString());
+        return false;
+    }
+    out = std::move(document);
+    return true;
+}
+
+// Shared by retained pixel and coordinate observations. The fixture supplies
+// its tuple width, allowed range and diagnostic context.
+inline bool isIntegerTuple(const QJsonValue& value, qsizetype size, int minimum, int maximum) {
+    if (!value.isArray() || value.toArray().size() != size) return false;
+    for (const auto& item : value.toArray()) {
+        const double number = item.toDouble();
+        if (!item.isDouble() || number < minimum || number > maximum || number != std::trunc(number)) return false;
+    }
     return true;
 }
 

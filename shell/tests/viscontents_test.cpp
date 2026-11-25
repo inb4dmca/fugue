@@ -96,7 +96,7 @@ private slots:
     QCOMPARE(restored,local); // same authoritative identities, cached assets
  }
  void sharedGroupPlaybackAndRefusal() {
-    shell::test::AttachmentTreeFixture f;QVERIFY(f.load());f.phase("group-half");
+    shell::test::AttachmentTreeFixture f;QVERIFY2(f.load(),qPrintable(f.error));f.phase("group-half");
     auto copies=[&] {shell::MapSprites out;for(const auto& s:f.sprites) if(s.visHit)out.push_back(s);return out;};
     auto first=copies();QCOMPARE(first.size(),2);QVERIFY(first[0].appearanceGroup);
     QCOMPARE(first[0].appearanceGroup,first[1].appearanceGroup);
@@ -138,7 +138,7 @@ private slots:
     f.refresh();QVERIFY(copies().empty());
  }
  void maskAndColorWireEnvelope() {
-    shell::test::VisMaterialFixture f;QVERIFY(f.load());
+    shell::test::VisMaterialFixture f;QVERIFY2(f.load(),qPrintable(f.error));
     const auto records=f.evidence["fields"].toObject()["filterMaster"].toObject()["filters"].toArray();
     auto decode=[](QJsonArray filters) {return shell::decodeSurfaceEffects(model::appearanceOf(
         QJsonDocument(QJsonObject{{"filters",filters}}).toJson(QJsonDocument::Compact).toStdString()));};
@@ -167,7 +167,7 @@ private slots:
     QVERIFY(master!=f.sprites.end());QVERIFY(master->planeEffects);QVERIFY(!master->planeEffects->supported);
  }
  void finiteLeafMaterialsAndAtomicRefusal() {
-    shell::test::VisMaterialFixture f;QVERIFY(f.load());f.phase("reset");
+    shell::test::VisMaterialFixture f;QVERIFY2(f.load(),qPrintable(f.error));f.phase("reset");
     auto copies=[&] {return std::count_if(f.sprites.begin(),f.sprites.end(),[](const auto& s){return bool(s.visHit);});};
     QCOMPARE(copies(),1);
     const auto published=f.sprites;

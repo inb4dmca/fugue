@@ -594,7 +594,7 @@ private slots:
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
-        test::AttachmentTreeFixture f;QVERIFY(f.load());
+        test::AttachmentTreeFixture f;QVERIFY2(f.load(),qPrintable(f.error));
         QVector<MapPointer> events;map.setInputHandler("main.map",true,[&](const MapPointer& p){events.push_back(p);});
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
         const auto points=f.evidence["points"].toArray();const auto phases=f.evidence["phases"].toObject();
@@ -649,7 +649,7 @@ private slots:
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
-        test::VisMaterialFixture f;QVERIFY(f.load());
+        test::VisMaterialFixture f;QVERIFY2(f.load(),qPrintable(f.error));
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
         for(const auto& value:f.evidence["phases"].toArray()) {
             const auto row=value.toObject();const auto name=row["name"].toString();f.phase(name);
@@ -1338,6 +1338,9 @@ private slots:
     }
     void masterTreePixelsAndInput() {
         QFETCH(bool,openGL);
+        QStringList phases;
+        QString inventoryError;
+        QVERIFY2(test::MasterTreeFixture::phases(phases,inventoryError),qPrintable(inventoryError));
         HostedPixelMap map(pixelHosts_); if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
@@ -1345,8 +1348,8 @@ private slots:
         QVector<MapPointer> events;
         map.setInputHandler("map",true,[&](const MapPointer& p){events.push_back(p);});
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
-        for(const auto& phase:test::MasterTreeFixture::phases()) {
-            test::MasterTreeFixture f;QVERIFY(f.load(phase));
+        for(const auto& phase:phases) {
+            test::MasterTreeFixture f;QVERIFY2(f.load(phase),qPrintable(f.error));
             auto publish=[&](const MapSprites& sprites) {
                 mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,sprites);
                 return map.grabFramebuffer();
@@ -1391,7 +1394,8 @@ private slots:
                 QString("q-overlay-group-apart-outline-size2"),QString("w-overlay-group-apart-outline-radius32")}) {
         auto groupPhase=escapePhase;groupPhase.remove("-apart");
         test::MasterTreeFixture escaped,grouped;
-        QVERIFY(escaped.load(escapePhase));QVERIFY(grouped.load(groupPhase));
+        QVERIFY2(escaped.load(escapePhase),qPrintable(escaped.error));
+        QVERIFY2(grouped.load(groupPhase),qPrintable(grouped.error));
         mailbox->publish(escaped.frame.image,escaped.frame.source,0,0,escaped.frame.geometry,escaped.sprites);
         map.grabFramebuffer();
         mailbox->publish(grouped.frame.image,grouped.frame.source,0,0,grouped.frame.geometry,grouped.sprites);
@@ -1406,7 +1410,7 @@ private slots:
         }
         // Replicate commands across the surface warning threshold.
         // This is a workload regression, not stock multi-root selection evidence.
-        test::MasterTreeFixture budget;QVERIFY(budget.load("g-overlay-under-group-apart-tint"));
+        test::MasterTreeFixture budget;QVERIFY2(budget.load("g-overlay-under-group-apart-tint"),qPrintable(budget.error));
         auto leaf=std::find_if(budget.sprites.begin(),budget.sprites.end(),[](const auto& s){return s.kind==MapSprite::Screen;});
         auto master=std::find_if(budget.sprites.begin(),budget.sprites.end(),[](const auto& s){return s.kind==MapSprite::Master;});
         QVERIFY(leaf!=budget.sprites.end() && master!=budget.sprites.end());
@@ -1429,7 +1433,7 @@ private slots:
         // Pinned outputs and scratch slots may exceed the surface warning threshold.
         for (const QString phase : {QString("o-overlay-group-apart-outline"),QString("q-overlay-group-apart-outline-size2"),
                 QString("w-overlay-group-apart-outline-radius4.25"),QString("w-overlay-group-apart-outline-radius32")}) {
-        test::MasterTreeFixture outlined;QVERIFY(outlined.load(phase));
+        test::MasterTreeFixture outlined;QVERIFY2(outlined.load(phase),qPrintable(outlined.error));
         const auto outlineLeaf=std::find_if(outlined.sprites.begin(),outlined.sprites.end(),[](const auto& s){return s.kind==MapSprite::Screen;});
         const auto outlineMaster=std::find_if(outlined.sprites.begin(),outlined.sprites.end(),[](const auto& s){return s.kind==MapSprite::Master;});
         QVERIFY(outlineLeaf!=outlined.sprites.end() && outlineMaster!=outlined.sprites.end());
@@ -1453,7 +1457,7 @@ private slots:
         }
         // Grouping plus a tree transform remains refused, including both known
         // planes, pixels AND input. It must not expose unprocessed children.
-        test::MasterTreeFixture refused;QVERIFY(refused.load("overlay-nested-group-tint"));
+        test::MasterTreeFixture refused;QVERIFY2(refused.load("overlay-nested-group-tint"),qPrintable(refused.error));
         auto& world=refused.session.worldMut();
         auto& root=world.appearances.at(world.hudAppid.begin()->second);
         auto fields=QJsonDocument::fromJson(QByteArray::fromStdString(fieldsJson(root))).object();
@@ -1821,7 +1825,7 @@ private slots:
     }
     void unsupportedPlaneFilterPixelsAndInput() {
         QFETCH(bool,openGL);QFETCH(QString,phase);
-        test::MasterTreeFixture f;QVERIFY(f.load(phase));
+        test::MasterTreeFixture f;QVERIFY2(f.load(phase),qPrintable(f.error));
         auto& world=f.session.worldMut();QCOMPARE(world.hudAppid.size(),size_t(1));
         const auto root=world.hudAppid.begin()->second;
         auto fields=QJsonDocument::fromJson(QByteArray::fromStdString(fieldsJson(world.appearances.at(root)))).object();

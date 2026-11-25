@@ -1,11 +1,13 @@
 #pragma once
 #include "tests/appearancejson.h"
+#include "tests/recordedinput.h"
 #include "shell/entitymap.h"
 #include "shell/tests/iconfixture.h"
-#include <QFile>
+#include <QSet>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <array>
 namespace fugue::shell::test {
 struct VisMaterialFixture {
     model::World world;
@@ -14,11 +16,63 @@ struct VisMaterialFixture {
     TurfMap::Frame frame;
     MapSprites sprites;
     QJsonObject evidence;
+    QString error;
     QByteArray basis, floor;
     bool load() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/vis-material-world/stock.json");
-        if (!file.open(QIODevice::ReadOnly)) return false;
-        evidence=QJsonDocument::fromJson(file.readAll()).object();
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/vis-material-world/stock.json";
+        QJsonDocument document;
+        if (!::fugue::testinput::readRecordedJson(path,document,error)) return false;
+        auto fail=[&](const QString& field,const QString& reason) {error=path+": "+field+": "+reason;return false;};
+        if (!document.isObject()) return fail("root","Expected an evidence object");
+        const auto recorded=document.object();
+        if (recorded["sourceMap"].toArray()!=QJsonArray{224,224})
+            return fail("sourceMap","Expected the retained 224x224 source map");
+        const auto points=recorded["sourceSamplePoints"].toArray();
+        if (points.size()!=8) return fail("sourceSamplePoints","Expected eight source sample points");
+        for (qsizetype i=0;i<points.size();++i)
+            if (!::fugue::testinput::isIntegerTuple(points[i],2,0,223))
+                return fail(QString("sourceSamplePoints[%1]").arg(i),"Expected an integer [x,y] inside the source map");
+        const auto phases=recorded["phases"].toArray();
+        if (phases.size()!=18) return fail("phases","Expected 18 distinct named phases");
+        QSet<QString> names;
+        for (qsizetype i=0;i<phases.size();++i) {
+            const QString field=QString("phases[%1]").arg(i);
+            const auto phase=phases[i].toObject(); const auto name=phase["name"].toString();
+            if (name.trimmed().isEmpty() || names.contains(name))
+                return fail(field+".name","Expected a nonempty, unique phase name");
+            names.insert(name);
+            const auto samples=phase["samples"].toArray();
+            if (samples.size()!=8) return fail(field+".samples","Expected one RGB sample for each of the eight source points");
+            for (qsizetype sample=0;sample<samples.size();++sample)
+                if (!::fugue::testinput::isIntegerTuple(samples[sample],3,0,255))
+                    return fail(field+QString(".samples[%1]").arg(sample),"Expected three integer RGB channels in [0,255]");
+        }
+        for (const char* name:{"mask","reset","reset-half"})
+            if (!names.contains(name)) return fail("phases","Missing checkpoint used by the tests: "+QString(name));
+        const auto fields=recorded["fields"].toObject();
+        for (const char* name:{"leaf","resetLeaf","halfLeaf","captureMaster","filterMaster"})
+            if (fields[name].toObject().isEmpty())
+                return fail("fields."+QString(name),"Expected a nonempty retained appearance object");
+        const auto filters=fields["filterMaster"].toObject()["filters"].toArray();
+        const auto alphaFilters=fields["alphaFilters"].toArray();
+        if (filters.size()!=3) return fail("fields.filterMaster.filters","Expected three retained filters");
+        if (alphaFilters.size()!=2) return fail("fields.alphaFilters","Expected two retained filters");
+        for (const auto& [field,records]:std::array<std::pair<QString,QJsonArray>,2>{{
+                {"fields.filterMaster.filters",filters},{"fields.alphaFilters",alphaFilters}}}) {
+            for (qsizetype i=0;i<records.size();++i) {
+                const auto filter=records[i].toObject();
+                const auto bytes=hexDecode(filter["params"].toString().toStdString());
+                if (!filter["params"].isString() || !bytes || bytes->empty())
+                    return fail(field+QString("[%1].params").arg(i),"Expected nonempty, even-length hexadecimal filter bytes");
+            }
+        }
+        // phase() mutates the flags byte and this exact named-source envelope.
+        const auto maskRecord=filters[0].toObject();
+        const auto bytes=QByteArray::fromHex(maskRecord["params"].toString().toLatin1());
+        if (maskRecord["type"].toInt(-1)!=7 || maskRecord["paramMask"].toInt(-1)!=0x32c ||
+            maskRecord["str"].toString()!="*mask" || bytes.size()!=20 || bytes.mid(14)!=QByteArray("*mask\0",6))
+            return fail("fields.filterMaster.filters[0]","Expected the retained 20-byte alpha-mask layout with *mask at byte 14");
+        evidence=recorded;
         QImage image(32,32,QImage::Format_RGBA8888);
         const QColor colors[]={{255,0,0,0},{0,255,0,64},{0,0,255,128},{0,0,0,255},
             {63,67,59,64},{128,64,32,128},{0,0,0,0},{255,255,255,255}};

@@ -1,4 +1,6 @@
 #include <QTemporaryDir>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QtTest>
 #include "tests/recordedinput.h"
 #include "tests/testmain.h"
@@ -9,6 +11,89 @@ using namespace fugue::testinput;
 class RecordedInputTest : public QObject {
     Q_OBJECT
 private slots:
+    void observationTuplesRequireNumbersAndBounds() {
+        QVERIFY(isIntegerTuple(QJsonArray{0,128,255},3,0,255));
+        QVERIFY(isIntegerTuple(QJsonArray{-32,32},2,-32,32));
+        QVERIFY(!isIntegerTuple(QJsonObject{},2,0,255));
+        QVERIFY(!isIntegerTuple(QJsonArray{0,128},3,0,255));
+        QVERIFY(!isIntegerTuple(QJsonArray{0,128,255,1},3,0,255));
+        QVERIFY(!isIntegerTuple(QJsonArray{0,"128",255},3,0,255));
+        QVERIFY(!isIntegerTuple(QJsonArray{0,true,255},3,0,255));
+        QVERIFY(!isIntegerTuple(QJsonArray{0,QJsonValue::Null,255},3,0,255));
+        QVERIFY(!isIntegerTuple(QJsonArray{0,128.5,255},3,0,255));
+        QVERIFY(!isIntegerTuple(QJsonArray{-1,128,255},3,0,255));
+        QVERIFY(!isIntegerTuple(QJsonArray{0,128,256},3,0,255));
+    }
+    void jsonPreservesObjectsAndArrays_data() {
+        QTest::addColumn<QByteArray>("contents");
+        QTest::addColumn<bool>("array");
+        QTest::newRow("object") << QByteArray(R"({"phase":"ready","samples":[[1,2,3]],"empty":[]})") << false;
+        QTest::newRow("array") << QByteArray(R"([{"phase":"ready","samples":[[1,2,3]],"empty":[]}])") << true;
+        QTest::newRow("empty-object") << QByteArray("{}") << false;
+        QTest::newRow("empty-array") << QByteArray("[]") << true;
+    }
+    void jsonPreservesObjectsAndArrays() {
+        QFETCH(QByteArray, contents);
+        QFETCH(bool, array);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = dir.filePath("observations.json");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write(contents), qint64(contents.size()));
+        file.close();
+
+        QJsonDocument document;
+        QString error = "previous error";
+        QVERIFY2(readRecordedJson(path, document, error), qPrintable(error));
+        QVERIFY(error.isEmpty());
+        QCOMPARE(document.isArray(), array);
+        if (contents.size() == 2) {
+            // Empty JSON is syntactically valid; the scenario must require its observations.
+            QVERIFY(array ? document.array().isEmpty() : document.object().isEmpty());
+        } else {
+            const auto object = array ? document.array().at(0).toObject() : document.object();
+            QCOMPARE(object["phase"].toString(), QString("ready"));
+            const auto samples = object["samples"].toArray();
+            QCOMPARE(samples.size(), 1);
+            QCOMPARE(samples.at(0).toArray(), QJsonArray({1,2,3}));
+            QVERIFY(object["empty"].isArray());
+            QVERIFY(object["empty"].toArray().isEmpty());
+        }
+    }
+    void invalidJsonDiscardsPreviousObservations_data() {
+        QTest::addColumn<QByteArray>("contents");
+        QTest::newRow("empty") << QByteArray();
+        QTest::newRow("truncated-object") << QByteArray(R"({"phases":[)");
+        QTest::newRow("truncated-array") << QByteArray(R"([{"phase":"ready"})");
+        QTest::newRow("trailing-garbage") << QByteArray("{}oops");
+    }
+    void invalidJsonDiscardsPreviousObservations() {
+        QFETCH(QByteArray, contents);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = dir.filePath("observations.json");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write(contents), qint64(contents.size()));
+        file.close();
+
+        QJsonDocument document(QJsonObject{{"phase", "old"}});
+        QString error;
+        QVERIFY(!readRecordedJson(path, document, error));
+        QVERIFY(document.isNull());
+        QVERIFY2(error.startsWith(path + ": Invalid JSON at byte "), qPrintable(error));
+    }
+    void missingJsonIsNotAnEmptyExpectation() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = dir.filePath("missing.json");
+        QJsonDocument document(QJsonObject{{"phase", "old"}});
+        QString error;
+        QVERIFY(!readRecordedJson(path, document, error));
+        QVERIFY(document.isNull());
+        QVERIFY2(error.startsWith(path + ": Cannot read JSON:"), qPrintable(error));
+    }
     void retainsOrderedFrames_data() {
         QTest::addColumn<QByteArray>("contents");
         QTest::newRow("body-length") << QByteArray("0x0027 len=2 aBcd\n0x0018 len=0\n0x0034 len=1 09\n");

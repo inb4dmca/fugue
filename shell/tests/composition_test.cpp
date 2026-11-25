@@ -388,11 +388,10 @@ private slots:
         QVERIFY(effects.valid({224,224}));QVERIFY(!effects.boundedTreeFilters());
     }
     void stockMasterTreeCallbacks() {
-        QCOMPARE(test::MasterTreeFixture::outlinePhases().size(),16);
-        QCOMPARE(test::MasterTreeFixture::outlinePhases(true).size(),16);
-        QCOMPARE(test::MasterTreeFixture::wideOutlinePhases().size(),22);
-        for(const auto& phase:test::MasterTreeFixture::phases()) {
-            test::MasterTreeFixture f; QVERIFY2(f.load(phase),qPrintable(phase));
+        QStringList phases;QString inventoryError;
+        QVERIFY2(test::MasterTreeFixture::phases(phases,inventoryError),qPrintable(inventoryError));
+        for(const auto& phase:phases) {
+            test::MasterTreeFixture f; QVERIFY2(f.load(phase),qPrintable(f.error));
             for(int i=0;i<f.callbacks.size();++i) {
                 const auto p=f.clickPoint(i);
                 const auto hit=mapPointerAt(p,f.frame.source.size(),{7,7},f.frame.source,
@@ -478,7 +477,7 @@ private slots:
     }
     void masterTreeRefusalAndLifetimes() {
         QFETCH(QString,phase);
-        test::MasterTreeFixture f;QVERIFY(f.load(phase));
+        test::MasterTreeFixture f;QVERIFY2(f.load(phase),qPrintable(f.error));
         auto& w=f.session.worldMut();QCOMPARE(w.hudAppid.size(),size_t(1));
         const auto rootId=w.hudAppid.begin()->second;
         const auto original=fieldsJson(w.appearances.at(rootId));
@@ -590,7 +589,7 @@ private slots:
     }
     void outlinedTreeInputBoundaries() {
         QFETCH(QString,phase);
-        test::MasterTreeFixture f;QVERIFY(f.load(phase));
+        test::MasterTreeFixture f;QVERIFY2(f.load(phase),qPrintable(f.error));
         const auto old=f.sprites;
         auto pick=[&](const MapSprites& sprites,bool defaultMap=true) {
             return mapPointerAt(f.clickPoint(2),f.frame.source.size(),{7,7},f.frame.source,f.frame.geometry,"map",defaultMap,sprites);
@@ -620,7 +619,7 @@ private slots:
         }
     }
     void masterGroupingStructuralBoundaries() {
-        test::MasterTreeFixture f;QVERIFY(f.load("g-overlay-group-apart"));
+        test::MasterTreeFixture f;QVERIFY2(f.load("g-overlay-group-apart"),qPrintable(f.error));
         auto& w=f.session.worldMut();const auto rootId=w.hudAppid.begin()->second;
         auto fields=QJsonDocument::fromJson(QByteArray::fromStdString(fieldsJson(w.appearances.at(rootId)))).object();
         const auto childId=uint32_t(fields["overlays"].toArray()[0].toInt());
@@ -660,7 +659,7 @@ private slots:
         // These are admitted zero-offset controls, NOT evidence to ignore a
         // nonzero wire offset (the synthetic refusal above retains that gate).
         for(const QString phase:{"g-overlay-group-offset","g-overlay-group-apart-offset"}) {
-            test::MasterTreeFixture offset;QVERIFY(offset.load(phase));
+            test::MasterTreeFixture offset;QVERIFY2(offset.load(phase),qPrintable(offset.error));
             const auto& world=offset.session.world();
             const auto ap=model::parseJson(fieldsJson(world.appearances.at(world.hudAppid.begin()->second)));
             QCOMPARE(ap["pixelX"].i(),int64_t(0));QCOMPARE(ap["pixelY"].i(),int64_t(0));
@@ -674,7 +673,7 @@ private slots:
     }
     void masterCrossRootEscapeRefused() {
         QFETCH(QString,phase);
-        test::MasterTreeFixture f;QVERIFY(f.load(phase));
+        test::MasterTreeFixture f;QVERIFY2(f.load(phase),qPrintable(f.error));
         auto& w=f.session.worldMut();const auto rootRef=w.hudAppid.begin()->first;
         const auto rootId=w.hudAppid.begin()->second;
         const auto old=f.sprites;

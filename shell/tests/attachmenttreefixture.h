@@ -1,9 +1,9 @@
 #pragma once
 #include "tests/appearancejson.h"
+#include "tests/recordedinput.h"
 #include "shell/entitymap.h"
 #include "shell/tests/iconfixture.h"
 #include "shell/tests/affinefixture.h"
-#include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -13,6 +13,7 @@ struct AttachmentTreeFixture {
     TurfMap terrain; EntityMap entities;
     TurfMap::Frame frame; MapSprites sprites;
     QJsonObject evidence;
+    QString error;
     std::array<QByteArray,4> assets;
     static void scalar(QJsonObject& object,QColor value) {
         object["hasColor"]=true;object["colorR"]=value.red();object["colorG"]=value.green();
@@ -25,9 +26,51 @@ struct AttachmentTreeFixture {
         return {{"bit",1024},{"data",QString::fromLatin1(bytes.toHex())}};
     }
     bool load() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/attachment-tree-world/stock.json");
-        if (!file.open(QIODevice::ReadOnly)) return false;
-        evidence=QJsonDocument::fromJson(file.readAll()).object();
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/attachment-tree-world/stock.json";
+        QJsonDocument document;
+        if (!::fugue::testinput::readRecordedJson(path,document,error)) return false;
+        auto fail=[&](const QString& field,const QString& reason) {error=path+": "+field+": "+reason;return false;};
+        if (!document.isObject()) return fail("root","Expected an evidence object");
+        const auto recorded=document.object();
+        if (recorded["source"].toArray()!=QJsonArray{224,224})
+            return fail("source","Expected the retained 224x224 source map");
+        const auto points=recorded["points"].toArray();
+        if (points.size()!=24) return fail("points","Expected 24 source sample points");
+        for (qsizetype i=0;i<points.size();++i)
+            if (!::fugue::testinput::isIntegerTuple(points[i],2,0,223))
+                return fail(QString("points[%1]").arg(i),"Expected an integer [x,y] inside the source map");
+        const auto phases=recorded["phases"].toObject();
+        if (phases.size()!=42) return fail("phases","Expected 42 distinct named phases");
+        for (auto phase=phases.begin();phase!=phases.end();++phase) {
+            if (phase.key().trimmed().isEmpty()) return fail("phases","Phase names must not be empty");
+            const auto samples=phase.value().toArray();
+            const QString field="phases."+phase.key();
+            if (samples.size()!=24) return fail(field,"Expected one RGB sample for each of the 24 source points");
+            for (qsizetype i=0;i<samples.size();++i)
+                if (!::fugue::testinput::isIntegerTuple(samples[i],3,0,255))
+                    return fail(field+QString("[%1]").arg(i),"Expected three integer RGB channels in [0,255]");
+        }
+        if (!phases.contains("input") || !phases.contains("group-half"))
+            return fail("phases","Missing the input or group-half checkpoint used by the tests");
+        const auto clicks=recorded["clicks"].toArray();
+        if (clicks.size()!=2) return fail("clicks","Expected two retained Click receipts");
+        for (qsizetype i=0;i<clicks.size();++i) {
+            const QString field=QString("clicks[%1]").arg(i);
+            const auto click=clicks[i].toObject();
+            if (!::fugue::testinput::isIntegerTuple(click["point"],2,0,223))
+                return fail(field+".point","Expected an integer [x,y] inside the source map");
+            if (click["target"].toString()!="child" || click["location_null"].toDouble(-1)!=1)
+                return fail(field,"Expected a child Click with null world location");
+            const auto params=click["params"].toObject();
+            for (const char* key:{"icon-x","icon-y"}) {
+                bool valid=false; params[key].toString().toInt(&valid);
+                if (!valid) return fail(field+".params."+key,"Expected an integer string");
+            }
+            if (params["button"].toString()!="left" || params["left"].toString()!="1" ||
+                params["screen-loc"].toString().trimmed().isEmpty())
+                return fail(field+".params","Expected a left-button Click with screen-loc");
+        }
+        evidence=recorded;
         const QColor colors[]={{24,32,48},{40,80,200},{200,40,20},{20,200,60}};
         for (size_t i=0;i<assets.size();++i) {QImage image(32,32,QImage::Format_RGBA8888);image.fill(colors[i]);assets[i]=iconfixture::png(image);}
         world.bounds={true,7,7,0,7,7,7,7};world.resync.haveOrigin=true;
