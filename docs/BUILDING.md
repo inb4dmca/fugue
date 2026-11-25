@@ -233,7 +233,15 @@ ctest --test-dir build -L native --no-tests=error --output-on-failure
 
 GPU checks that need a window-system connection also carry `display`. On Windows,
 `-L gpu -LE display` selects software D3D11 checks that can run without a desktop.
-Native Windows checks need an unlocked interactive desktop. On Linux, use Mesa and Xvfb:
+Native Windows checks need an unlocked interactive desktop.
+
+Native checks that sample the actual desktop also carry `desktop`. Their test
+windows must remain in the foreground and unobstructed throughout the observation;
+another application covering the sampled pixels makes the check fail. Use
+`-L native -LE desktop` for the other native checks and `-L desktop` when that
+screen access is available. Unfiltered CTest still includes both.
+
+On Linux, use Mesa and a dedicated Xvfb display:
 
 ```sh
 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ctest --test-dir build -L 'gpu|native' --no-tests=error --output-on-failure

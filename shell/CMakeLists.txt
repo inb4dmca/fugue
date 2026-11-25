@@ -168,6 +168,12 @@ if(TARGET mapnative_test)
     TIMEOUT 300 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
     ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
 endif()
+fugue_shell_test(shell_map_desktop mapdesktop_test) # desktop-composited pixels; windows must stay foreground and unobstructed
+if(TARGET mapdesktop_test)
+  set_tests_properties(shell_map_desktop PROPERTIES LABELS "map;native;desktop" RUN_SERIAL TRUE
+    TIMEOUT 120 FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
+    ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
+endif()
 fugue_shell_test(shell          shell_test)       # shell input routing
 fugue_shell_test(shell_skincolor skincolor_test)  # winset colours -> widgets
 fugue_shell_test(shell_clientmenu clientmenu_test) # skin menu transitions and client-only hotkey routing
