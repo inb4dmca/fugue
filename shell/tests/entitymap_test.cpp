@@ -4027,10 +4027,15 @@ private slots:
         QCOMPARE(numeric[0].renderSource,QString("*capture"));
         QVERIFY(!numeric[0].screenInteractive);
         setFields(w.appearances[1], R"({"screenLoc":"1,1","renderSource":"*capture","pixelX":1})");
-        QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).isEmpty()); // offset sources are not in this increment
-        // Stock's CENTER moves the captured plane; do not silently cover the viewport with it.
+        QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).isEmpty()); // a relay's own pixel offset was not measured
+        // Stock's CENTER moves the captured plane as far as the centre tile is from 1,1 (tests/data/plane-relay-world
+        // loccenter); the relay stands there.
         setFields(w.appearances[1], R"({"screenLoc":"CENTER","renderSource":"*capture"})");
-        QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).isEmpty());
+        const auto centre=scene.prepare(w,map,reader(),0,nullptr,true);
+        QCOMPARE(centre.size(),1);
+        QVERIFY(centre[0].position.x()>southwest[0].position.x() && centre[0].position.y()<southwest[0].position.y());
+        setFields(w.appearances[1], R"({"screenLoc":"TOP,CENTER","renderSource":"*capture"})");
+        QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).isEmpty()); // an edge was not measured
     }
     void screenRangesLateResourcesAndChildren() {
         auto w=world();w.atoms.clear();w.hudOrder={42};w.hudAppid[42]=1;w.hudIdentity[42]={2,99};

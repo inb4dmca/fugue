@@ -1438,18 +1438,21 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                         (ap.planeEffects && ap.planeEffects->boundedTreeFilters()));
                 }
             }
-            // Stock-verified zero-offset leaf alias for view-sized plane sources. CENTER shifts the
-            // captured plane and is not equivalent; general source anchoring remains unsupported.
             const QString location = ap.screenTarget ? ap.screenTarget->location : QString();
-            const bool numericSource = location == "1,1" && ap.offset.isNull();
-            // A local forwarding producer is positioned by the bounded HUD
-            // grammar and captures local bounds, not a viewport-sized plane.
-            // LocalTargets separately refuses missing/plane/cyclic dependencies.
-            const bool localForward = !ap.renderTarget.isEmpty();
-            // An atom's render target is drawn like an icon, at any screen_loc (stock 516.1689, stock-parity-world
-            // relay-hud*, relay-obj); only a plane's surface needs the alias above.
-            if (!ap.master && !ap.renderSource.isEmpty() && !localForward && location != "SOUTHWEST" && !numericSource &&
-                !atomTarget(ap.renderSource)) return;
+            // A relay of a plane's surface draws the plane's picture moved as far from the view's corner as its
+            // screen_loc is from 1,1, pixel offsets included (stock 516.1689, plane-relay-world loc23, locpx); the
+            // composition plan reads that from the relay's position. A relay of an atom's render target is drawn like
+            // an icon (stock-parity-world relay-hud*, relay-obj). CENTER, EAST and NORTH count in tiles as for any screen
+            // object (loccenter "CENTER-2,CENTER-1" and locne "EAST-5,NORTH-4" draw as 2,3 does); a range, an edge
+            // (LEFT, TOP, ...), a percent or the relay's own pixel_x/y was not measured and is left out.
+            if (!ap.master && !ap.renderSource.isEmpty() && ap.renderTarget.isEmpty() && !atomTarget(ap.renderSource)) {
+                const auto numeric = [](const ScreenLoc::Axis& a) {
+                    return a.anchor == ScreenLoc::Anchor::Tile && a.percent == 0;
+                };
+                const auto& loc = ap.screenPlacement;
+                if (!ap.offset.isNull() || (location != "SOUTHWEST" &&
+                    (!loc || loc->range || !numeric(loc->first.x) || !numeric(loc->first.y)))) return;
+            }
             // A plane's surface and its relay cover the whole scene; anything else stands on the view.
             const QRect& base = !ap.master && !ap.renderSource.isEmpty() && !atomTarget(ap.renderSource) ? view : inner;
             origin = QPoint(base.left() + screenPosition.x(), base.bottom() + 1 - tile_ - screenPosition.y());

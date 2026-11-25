@@ -50,6 +50,10 @@ public:
         QPoint groupOrigin;
     };
     static std::shared_ptr<const CompositionPlan> build(const MapSprites&, QRect, CompositionBackend);
+    // How far a relay of a plane's surface moves the plane's picture: as far as the relay stands from 1,1.
+    static QPoint relayOffset(const MapSprite& relay, QRect source) {
+        return relay.iconBottom - QPoint(source.left(), source.bottom() + 1);
+    }
     CompositionPlan(const CompositionPlan&) = delete;
     CompositionPlan& operator=(const CompositionPlan&) = delete;
 
@@ -74,6 +78,9 @@ public:
     uint64_t ignoredFilters = 0, requestedSurfaces = 0, livePasses = 0;
     // Input policy is a separate projection of the same selected masters.
     std::set<int> hidden, hiddenTree, outlines;
+    // Planes hidden only because a relay draws their '*' render target: their atoms take no clicks where they stand,
+    // but the right-click menu still lists them there (stock 516.1689, plane-relay-world loc23, nopass-loc23).
+    std::set<int> captured;
     std::map<int,StaticAffine> transforms;
     qsizetype fallback = -1;
     // Icon alpha masks hide their masked-out pixels from input too (stock 516.1689, tests/data/click-mask-world): a

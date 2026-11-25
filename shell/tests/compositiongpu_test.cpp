@@ -219,6 +219,68 @@ private slots:
         QFAIL(qPrintable(QString("%1 pixels differ from stock (worst %2), the first at %3,%4; drawn: %5")
                              .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved)));
     }
+    // tests/data/plane-relay-world/replay: a plane drawn through a relay (render_source of the master's render target)
+    // that stands elsewhere, carries a matrix of its own, or relays a master with a matrix, replayed through the real
+    // scene assembly from what DreamDaemon 516.1689 sent (stockprobe.py record) and compared with stock's grab of the
+    // same case: no channel of any pixel more than 8 levels from stock's.
+    void planeRelayReplay_data() {
+        QTest::addColumn<QString>("set");
+        const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/plane-relay-world/replay");
+        QFile recorded(directory.filePath("recorded.tsv"));
+        QVERIFY2(recorded.open(QIODevice::ReadOnly),qPrintable(recorded.fileName()));
+        QStringList sets;
+        for (const auto& raw:recorded.readAll().split('\n')) {
+            const auto line=QString::fromUtf8(raw).trimmed();
+            if (!line.isEmpty() && !line.startsWith('#')) sets.push_back(line.section('\t',0,0));
+        }
+        sets.sort();
+        QCOMPARE(sets.size(),23);
+        for (const auto& suffix:{QString(".png"),QString(".txt")}) {
+            QStringList expected;
+            for (const auto& set:sets) expected.push_back(set+suffix);
+            expected.sort();
+            auto found=directory.entryList({"*"+suffix},QDir::Files);
+            found.sort();
+            QCOMPARE(found,expected);
+        }
+        for (const auto& set:sets) QTest::newRow(qPrintable(set)) << set;
+    }
+    void planeRelayReplay() {
+        QFETCH(QString, set);
+        const QString dir = QString(FUGUE_TEST_DATA_DIR) + "/plane-relay-world/replay/";
+        const int64_t login = 1'000'000'000'000'000'000, grabbed = login + 6'000'000'000;
+        test::ReplayFixture fixture;
+        fixture.session.setIngestClockNs(login);
+        QVERIFY2(fixture.load(set + ".txt", "plane-relay-world/replay", {}, grabbed), qPrintable(fixture.error));
+        if (set != "norelay")
+            QVERIFY2(std::any_of(fixture.sprites.begin(), fixture.sprites.end(),
+                                 [](const auto& s) { return s.kind == MapSprite::Screen && !s.renderSource.isEmpty(); }),
+                     "the relay reaches the scene");
+        QImage stock(dir + set + ".png"); stock = stock.convertToFormat(QImage::Format_RGBA8888);
+        QCOMPARE(fixture.frame.source.size(), stock.size());
+        auto& gpu = transformGpu_;
+        if (!gpu) {
+            gpu = std::make_unique<GpuComparison>();
+            if (!gpu->initialize(stock.size())) {
+                gpu.reset();
+                QFAIL("Required GPU backend could not be initialized");
+            }
+        }
+        const QImage drawn = gpu->render(gpu->bounded, fixture.sprites, fixture.frame.source, Qt::black);
+        QCOMPARE(drawn.size(), stock.size());
+        int off = 0, worst = 0; QPoint first;
+        for (int y = 0; y < stock.height(); ++y) for (int x = 0; x < stock.width(); ++x) {
+            const QRgb a = drawn.pixel(x, y), b = stock.pixel(x, y);
+            const int d = std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
+            worst = std::max(worst, d);
+            if (d > 8 && !off++) first = {x, y};
+        }
+        if (!off) return;
+        const QString saved = QDir::temp().filePath("fugue-plane-relay-" + set + ".png");   // to look at beside stock's
+        drawn.save(saved);
+        QFAIL(qPrintable(QString("%1 pixels differ from stock (worst %2), the first at %3,%4; drawn: %5")
+                             .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved)));
+    }
     // tests/data/master-transform-world/filters: the map stock DreamSeeker 516.1689 drew for a plane master with a
     // matrix, a filter of each kind or both over a red 16 px box at (5,4) and, for "edge", a blue tile at (7,4);
     // "pxs" adds PIXEL_SCALE to the master. The "grid" cases put a 224 px icon whose pixels name themselves under a
