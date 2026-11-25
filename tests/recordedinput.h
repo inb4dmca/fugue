@@ -174,13 +174,20 @@ inline bool readRecordedJson(const QString& path, QJsonDocument& out, QString& e
     return true;
 }
 
-// Shared by retained pixel and coordinate observations. The fixture supplies
+// Shared by retained matrices, pixels and coordinates. The fixture supplies
 // its tuple width, allowed range and diagnostic context.
-inline bool isIntegerTuple(const QJsonValue& value, qsizetype size, int minimum, int maximum) {
+inline bool isNumberTuple(const QJsonValue& value, qsizetype size) {
     if (!value.isArray() || value.toArray().size() != size) return false;
+    for (const auto& item : value.toArray())
+        if (!item.isDouble() || !std::isfinite(item.toDouble())) return false;
+    return true;
+}
+
+inline bool isIntegerTuple(const QJsonValue& value, qsizetype size, int minimum, int maximum) {
+    if (!isNumberTuple(value, size)) return false;
     for (const auto& item : value.toArray()) {
         const double number = item.toDouble();
-        if (!item.isDouble() || number < minimum || number > maximum || number != std::trunc(number)) return false;
+        if (number < minimum || number > maximum || number != std::trunc(number)) return false;
     }
     return true;
 }

@@ -13,6 +13,13 @@ class RecordedInputTest : public QObject {
     Q_OBJECT
 private slots:
     void observationTuplesRequireNumbersAndBounds() {
+        QVERIFY(isNumberTuple(QJsonArray{-0.5,0,1.25},3));
+        QVERIFY(!isNumberTuple(QJsonObject{},3));
+        QVERIFY(!isNumberTuple(QJsonArray{0,1},3));
+        QVERIFY(!isNumberTuple(QJsonArray{0,1,2,3},3));
+        QVERIFY(!isNumberTuple(QJsonArray{0,"1",2},3));
+        QVERIFY(!isNumberTuple(QJsonArray{0,true,2},3));
+        QVERIFY(!isNumberTuple(QJsonArray{0,QJsonValue::Null,2},3));
         QVERIFY(isIntegerTuple(QJsonArray{0,128,255},3,0,255));
         QVERIFY(isIntegerTuple(QJsonArray{-32,32},2,-32,32));
         QVERIFY(!isIntegerTuple(QJsonObject{},2,0,255));

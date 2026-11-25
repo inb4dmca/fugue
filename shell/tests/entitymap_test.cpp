@@ -1,6 +1,7 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
 #include "tests/testmain.h"
+#include "tests/recordedinput.h"
 #include <QBuffer>
 #include <QPainter>
 #include <QFile>
@@ -8,8 +9,11 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
+#include <QSet>
 #include <bit>
+#include <cmath>
 #include <functional>
+#include <limits>
 #include <random>
 #include "shell/entitymap.h"
 #include "shell/namedmap.h"
@@ -159,12 +163,31 @@ struct VisFixture {
         return "other";
     }
 };
-QJsonObject visStockCase(const QString& set, const QString& name) {
-    QFile file(QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json");
-    if (!file.open(QIODevice::ReadOnly)) return {};
-    for (const auto& c : QJsonDocument::fromJson(file.readAll()).object()["sets"].toObject()[set].toArray())
-        if (c.toObject()["case"].toString() == name) return c.toObject();
-    return {};
+bool visStockCase(const QString& set, const QString& name, QJsonObject& out, QString& error) {
+    out = {}; error.clear();
+    const QString path = QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json";
+    QJsonDocument doc;
+    if (!testinput::readRecordedJson(path, doc, error)) return false;
+    const auto fail = [&](const QString& detail) { error = path + ": sets." + set + ": " + detail; return false; };
+    const QJsonValue sets = doc.object()["sets"];
+    if (!doc.isObject() || !sets.isObject() || !sets.toObject()[set].isArray())
+        return fail("expected an array of named cases");
+    const auto rows = sets.toObject()[set].toArray();
+    if (set == "c" && rows.size() != 12) return fail("expected 12 retained transformed-holder cases");
+    QSet<QString> names;
+    QJsonObject found;
+    for (qsizetype i = 0; i < rows.size(); ++i) {
+        const auto row = rows[i].toObject();
+        const auto rowName = row["case"].toString();
+        if (!rows[i].isObject() || !row["case"].isString() || rowName.isEmpty())
+            return fail(QString("row %1 requires a nonempty case name").arg(i + 1));
+        if (names.contains(rowName)) return fail("duplicate case " + rowName);
+        names.insert(rowName);
+        if (rowName == name) found = row;
+    }
+    if (found.isEmpty()) return fail("missing case " + name);
+    out = found;
+    return true;
 }
 }
 class EntityMapTest : public QObject {
@@ -899,10 +922,27 @@ private slots:
     // clock error.
     void easingMatchesStock() {
         using shell::animation::ease;
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/easing-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto doc=QJsonDocument::fromJson(file.readAll()).object();
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/easing-world/stock.json";
+        QJsonDocument document;QString readError;
+        QVERIFY2(testinput::readRecordedJson(path,document,readError),qPrintable(readError));
+        const auto doc=document.object();
         const auto columns=doc["columns"].toArray(), frames=doc["frames"].toArray();
-        QCOMPARE(columns.size(),33); QVERIFY(frames.size()>100);
+        QStringList names{"linear"};
+        for (int curve=1;curve<=8;++curve) for (int direction:{0,64,128,192})
+            names.append(QString("%1:%2").arg(curve).arg(direction));
+        QCOMPARE(columns.size(),names.size());QCOMPARE(frames.size(),146);
+        for (int c=0;c<columns.size();++c) QCOMPARE(columns[c].toString(),names[c]);
+        int missing=0;
+        for (const auto& frame:frames) {
+            const auto values=frame.toArray();QCOMPARE(values.size(),columns.size());
+            QVERIFY(testinput::isNumberTuple(QJsonArray{values[0]},1));
+            QVERIFY(values[0].toDouble()>=0 && values[0].toDouble()<=1);
+            for (int c=1;c<values.size();++c) {
+                if (values[c].isNull()) {QCOMPARE(names[c],QString("5:64"));++missing;}
+                else QVERIFY2(testinput::isNumberTuple(QJsonArray{values[c]},1),qPrintable(path+": invalid sample for "+names[c]));
+            }
+        }
+        QCOMPARE(missing,14); // ELASTIC EASE_IN retains fourteen explicit nulls; overshoot values are valid.
         const double px=1.0/320;
         int checked=0;
         for (int c=1;c<columns.size();++c) {
@@ -918,21 +958,53 @@ private slots:
                 ++checked;
             }
         }
-        QVERIFY(checked>4000);
+        QCOMPARE(checked,4658);
     }
     // Transform tweens against stock (tests/data/transform-tween-world/README.md): every sampled pose of every case,
     // through the same per-step composition the renderer uses. Samples where the image is nearly flat
     // (|det| < 0.35) cannot be measured and are skipped.
     void transformTweenMatchesStock() {
         namespace an = shell::animation;
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/transform-tween-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto sets=QJsonDocument::fromJson(file.readAll()).object()["sets"].toObject();
-        QCOMPARE(sets.size(),2);
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/transform-tween-world/stock.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+        const auto sets=document.object()["sets"].toObject();
+        QCOMPARE(sets.keys(),(QStringList{"a","b"}));
         auto matrix=[](const QJsonValue& v) { const auto a=v.toArray(); an::Matrix m;
             for (int i=0;i<6;++i) m[size_t(i)]=a[i].toDouble(); return m; };
         int checked=0;
-        for (const auto& set:sets) {
-            const auto cases=set.toObject()["cases"].toArray(), frames=set.toObject()["frames"].toArray();
+        for (const char* key:{"a","b"}) {
+            const auto set=sets[key].toObject();
+            const auto cases=set["cases"].toArray(),frames=set["frames"].toArray();
+            QCOMPARE(cases.size(),QString(key)=="a" ? 18 : 12);QCOMPARE(frames.size(),164);
+            QStringList names;int stepCount=0;
+            for (int c=0;c<cases.size();++c) {
+                const auto row=cases[c].toObject();
+                const auto name=row["name"].toString();
+                QVERIFY2(!name.isEmpty() && name==name.trimmed() && !names.contains(name),qPrintable(path+": missing or duplicate transform case name"));
+                names.append(name);
+                QVERIFY2(testinput::isNumberTuple(row["from"],6),qPrintable(path+": invalid starting matrix for "+names[c]));
+                const auto steps=row["steps"].toArray();
+                QVERIFY(steps.size()==1 || steps.size()==2);stepCount+=int(steps.size());
+                for (const auto& value:steps) {
+                    const auto step=value.toObject();
+                    QVERIFY2(testinput::isNumberTuple(step["to"],6),qPrintable(path+": invalid target matrix for "+names[c]));
+                    QVERIFY(testinput::isIntegerTuple(QJsonArray{step["flags"]},1,0,2));
+                    QVERIFY(step["flags"].toInt()==0 || step["flags"].toInt()==2);
+                }
+            }
+            QCOMPARE(stepCount,QString(key)=="a" ? 20 : 12);
+            int missing=0;
+            for (const auto& frame:frames) {
+                const auto values=frame.toArray();QCOMPARE(values.size(),cases.size()+1);
+                QVERIFY(testinput::isNumberTuple(QJsonArray{values[0]},1));
+                QVERIFY(values[0].toDouble()>=0 && values[0].toDouble()<=1);
+                for (int c=1;c<values.size();++c) {
+                    if (values[c].isNull()) ++missing;
+                    else QVERIFY2(testinput::isNumberTuple(values[c],6),qPrintable(path+": invalid sampled matrix for "+names[c-1]));
+                }
+            }
+            QCOMPARE(missing,QString(key)=="a" ? 498 : 382); // Unmeasurable poses are explicitly retained as null.
             for (int c=0;c<cases.size();++c) {
                 const auto row=cases[c].toObject(); const auto steps=row["steps"].toArray();
                 // The chain as the server sends it: 200 ds in one step or 100 ds in each of two.
@@ -953,6 +1025,7 @@ private slots:
                         [](const an::Matrix& a,const an::Matrix& b,double,double e,uint32_t flags){
                             return an::interpolate(a,b,e,(flags&2u)!=0);},
                         [](an::Matrix&,const an::Matrix&,const an::Matrix&,const an::Matrix&,double,double,uint32_t){},out,last));
+                    for (double element:out) QVERIFY(std::isfinite(element));
                     double linear=0,translation=0;
                     for (size_t i:{0,1,3,4}) linear=std::max(linear,std::abs(out[i]-stock[i]));
                     for (size_t i:{2,5}) translation=std::max(translation,std::abs(out[i]-stock[i]));
@@ -962,14 +1035,47 @@ private slots:
                 }
             }
         }
-        QVERIFY(checked>3500);
+        QCOMPARE(checked,3709); // Preserve the retained null, near-flat and step-boundary exclusions.
     }
     // Stock samples a transformed or scaled icon bilinearly unless the icon's own appearance has PIXEL_SCALE; a
     // parent's flag does not reach its overlays (tests/data/static-transform-world/README.md).
     void transformSamplingMatchesStock() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/static-transform-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto cases=QJsonDocument::fromJson(file.readAll()).object()["expect"].toObject()["cases"].toArray();
-        QVERIFY(cases.size()>=20);
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/static-transform-world/stock.json";
+        QJsonDocument doc; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, doc, error), qPrintable(error));
+        const QJsonValue caseValue = doc.object()["expect"].toObject()["cases"];
+        QVERIFY2(caseValue.isArray(), qPrintable(path + ": expect.cases must be an array"));
+        const auto cases = caseValue.toArray();
+        QSet<QString> remaining{"rot45", "rot45 ps", "scale2", "scale2 ps", "scale1.5", "scale1.5 ps",
+                                "scale0.75", "scale0.75 ps", "half", "half ps", "shift.5", "shift.5 ps",
+                                "shear", "shear ps", "rot30scale", "rot30scale ps",
+                                "ps-parent", "ps-child", "ps-rot-parent", "ps-rot-child"};
+        const QSet<QString> childCases{"ps-parent", "ps-child", "ps-rot-parent", "ps-rot-child"};
+        QVERIFY2(cases.size() == remaining.size(), qPrintable(path + ": expected 20 retained sampling cases"));
+        for (qsizetype row = 0; row < cases.size(); ++row) {
+            const auto c = cases[row].toObject();
+            const QString context = path + QString(": expect.cases row %1 (%2): ").arg(row + 1).arg(c["case"].toString());
+            QVERIFY2(cases[row].isObject() && c["case"].isString() && remaining.remove(c["case"].toString()),
+                     qPrintable(context + "missing, unknown or duplicate case name"));
+            QVERIFY2(testinput::isNumberTuple(c["matrix"], 6), qPrintable(context + "matrix requires six finite numbers"));
+            for (const auto& element : c["matrix"].toArray())
+                QVERIFY2(std::abs(element.toDouble()) <= std::numeric_limits<float>::max(),
+                         qPrintable(context + "matrix element exceeds the replay float range"));
+            QVERIFY2(c["flags"].isDouble() && (c["flags"].toDouble() == 0 || c["flags"].toDouble() == 512),
+                     qPrintable(context + "flags must explicitly be 0 or 512"));
+            QVERIFY2(c["root"].toString() == "bilinear" || c["root"].toString() == "nearest",
+                     qPrintable(context + "root sampling must be bilinear or nearest"));
+            const bool hasChild = childCases.contains(c["case"].toString());
+            QVERIFY2(c.contains("child") == hasChild, qPrintable(context + "child observation does not match the retained case"));
+            if (hasChild) {
+                const auto child = c["child"].toObject();
+                QVERIFY2(c["child"].isObject(), qPrintable(context + "child must be an object"));
+                QVERIFY2(child["flags"].isDouble() && (child["flags"].toDouble() == 0 || child["flags"].toDouble() == 512),
+                         qPrintable(context + "child.flags must explicitly be 0 or 512"));
+                QVERIFY2(child["sampling"].toString() == "bilinear" || child["sampling"].toString() == "nearest",
+                         qPrintable(context + "child.sampling must be bilinear or nearest"));
+            }
+        }
         for (const auto& value:cases) {
             const auto c=value.toObject(); const auto m=c["matrix"].toArray();
             std::array<float,6> matrix; for (int i=0;i<6;++i) matrix[size_t(i)]=float(m[i].toDouble());
@@ -995,9 +1101,22 @@ private slots:
     // (tests/data/parallel-world/README.md). The stock clock row is itself truncated, so each sample is taken at the
     // middle of its clock pixel, and samples within clock error of a whole-pixel step are skipped.
     void offsetTweensTruncateLikeStock() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/parallel-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto doc=QJsonDocument::fromJson(file.readAll()).object();
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/parallel-world/stock.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+        const auto doc=document.object();
         const auto names=doc["cases"].toArray(); const auto frames=doc["stockFrames"].toArray();
+        const QStringList expected{"par-turn+scale","par-turn+move","par-turn+turn","par-turn+translate","img-follow","vis-follow",
+            "move-turned","par-delayed","neg-move","pos-move-y","m12-to-12","12-to-m12"};
+        QCOMPARE(names.size(),expected.size());QCOMPARE(frames.size(),147);
+        for (int c=0;c<names.size();++c) QCOMPARE(names[c].toString(),expected[c]);
+        for (const auto& frame:frames) {
+            const auto values=frame.toArray();QCOMPARE(values.size(),names.size()+1);
+            QVERIFY(testinput::isNumberTuple(QJsonArray{values[0]},1));
+            QVERIFY(values[0].toDouble()>=0 && values[0].toDouble()<=1);
+            for (int c=1;c<values.size();++c)
+                QVERIFY2(testinput::isNumberTuple(values[c],6),qPrintable(path+": invalid sampled matrix for "+expected[c-1]));
+        }
         struct Case { const char* name; bool y; int from, to; };
         int checked=0;
         for (const Case c:{Case{"m12-to-12",false,-12,12},Case{"12-to-m12",false,12,-12},Case{"neg-move",false,0,-24},
@@ -1033,7 +1152,7 @@ private slots:
                 ++checked;
             }
         }
-        QVERIFY(checked>400);
+        QCOMPARE(checked,650); // 130 retained samples per variant after the unchanged clock-boundary exclusion.
     }
     // vis_contents against stock 516.1688 (tests/data/vis-world): vis_flags (set b) and turf/mob members (sets a, d).
     // Each case is rebuilt with the fixture's icons, composited in draw order, and read at compare.py's probe pixels.
@@ -1050,7 +1169,20 @@ private slots:
     }
     void visFlagsMatchStock() {
         QFETCH(QString, name); QFETCH(int, flags); QFETCH(double, layer); QFETCH(int, plane);
-        const auto stock = visStockCase("b", name); QVERIFY(!stock.isEmpty());
+        QJsonObject stock; QString error;
+        QVERIFY2(visStockCase("b", name, stock, error), qPrintable(error));
+        const QString context = QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json: sets.b case " + name + ": ";
+        QVERIFY2(stock["drawn"].isBool(), qPrintable(context + "drawn must be an explicit boolean"));
+        if (stock["drawn"].toBool()) {
+            for (const char* field : {"look", "dir"})
+                QVERIFY2(stock[field].isString() && !stock[field].toString().isEmpty(),
+                         qPrintable(context + field + " must be a nonempty string"));
+            QVERIFY2(stock["overWall"].isBool(), qPrintable(context + "overWall must be an explicit boolean"));
+            // The holder's own colour cannot distinguish which copy is on top.
+            QVERIFY2(stock.contains("overHolder") && (stock["look"].toString() == "holder.a" ?
+                         stock["overHolder"].isNull() : stock["overHolder"].isBool()),
+                     qPrintable(context + "overHolder must be boolean, or explicitly null for holder.a"));
+        }
         VisFixture f;
         const auto varsFor = [](int value) {
             return QString(R"("vars":[{"bit":8192,"data":"%1%2"}])").arg(value & 255, 2, 16, QChar('0')).arg(value >> 8, 2, 16, QChar('0'))
@@ -1091,7 +1223,20 @@ private slots:
     }
     void visLeftoversMatchStock() {
         QFETCH(QString, name);
-        const auto stock = visStockCase("e", name); QVERIFY(!stock.isEmpty()); QCOMPARE(stock["fugueDiffOver8"].toInt(), 0);
+        QJsonObject stock; QString error;
+        QVERIFY2(visStockCase("e", name, stock, error), qPrintable(error));
+        const QString context = QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json: sets.e case " + name + ": ";
+        for (const char* field : {"fugueDiffOver8", name.startsWith("nested") ? "whiteInk" : "kidInk"}) {
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{stock[field]}, 1, 0, std::numeric_limits<int>::max()),
+                     qPrintable(context + field + " must be an explicit nonnegative integer"));
+        }
+        QJsonObject nestedFloat;
+        if (name.startsWith("nested")) {
+            QVERIFY2(visStockCase("e", "nested-float", nestedFloat, error), qPrintable(error));
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{nestedFloat["whiteInk"]}, 1, 0, std::numeric_limits<int>::max()),
+                     qPrintable(context + "nested-float.whiteInk must be an explicit nonnegative integer"));
+        }
+        QCOMPARE(stock["fugueDiffOver8"].toInt(), 0);
         VisFixture f;
         const uint32_t floor = f.look(VisFixture::Floor, "", 2);
         for (int y = 1; y <= 20; ++y) for (int x = 1; x <= 20; ++x) f.floor(x, y, floor);
@@ -1125,7 +1270,7 @@ private slots:
             QVERIFY(h < drawn.size() && k < drawn.size() && g < drawn.size());
             QVERIFY(h < k && h < g);
             // Stock: the kid's notch shows only when the grandchild draws under the kid.
-            QCOMPARE(g < k, stock["whiteInk"].toInt() > visStockCase("e", "nested-float")["whiteInk"].toInt());
+            QCOMPARE(g < k, stock["whiteInk"].toInt() > nestedFloat["whiteInk"].toInt());
             return;
         }
         // An animating member with VIS_INHERIT_LAYER is drawn mid-animation.
@@ -1148,7 +1293,13 @@ private slots:
     }
     void visTurfAndMobMembersMatchStock() {
         QFETCH(QString, set); QFETCH(QString, name);
-        const auto stock = visStockCase(set, name); QVERIFY(!stock.isEmpty());
+        QJsonObject stock; QString error;
+        QVERIFY2(visStockCase(set, name, stock, error), qPrintable(error));
+        const QString context = QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json: sets." + set + " case " + name + ": ";
+        const QStringList fields = name.startsWith("mob-holder") ? QStringList{"npc", "kid"} :
+                                                                 QStringList{"turf", "thing", "npc", "kid"};
+        for (const auto& field : fields)
+            QVERIFY2(stock[field].isBool(), qPrintable(context + field + " must be an explicit boolean"));
         VisFixture f;
         const int z = set == "d" ? 1 : 0; // set d keeps the remote turfs on another level
         const uint32_t floor = f.look(VisFixture::Floor, "", 2);
@@ -1231,7 +1382,28 @@ private slots:
     // A transformed holder's matrix reaches each copy about the copy's own centre; offsets stay untransformed.
     void visUnderTransformedHolderMatchesStock() {
         QFETCH(QString, name);
-        const auto stock = visStockCase("c", name); QVERIFY(!stock.isEmpty());
+        QJsonObject stock; QString error;
+        QVERIFY2(visStockCase("c", name, stock, error), qPrintable(error));
+        const QString observedLabel = name == "turf-rot" ? "thing" : "kid";
+        const QString context = QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json: sets.c case " + name + "." + observedLabel + ": ";
+        QVERIFY2(stock[observedLabel].isObject(), qPrintable(context + "missing shape observation"));
+        const auto shape = stock[observedLabel].toObject();
+        for (const char* field : {"cx", "cy"}) {
+            const auto value = shape[field];
+            QVERIFY2(value.isDouble() && std::isfinite(value.toDouble()) && value.toDouble() >= -32 && value.toDouble() <= 63,
+                     qPrintable(context + field + " must be a finite coordinate in the retained 96-pixel crop"));
+        }
+        for (const char* field : {"w", "h"}) {
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{shape[field]}, 1, 1, 96),
+                     qPrintable(context + field + " must be an integer size from 1 to 96"));
+        }
+        // The plain thing has no notch; all eleven kid observations retain one.
+        if (observedLabel == "kid") {
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{shape["notch"]}, 1, 0, 359),
+                     qPrintable(context + "notch must be an explicit integer angle from 0 to 359"));
+        }
+        if (name == "rot45" || name == "kid-ps" || name == "holder-ps")
+            QVERIFY2(shape["blended"].isBool(), qPrintable(context + "blended must be an explicit boolean"));
         VisFixture f;
         const uint32_t floor = f.look(VisFixture::Floor, "", 2);
         for (int y = 1; y <= 20; ++y) for (int x = 1; x <= 20; ++x) f.floor(x, y, floor);
@@ -1702,9 +1874,31 @@ private slots:
     // ANIMATION_SLICE (tests/data/anim-flags-world): a leading slice step plays a window of the sequence behind it over
     // and over, and holds at the window's end once its loops run out.
     void animationSliceLikeStock() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR) + "/anim-flags-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto doc = QJsonDocument::fromJson(file.readAll()).object();
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/anim-flags-world/stock.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
+        const auto doc = document.object();
         const auto cases = doc["cases"].toObject(), wire = doc["wire"].toObject();
+        for (const char* name : {"slice", "slice-once"}) {
+            const auto lead = wire[name].toObject()["leadingStep"].toObject();
+            const auto context = path + ": " + name;
+            QCOMPARE(lead.keys(), (QStringList{"ext", "flags", "from", "loop", "time", "to"}));
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{lead["from"], lead["to"]}, 2, 65535, 65535), qPrintable(context + ": invalid slice endpoints"));
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{lead["flags"]}, 1, 8, 8), qPrintable(context + ": missing slice flag"));
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{lead["loop"]}, 1, -1, 1) && lead["loop"].toInt() != 0, qPrintable(context + ": invalid loop input"));
+            QVERIFY2(testinput::isNumberTuple(QJsonArray{lead["time"], lead["ext"]}, 2), qPrintable(context + ": invalid slice timing"));
+            QVERIFY(lead["time"].toDouble() > 0 && lead["ext"].toDouble() >= 0 && lead["time"].toDouble() + lead["ext"].toDouble() <= 40);
+        }
+        const auto window = cases["slice"].toObject()["window"].toArray();
+        const auto runs = cases["slice"].toObject()["pixelXSeen"].toArray();
+        const auto held = cases["slice-once"].toObject()["heldPixelX"].toArray();
+        QVERIFY2(testinput::isIntegerTuple(window, 2, 0, 32), qPrintable(path + ": invalid slice window"));
+        QVERIFY(window[0].toInt() <= window[1].toInt());
+        QCOMPARE(runs.size(), 2);
+        for (const auto& run : runs)
+            QVERIFY2(testinput::isIntegerTuple(run, 2, 0, 32), qPrintable(path + ": expected two pixel observations in each slice run"));
+        QVERIFY2(testinput::isIntegerTuple(held, 2, 0, 32), qPrintable(path + ": invalid held pixel observations"));
+        QVERIFY(held[0].toInt() <= held[1].toInt());
         constexpr int64_t base = 50'000'000'000;
         auto chainFor = [&](const char* name) {
             const auto lead = wire[name].toObject()["leadingStep"].toObject();
@@ -1715,30 +1909,28 @@ private slots:
             ch.steps = {slice, {10, 11, std::bit_cast<uint32_t>(20.f), 0, 0, -1, base - 1'000'000'000}, {11, 10, std::bit_cast<uint32_t>(20.f), 0, 0, 1, 0}};
             return ch;
         };
-        auto value = [&](const model::Atom::Chain& ch, int64_t now) {
-            double out = 0; uint32_t last = 0;
+        auto value = [&](const model::Atom::Chain& ch, int64_t now, double& out) {
+            out = 0; uint32_t last = 0;
             auto get = [](uint32_t id) { return id == 11 ? 32.0 : 0.0; };
             auto lerp = [](double a, double b, double, double f) { return a + (b - a) * f; };
             auto add = [](double& o, double base, double a, double b, double, double f) { o += a + (b - a) * f - base; };
             uint64_t work = 1'000'000;
-            if (!shell::animation::admit(ch, work)) return -1.0;
-            shell::animation::composeChain(ch, base + now, get, lerp, add, out, last);
-            return out;
+            return shell::animation::admit(ch, work) && shell::animation::composeChain(ch, base + now, get, lerp, add, out, last);
         };
         const auto loop = chainFor("slice");
-        const auto window = cases["slice"].toObject()["window"].toArray();
-        for (const auto& run : cases["slice"].toObject()["pixelXSeen"].toArray())
+        for (const auto& run : runs)
             for (const auto& seen : run.toArray()) QVERIFY(seen.toInt() >= window[0].toInt() && seen.toInt() <= window[1].toInt());
         for (int64_t ms = 0; ms < 5000; ms += 125) {
-            const double v = value(loop, ms * 1'000'000);
+            double v = 0; QVERIFY(value(loop, ms * 1'000'000, v));
             QVERIFY2(v >= window[0].toDouble() && v <= window[1].toDouble(), qPrintable(QString("%1 at %2 ms").arg(v).arg(ms)));
         }
-        QCOMPARE(value(loop, 250'000'000), 20.0); QCOMPARE(value(loop, 1'750'000'000), 28.0); // 8 px per half window
+        double v = 0;
+        QVERIFY(value(loop, 250'000'000, v)); QCOMPARE(v, 20.0);
+        QVERIFY(value(loop, 1'750'000'000, v)); QCOMPARE(v, 28.0); // 8 px per half window
         const auto once = chainFor("slice-once");
-        const auto held = cases["slice-once"].toObject()["heldPixelX"].toArray();
-        QCOMPARE(value(once, 1'000'000'000), 16.0);
+        QVERIFY(value(once, 1'000'000'000, v)); QCOMPARE(v, 16.0);
         for (int64_t s : {2, 3, 10}) {
-            const double v = value(once, s * 1'000'000'000);
+            QVERIFY(value(once, s * 1'000'000'000, v));
             QVERIFY(v >= held[0].toDouble() && v <= held[1].toDouble()); // held at the window's end, not the settled 0
         }
     }
@@ -1767,9 +1959,17 @@ private slots:
     // Screen objects animate on the world clock (tests/data/hud-anim-world): a 20 s alpha tween and a 20 s quarter turn
     // sampled at every stock clock reading, against the stock fade brightness and the turning arm's centroid.
     void hudAnimationMatchesStock() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/hud-anim-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto frames=QJsonDocument::fromJson(file.readAll()).object()["frames"].toArray();
-        QVERIFY(frames.size()>=10);
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/hud-anim-world/stock.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+        const auto frames=document.object()["frames"].toArray();QCOMPARE(frames.size(),14);
+        for (const auto& value:frames) {
+            const auto frame=value.toObject();
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{frame["clock"]},1,0,320),qPrintable(path+": invalid clock reading"));
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{frame["fade"]},1,0,255),qPrintable(path+": invalid fade observation"));
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{frame["slideX"]},1,0,0),qPrintable(path+": missing stationary slide observation"));
+            QVERIFY2(testinput::isNumberTuple(frame["turnArm"],2),qPrintable(path+": invalid arm centroid"));
+        }
         auto hudWorld=[&](const std::string& from, const std::string& to) {
             auto w=world(); w.atoms[42].renderIdentity=10; w.atoms[42].hasPos=false;
             w.appearances[2]=w.appearances[1]; setFields(w.appearances[1], from); setFields(w.appearances[2], to);
@@ -1783,7 +1983,8 @@ private slots:
         shell::TurfMap terrain; const auto map=terrain.prepare(fade,{},0,false);
         shell::EntityMap fading, turning;
         auto rest=turn; rest.atoms[42].chain={}; setFields(rest.appearances[2], R"({"screenLoc":"1,1"})");
-        shell::EntityMap still; const auto origin=still.prepare(rest,map,reader(),0,nullptr,true).at(0).position;
+        shell::EntityMap still; const auto resting=still.prepare(rest,map,reader(),0,nullptr,true);
+        QCOMPARE(resting.size(),1);const auto origin=resting[0].position;
         for (const auto& value:frames) {
             const auto f=value.toObject();
             const double t=(f["clock"].toDouble()+.5)/320; const int64_t now=int64_t(t*20e9);
@@ -1830,10 +2031,24 @@ private slots:
     // Colour tweens against stock (tests/data/color-tween-world): matrices blend element by element with the eased
     // factor, a plain colour counting as its diagonal matrix, and a matrix set over a plain colour drops its stale RGB.
     void colorTweensMatchStock() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/color-tween-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto doc=QJsonDocument::fromJson(file.readAll()).object();
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/color-tween-world/stock.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+        const auto doc=document.object();
         const auto names=doc["cases"].toArray(); const auto frames=doc["frames"].toArray();
-        QVERIFY(frames.size()>=8);
+        const QStringList expected{"id-to-m1","m1-to-m2","plain-to-m1","m1-to-plain","id-to-m1-sine","static-plain-then-m1"};
+        QCOMPARE(names.size(),expected.size());QCOMPARE(frames.size(),10);
+        for (int c=0;c<names.size();++c) QCOMPARE(names[c].toString(),expected[c]);
+        for (const char* key:{"M1","M2"})
+            QVERIFY2(testinput::isNumberTuple(doc[key],20),qPrintable(path+": invalid colour matrix "+key));
+        QCOMPARE(doc["plain"].toString(),QString("#ff8040"));
+        for (const auto& value:frames) {
+            const auto frame=value.toObject();
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{frame["clock"]},1,0,320),qPrintable(path+": invalid clock reading"));
+            const auto rgb=frame["rgb"].toArray();QCOMPARE(rgb.size(),names.size());
+            for (int c=0;c<rgb.size();++c)
+                QVERIFY2(testinput::isIntegerTuple(rgb[c],3,0,255),qPrintable(path+": invalid RGB observation for "+expected[c]));
+        }
         auto matrixVar=[&](const char* key) {
             QByteArray bytes;
             for (const auto& v:doc[key].toArray()) { const float f=float(v.toDouble()); bytes.append(reinterpret_cast<const char*>(&f),4); }
