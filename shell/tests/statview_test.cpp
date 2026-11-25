@@ -107,7 +107,7 @@ private slots:
         QCOMPARE(changed.rows[0].thumbnail.pixelColor(8,16),QColor(Qt::red));
         QCOMPARE(changed.rows[0].thumbnail.pixelColor(24,16),QColor(Qt::green));
         QCOMPARE(first.rows[0].thumbnail.pixelColor(24,16),QColor(Qt::red)); // immutable old publication
-        setFields(w.appearances[8], R"({"filters":[{}]})");
+        setFields(w.appearances[8], R"({"filters":[{"type":99,"flags":1}]})");
         images.begin(w,read,5); QVERIFY(buildStatView(w,images).rows[0].thumbnail.isNull()); // no arbitrary base fallback
         session.ingest(0x006a,row(99,7,true));
         images.begin(w,read,6); QVERIFY(buildStatView(w,images).rows.empty());

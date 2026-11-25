@@ -18,9 +18,6 @@ struct PlaneFilter {
     double offset = 0, radius = 0, repeat = 0, falloff = 0;
     int flags = 0;
     std::array<float,4> color{0,0,0,1};
-    // Recovered pixel profile, never inherited by neighboring operations.
-    // Shadow's wire instance byte is identity, not a shader/profile selector.
-    bool stock = false;
     QString source; // alpha mask: a render target, or
     uint32_t icon = UINT32_MAX; // an icon resource ordinal, whose first frame the template builder puts in `image`
     std::shared_ptr<const QImage> image;

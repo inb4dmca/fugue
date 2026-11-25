@@ -50,8 +50,8 @@ inline MapSprites contributorScene(QRect source, int count, int variant = 0) {
     auto m=master(1,"capture");
     if (variant==5 || variant==6) {
         auto effects=std::make_shared<PlaneEffects>();
-        PlaneFilter outline;outline.kind=PlaneFilter::Outline;outline.stock=true;outline.size=1.5;outline.color={.7f,.2f,.9f,.53f};
-        PlaneFilter blur;blur.stock=true;blur.size=1;
+        PlaneFilter outline;outline.kind=PlaneFilter::Outline;outline.size=1.5;outline.color={.7f,.2f,.9f,.53f};
+        PlaneFilter blur;blur.size=1;
         if (variant==6) {outline.kind=PlaneFilter::Shadow;outline.x=.5;outline.y=-.75;}
         effects->filters={outline,blur};m.planeEffects=effects;
     }

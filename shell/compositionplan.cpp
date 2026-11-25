@@ -167,26 +167,28 @@ void CompositionPlan::plan() {
             // each operation below, not one pre-padded domain for the chain.
             result = addPass({{generated(quad),result}},effectBounds);
         }
-        auto filterPass = [&](int input, int operation, double size, const PlaneFilter& filter, bool quantize = true) {
+        auto filterPass = [&](int input, int operation, double size, const PlaneFilter& filter) {
             const QRect inputBounds = effectBounds;
-            // byondwin outline: ceil(step) on every side, every pass. Small blur
+            // Stock outline: ceil(step) on every side, every pass. Small blur
             // expands both axes on its horizontal pass, then retains that domain.
-            const int padding = !filter.stock ? 0 : operation == 5 || operation == 18 ? int(std::ceil(size)) :
+            const int padding = operation == 5 || operation == 18 ? int(std::ceil(size)) :
                 operation == 3 ? std::min(stockBlurKernel(float(size)).radius,
                     filter.kind == PlaneFilter::Shadow || filter.kind == PlaneFilter::Bloom ? 100 :
                     std::numeric_limits<int>::max()) : 0;
             effectBounds.adjust(-padding,-padding,padding,padding);
             quad.position = effectBounds.topLeft(); quad.size = effectBounds.size();
             Item item{generated(quad), input};
-            item.effect = {float(operation), float(size), filter.stock ? float(padding) : float(filter.grow), float(filter.flags),
+            // The last value picks the shader's rounding: the chain's entry copy (7) rounds half up, the filter
+            // passes round the way stock's surfaces read back.
+            item.effect = {float(operation), float(size), float(padding), float(filter.flags),
                 filter.color[0], filter.color[1], filter.color[2], filter.color[3],
-                1.0f/inputBounds.width(), 1.0f/inputBounds.height(), quantize ? 1.0f : 0.0f,
-                filter.stock ? 1.0f : 0.0f};
+                1.0f/inputBounds.width(), 1.0f/inputBounds.height(), 1.0f,
+                operation == 7 ? 0.0f : 1.0f};
             return addPass({item},effectBounds);
         };
         auto blur = [&](int input, const PlaneFilter& filter) {
-            if (filter.size <= 0 || (filter.stock && filter.kind == PlaneFilter::Shadow && filter.size < .001)) return input;
-            if (filter.stock && (filter.kind == PlaneFilter::Shadow || filter.kind == PlaneFilter::Bloom)) {
+            if (filter.size <= 0 || (filter.kind == PlaneFilter::Shadow && filter.size < .001)) return input;
+            if (filter.kind == PlaneFilter::Shadow || filter.kind == PlaneFilter::Bloom) {
                 // Shadow and bloom intermediates are A8R8G8B8 on every axis/recursive
                 // step. The standalone large-blur float profile is not reused.
                 const auto steps = stockBlurSteps(filter.size);
@@ -194,7 +196,7 @@ void CompositionPlan::plan() {
                     input = filterPass(filterPass(input,3,steps.sizes[i],filter),4,steps.sizes[i],filter);
                 return input;
             }
-            if (filter.stock && filter.size > 4 && effects->filters.size() == 1) {
+            if (filter.size > 4 && effects->filters.size() == 1) {
                 const QRect blurSource = effectBounds;
                 const auto steps = stockBlurSteps(filter.size);
                 std::array<int,6> radii{};
@@ -221,7 +223,6 @@ void CompositionPlan::plan() {
                 quad.position = effectBounds.topLeft(); quad.size = effectBounds.size();
                 return input;
             }
-            // Small stock and general kernels have distinct per-axis byte profiles.
             const double size = std::min(filter.size, 100.0);
             return filterPass(filterPass(input, 3, size, filter), 4, size, filter);
         };
@@ -229,19 +230,19 @@ void CompositionPlan::plan() {
             // Stock square steps double; round steps use the 1.75 ladder.
             // Each ladder needs <=16 passes at the generic8192 size bound.
             auto ladder = [&](double left, const PlaneFilter& operation) {
-                const bool square = operation.stock && (operation.flags & 2);
+                const bool square = operation.flags & 2;
                 double step = 1;
                 // Even size zero colors partial source alpha in stock.
-                if (left <= 1) { if (left > 0 || operation.stock) result = filterPass(result, 5, left, operation); }
+                if (left <= 1) result = filterPass(result, 5, left, operation);
                 else for (int pass = 0; pass < 16; ++pass) {
                     if (!square && 2*step >= left && step > 2) step = left*.5;
-                    result = filterPass(result, 5, step, operation, operation.stock);
+                    result = filterPass(result, 5, step, operation);
                     left -= step; step *= square ? 2 : 1.75;
                     if (left <= step) { result = filterPass(result, 5, left, operation); break; }
                 }
             };
             // Sharp round outlines first execute a square/sharp prefix.
-            if (filter.stock && filter.flags == 1 && filter.size > 1.5) {
+            if (filter.flags == 1 && filter.size > 1.5) {
                 auto square = filter; square.flags |= 2;
                 const double prefix = std::max(1.0,std::floor(filter.size*.5));
                 ladder(prefix,square); ladder(filter.size-prefix,filter);
@@ -249,8 +250,8 @@ void CompositionPlan::plan() {
         };
         if (effects && !effects->filters.empty()) {
             const bool shadow = std::any_of(effects->filters.begin(),effects->filters.end(),[](const auto& f) {
-                return f.stock && (f.kind == PlaneFilter::Shadow || f.kind == PlaneFilter::Wave ||
-                    f.kind == PlaneFilter::Ripple || f.kind == PlaneFilter::Bloom);
+                return f.kind == PlaneFilter::Shadow || f.kind == PlaneFilter::Wave ||
+                    f.kind == PlaneFilter::Ripple || f.kind == PlaneFilter::Bloom;
             });
             result = filterPass(result,shadow ? 13 : 7,0,PlaneFilter{});
         }
@@ -259,7 +260,7 @@ void CompositionPlan::plan() {
             return content.adjusted(effectBounds.left()-initial.left(), effectBounds.top()-initial.top(),
                                     effectBounds.right()-initial.right(), effectBounds.bottom()-initial.bottom());
         };
-        // byondwin 516.1688 sub_10122680 (wave) and sub_1011EE20 (ripple): consecutive records of one type share a
+        // Stock 516.1688 wave and ripple: consecutive records of one type share a
         // pass (at most 10; wave groups by flags without WAVE_SIDEWAYS, ripple by all flags); records with no effect
         // are consumed without counting. The pass grows the surface by the summed amplitude (ceil, at most 32 px;
         // none with WAVE_BOUNDED, which clamps sampling to the surface edge instead of a transparent border).
@@ -330,8 +331,8 @@ void CompositionPlan::plan() {
             result = addPass({item},effectBounds);
             return next;
         };
-        // byondwin 516.1688 sub_1010F2C0: keep pixels with a straight channel above the threshold, spread them
-        // (outline ladder, spreadout shader) and blur them on byte surfaces, subtract the kept pixels (RGB only),
+        // Stock 516.1688 bloom: keep pixels with a straight channel above the threshold, spread them
+        // (outline ladder, spread pass) and blur them on byte surfaces, subtract the kept pixels (RGB only),
         // then add the glow times the bloom alpha into the surface itself: the glow never grows the surface.
         auto bloom = [&](const PlaneFilter& filter) {
             if (filter.color[3] == 0 || !(filter.size >= .001 || filter.offset >= .001)) return;
@@ -379,8 +380,8 @@ void CompositionPlan::plan() {
             if (filter.kind == PlaneFilter::Bloom) { bloom(filter); continue; }
             if (filter.kind == PlaneFilter::Blur) result = blur(result, filter);
             else if (filter.kind == PlaneFilter::Outline) outline(filter);
-            else if (filter.kind == PlaneFilter::Shadow && filter.stock) {
-                // byondwin:10115240. Keep original geometry separate from the
+            else if (filter.kind == PlaneFilter::Shadow) {
+                // Stock shadow: keep original geometry separate from the
                 // displaced/grown/blurred domain; never stretch a padded input.
                 const int original = result;
                 const auto originalQuad = quad;
@@ -439,10 +440,6 @@ void CompositionPlan::plan() {
                 alpha.color[15] = inverse ? -1.f : 1.f; alpha.color[19] = inverse ? 1.f : 0.f;
                 Item maskItem{generated(std::move(alpha)), swap ? result : moved}; maskItem.alphaMask = true;
                 result = addPass({{generated(quad), swap ? moved : result},maskItem},effectBounds,true);
-            } else {
-                const int silhouette = blur(filterPass(result, 6, 0, filter), filter);
-                auto shadow = quad; shadow.position += QPoint(int(filter.x),int(filter.y));
-                result = filterPass(addPass({{generated(std::move(shadow)), silhouette}, {generated(quad), result}}), 7, 0, filter);
             }
         }
         return std::pair{result,quad};

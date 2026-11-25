@@ -18,7 +18,7 @@ bool boundedOutline(const PlaneFilter& f) {
 bool PlaneEffects::boundedTreeFilters() const {
     if (!supported || matrix || filters.empty() || !valid({32,32})) return false;
     for (const auto& f : filters)
-        if (!f.stock || (f.kind != PlaneFilter::Blur && f.kind != PlaneFilter::Shadow && !boundedOutline(f))) return false;
+        if (f.kind != PlaneFilter::Blur && f.kind != PlaneFilter::Shadow && !boundedOutline(f)) return false;
     return true;
 }
 void PlaneEffects::ignoreFilters() {
@@ -34,11 +34,11 @@ bool PlaneEffects::requiresSimpleSources() const {
 }
 bool PlaneEffects::valid(QSize viewport) const {
     if (!supported || filters.size() > 8 || (matrix && !StaticAffine::make(*matrix, viewport))) return false;
-    const bool stockChain = std::any_of(filters.begin(),filters.end(),[](const auto& f){return f.stock;});
+    // A plane transform with filters is not modelled.
+    if (matrix && !filters.empty()) return false;
     for (const auto& f : filters) {
-        if (stockChain && !f.stock) return false;
         if (f.kind == PlaneFilter::AlphaMask || f.kind == PlaneFilter::Color) {
-            if (!f.stock || matrix || f.size || f.grow) return false;
+            if (f.size || f.grow) return false;
             if (f.kind == PlaneFilter::AlphaMask) {
                 if ((f.source.isEmpty() && f.icon == UINT32_MAX) || (f.flags & ~3) || !std::isfinite(f.x) || !std::isfinite(f.y) ||
                     std::abs(f.x) > 8192 || std::abs(f.y) > 8192) return false;
@@ -46,25 +46,24 @@ bool PlaneEffects::valid(QSize viewport) const {
             continue;
         }
         if (f.kind == PlaneFilter::Wave || f.kind == PlaneFilter::Ripple || f.kind == PlaneFilter::Bloom) {
-            // Plane matrices keep their established blur/outline/shadow envelope only.
-            if (!f.stock || matrix || (f.flags & ~3)) return false;
+            if (f.flags & ~3) return false;
             for (double v : {f.size, f.x, f.y, f.offset, f.radius, f.repeat, f.falloff})
                 if (!std::isfinite(v) || std::abs(v) > 8192) return false;
             // A negative bloom offset shrinks stock's spread surface; not modelled.
             if (f.kind == PlaneFilter::Bloom && (f.offset < 0 || f.size < 0 || f.flags)) return false;
             continue;
         }
-        const bool wideOutline = f.stock && boundedOutline(f);
+        const bool wideOutline = boundedOutline(f);
         const bool standaloneBlur = filters.size() == 1 && f.kind == PlaneFilter::Blur;
-        if (f.stock && f.kind == PlaneFilter::Shadow) {
-            if (matrix || !std::isfinite(f.size) || f.size < 0 || !std::isfinite(f.grow) ||
+        if (f.kind == PlaneFilter::Shadow) {
+            if (!std::isfinite(f.size) || f.size < 0 || !std::isfinite(f.grow) ||
                 std::abs(f.grow) > 8192 || !std::isfinite(f.x) || !std::isfinite(f.y) ||
                 std::abs(f.x) > 8192 || std::abs(f.y) > 8192 || f.flags) return false;
             for (float c : f.color) if (!std::isfinite(c) || c < 0 || c > 1) return false;
             continue;
         }
-        if (f.stock && (matrix || (!wideOutline && f.kind != PlaneFilter::Blur))) return false;
-        if (f.kind < PlaneFilter::Blur || f.kind > PlaneFilter::Shadow || !std::isfinite(f.size) ||
+        if (!wideOutline && f.kind != PlaneFilter::Blur) return false;
+        if (!std::isfinite(f.size) ||
             !std::isfinite(f.grow) || f.size < 0 || (!standaloneBlur && f.size > (wideOutline ? 8192 : 4)) || f.grow < 0 || f.grow > 4 ||
             !std::isfinite(f.x) || !std::isfinite(f.y) || f.x != std::floor(f.x) || f.y != std::floor(f.y) ||
             std::abs(f.x) > 8192 || std::abs(f.y) > 8192 || (f.flags & ~3)) return false;
@@ -87,8 +86,7 @@ bool PlaneEffects::relayFilters() const {
     surface.matrix.reset();
     if (!supported || ignoredFilters || !surface.valid({32,32})) return false;
     for (const auto& f : filters)
-        if (!(f.stock && (f.kind == PlaneFilter::Blur || f.kind == PlaneFilter::Shadow || boundedOutline(f))) &&
-            !(f.kind == PlaneFilter::Blur && f.size == 0)) return false;
+        if (f.kind != PlaneFilter::Blur && f.kind != PlaneFilter::Shadow && !boundedOutline(f)) return false;
     if (!matrix) return true;
     const auto& m = *matrix;
     // Positive axis geometry has an established capture placement basis.
@@ -161,14 +159,16 @@ PlaneEffects decodeSurfaceEffects(const proto::Appearance& fields) try {
     }
     auto decode = [](const proto::Appearance::Filter& record) -> std::optional<PlaneFilter> { try {
         const uint32_t type = record.type, mask = record.paramMask;
-        const uint32_t allowed = type == 1 ? 1u : type == 2 ? 0x23u : type == 3 ? 0x1fu : 0u;
         const std::string bytes(record.params.begin(), record.params.end());
-        const uint32_t flags = record.flags;
+        // The record byte numbers the filter among those of its type, from 1 (a second blur is 2; a bar sign's
+        // seven waves arrive as 1..7: stock 516.1689, stock-parity-world repeated-filters). A server never sends
+        // 0, so such a record is malformed.
+        if (!record.flags) return std::nullopt;
         // Stock 516.1688/516.1689 records: an alpha mask is x, y (f32), the two-byte flags, an icon resource (0xffff:
-        // none) and a NUL-terminated source name; colour is a two-byte RGB-space selector followed by 20 float32s. The
-        // record byte numbers the filter among those of its type. No colour spaces.
-        if ((type == 7 || type == 9) && flags >= 1) {
-            PlaneFilter f; f.kind = PlaneFilter::Kind(type); f.stock = true;
+        // none) and a NUL-terminated source name; colour is a two-byte RGB-space selector followed by 20 float32s.
+        // No colour spaces.
+        if (type == 7 || type == 9) {
+            PlaneFilter f; f.kind = PlaneFilter::Kind(type);
             if (type == 7) {
                 const auto name = record.str;
                 if (mask != 0x32c || bytes.size() != 15 + name.size() || uint8_t(bytes[9]) ||
@@ -195,13 +195,13 @@ PlaneEffects decodeSurfaceEffects(const proto::Appearance& fields) try {
             return single.valid({32,32}) ? std::optional<PlaneFilter>(f) : std::nullopt;
         }
         // Stock 516.1688 records (filter-types-world): every parameter is sent, in mask bit order; floats are f32,
-        // bit 0x02 is a colour (RGBA bytes), bit 0x20 the two-byte flags. The record byte numbers the filter
-        // among those of its type (a bar sign's seven waves arrive as 1..7). wave: size, x, y, offset, flags. ripple: size, x, y, radius, flags, repeat,
-        // falloff. bloom: size, threshold (its alpha is the bloom alpha), offset.
-        if ((type == 5 || type == 6 || type == 14) && flags >= 1 && flags <= 255) {
+        // bit 0x02 is a colour (RGBA bytes), bit 0x20 the two-byte flags. wave: size, x, y, offset, flags.
+        // ripple: size, x, y, radius, flags, repeat, falloff. bloom: size, threshold (its alpha is the bloom
+        // alpha), offset.
+        if (type == 5 || type == 6 || type == 14) {
             const uint32_t expected = type == 5 ? 0x3du : type == 6 ? 0x87du : 0x13u;
             if (mask != expected) return std::nullopt;
-            PlaneFilter f; f.kind = PlaneFilter::Kind(type); f.stock = true;
+            PlaneFilter f; f.kind = PlaneFilter::Kind(type);
             size_t at = 0;
             for (uint32_t bit = 1; bit <= 0x800; bit <<= 1) {
                 if (!(mask & bit)) continue;
@@ -225,17 +225,11 @@ PlaneEffects decodeSurfaceEffects(const proto::Appearance& fields) try {
             PlaneEffects single; single.filters = {f};
             return single.valid({32,32}) ? std::optional<PlaneFilter>(f) : std::nullopt;
         }
-        // byondcore:10047fc0/10074530: the record byte identifies instances, so a wire record's is never 0.
-        // Type 3's recovered profile is independent of its value. A record byte of 0 keeps the old reference
-        // profile, which is not a wire default.
-        const bool stockShadow = type == 3 && flags;
-        if (!allowed || (mask & ~allowed) || flags > 255 || (!stockShadow && flags && !((type == 2 && mask == 0x23) || (type == 1 && mask == 1))) || (type == 1 && !(mask & 1))) {
-            return std::nullopt;
-        }
-        PlaneFilter f; f.kind = PlaneFilter::Kind(type); f.size = type == 1 ? 0 : 1;
-        f.stock = flags != 0;  // any instance: a second blur or outline is 2 (stock-parity-world repeated-filters)
-        if (stockShadow) { f.size = 0; f.color = {}; } // received FilterChain starts at zero
-        else if (type == 3) { f.x = 1; f.y = -1; }
+        // Blur (size), outline (size, colour, flags: all sent) and drop shadow (size, colour, x, y, offset: any
+        // subset, the rest zero).
+        if (type == 1 ? mask != 1 : type == 2 ? mask != 0x23 : type != 3 || (mask & ~0x1fu)) return std::nullopt;
+        PlaneFilter f; f.kind = PlaneFilter::Kind(type);
+        if (type == 3) f.color = {};
         size_t at = 0;
         for (uint32_t bit = 1; bit <= 0x20; bit <<= 1) {
             if (!(mask & bit)) continue;
@@ -249,14 +243,12 @@ PlaneEffects decodeSurfaceEffects(const proto::Appearance& fields) try {
             } else if (bit == 0x20) f.flags = int(raw);
             else {
                 const double value = std::bit_cast<float>(raw);
-                const bool blurSize = (type == 1 || stockShadow) && bit == 1;
+                const bool blurSize = type != 2 && bit == 1;
                 if (!std::isfinite(value) || (!blurSize && std::abs(value) > 8192)) return std::nullopt;
                 // Render-only saturation. Remaining chain admission below still
                 // rejects wider combinations; omitted neighbors cannot mutate DM.
                 if (bit == 1) f.size = blurSize ? std::min(value, 100.0) : value;
                 if (bit == 0x10) f.grow = value;
-                // Fractional displacement has no established rounding contract here.
-                if (!stockShadow && (bit == 4 || bit == 8) && value != std::floor(value)) return std::nullopt;
                 if (bit == 4) f.x = value;
                 if (bit == 8) f.y = -value;
             }

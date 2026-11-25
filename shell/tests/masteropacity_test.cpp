@@ -220,7 +220,7 @@ private slots:
         const auto saved=w.appearances.at(id);
         for (const QString key:{"filter","transform","target","source","tree","text","offset","placement","alpha","color","group","icon"}) {
             auto changed=fields;
-            if(key=="filter") changed["filters"]=QJsonArray{QJsonObject{{"type",99}}};
+            if(key=="filter") changed["filters"]=QJsonArray{QJsonObject{{"type",99},{"flags",1}}};
             if(key=="transform") {changed["hasTransform"]=true;changed["transform"]=QJsonArray{};}
             if(key=="target") changed["renderTarget"]="*plane";
             if(key=="source") changed["renderSource"]="*plane";

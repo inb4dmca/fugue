@@ -117,7 +117,7 @@ private slots:
     void planeMaskDependenciesAndRefusals() {
         auto mask=ink(3);mask.image.fill(QColor(0,0,0,128));
         auto output=master(1);auto effects=std::make_shared<PlaneEffects>();
-        PlaneFilter filter;filter.kind=PlaneFilter::AlphaMask;filter.stock=true;filter.source="*mask";
+        PlaneFilter filter;filter.kind=PlaneFilter::AlphaMask;filter.source="*mask";
         effects->filters={filter};output.planeEffects=effects;
         MapSprites sprites{ink(1),output,mask,master(3,"*mask")};
         auto build=[&]{return CompositionPlan::build(sprites,viewport,{true});};
@@ -128,7 +128,7 @@ private slots:
         QVERIFY(maskPass>=0 && dependency>=0);QCOMPARE(dependency,plan->targets.at("*mask"));
         QVERIFY(std::find(plan->schedule.begin(),plan->schedule.end(),dependency) <
             std::find(plan->schedule.begin(),plan->schedule.end(),maskPass));
-        auto padded=std::make_shared<PlaneEffects>();PlaneFilter blur;blur.stock=true;blur.size=1;
+        auto padded=std::make_shared<PlaneEffects>();PlaneFilter blur;blur.size=1;
         padded->filters={blur};sprites[3].planeEffects=padded;
         plan=build();QVERIFY(plan->supported);
         const auto bounds=plan->passes[plan->targets.at("*mask")].bounds;QVERIFY(bounds!=viewport);
@@ -262,7 +262,7 @@ private slots:
     }
     void backendAdmissionBoundsAndOmissions() {
         auto m = master(1); auto effects = std::make_shared<PlaneEffects>();
-        PlaneFilter outline; outline.kind = PlaneFilter::Outline; outline.size = 2; outline.stock = true;
+        PlaneFilter outline; outline.kind = PlaneFilter::Outline; outline.size = 2;
         effects->filters = {outline}; effects->treeSourceAlphaInput = true; m.planeEffects = effects;
         const auto full = CompositionPlan::build({ink(1),m},viewport,{true});
         QVERIFY(full->supported); QVERIFY(!full->hiddenTree.count(1));

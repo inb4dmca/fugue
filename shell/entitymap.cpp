@@ -23,7 +23,7 @@ std::shared_ptr<const PlaneEffects> tweenFilters(const std::shared_ptr<const Pla
     auto out = std::make_shared<PlaneEffects>(*a);
     for (size_t i = 0; i < a->filters.size(); ++i) {
         const auto &x = a->filters[i], &y = b->filters[i], &z = c->filters[i];
-        if (x.kind != y.kind || x.kind != z.kind || x.flags != y.flags || x.flags != z.flags || x.stock != y.stock ||
+        if (x.kind != y.kind || x.kind != z.kind || x.flags != y.flags || x.flags != z.flags ||
             x.source != y.source || x.material != y.material || y.source != z.source || y.material != z.material)
             return nullptr;
         auto& o = out->filters[i];

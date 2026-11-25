@@ -88,7 +88,7 @@ struct SpriteRenderer::Impl {
             blend.dstColor = blend.dstAlpha = QRhiGraphicsPipeline::SrcAlpha;
         }
         if (mode == 6) {
-            // Stock bloom's subtract (byondwin sub_10121240 mode 3): RGB reverse-subtract, alpha left as it was.
+            // Stock bloom's subtract: RGB reverse-subtract, alpha left as it was.
             blend.opColor = QRhiGraphicsPipeline::ReverseSubtract;
             blend.dstColor = QRhiGraphicsPipeline::One;
             blend.srcAlpha = QRhiGraphicsPipeline::Zero;
@@ -323,8 +323,7 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
                 std::memcpy(uniforms.data()+lastUniform+224,options.data()+4,16);
                 std::memcpy(uniforms.data()+lastUniform+96, effect.data(), 48);
                 if (item.params) std::memcpy(uniforms.data()+lastUniform+240, item.params->data(), 256);
-                if (effect[0] == 9 || effect[0] == 10 ||
-                    ((effect[0] == 3 || effect[0] == 4) && effect[11] > 0.5f)) {
+                if (effect[0] == 9 || effect[0] == 10 || effect[0] == 3 || effect[0] == 4) {
                     const auto kernel = stockBlurKernel(effect[1]);
                     std::memcpy(uniforms.data()+lastUniform+144,kernel.taps.data(),80);
                 }

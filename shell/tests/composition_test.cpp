@@ -190,11 +190,11 @@ private slots:
     }
     void standaloneBlurRange() {
         const auto inf=std::numeric_limits<float>::infinity();
-        for(const int flags:{0,1}) for(const float size:{-1.f,0.f,.5f,4.f,4.25f,16.f,99.f,100.f,101.f,104.f,128.f,256.f,
+        for(const float size:{-1.f,0.f,.5f,4.f,4.25f,16.f,99.f,100.f,101.f,104.f,128.f,256.f,
                 8193.f,std::numeric_limits<float>::max(),inf,-inf,std::numeric_limits<float>::quiet_NaN()}) {
             const auto raw=std::bit_cast<uint32_t>(size);
             QByteArray bytes;for(int i=0;i<4;++i) bytes.append(char(raw>>(8*i)));
-            const QJsonObject blur{{"type",1},{"flags",flags},{"paramMask",1},{"params",QString::fromLatin1(bytes.toHex())}};
+            const QJsonObject blur{{"type",1},{"flags",1},{"paramMask",1},{"params",QString::fromLatin1(bytes.toHex())}};
             auto decode=[&](QJsonArray chain) {
                 return decodePlaneEffects(model::appearanceOf(QJsonDocument(QJsonObject{{"filters",chain}}).toJson(QJsonDocument::Compact).toStdString()));
             };
@@ -205,15 +205,15 @@ private slots:
             if(!admitted) QVERIFY(effect.filters.empty());
             if(admitted) {
                 QCOMPARE(effect.filters[0].size,std::min(double(size),100.0));
-                QCOMPARE(effect.boundedTreeFilters(),flags==1);
+                QVERIFY(effect.boundedTreeFilters());
                 QVERIFY(!effect.requiresSimpleSources());
             }
             // The filter itself remains unsupported; worker decoding omits it.
             // Valid direct commands clamp before conversion, including DBL_MAX.
-            PlaneEffects direct;PlaneFilter f;f.stock=flags==1;f.size=size;direct.filters={f};
+            PlaneEffects direct;PlaneFilter f;f.size=size;direct.filters={f};
             QCOMPARE(direct.valid({992,672}),admitted);
             if(size>4 && std::isfinite(size)) {
-                const QJsonObject outline{{"type",2},{"flags",flags},{"paramMask",0x23},{"params","00000040ff00ffff0000"}};
+                const QJsonObject outline{{"type",2},{"flags",1},{"paramMask",0x23},{"params","00000040ff00ffff0000"}};
                 for(const QJsonArray chain:{QJsonArray{outline,blur},QJsonArray{blur,outline},QJsonArray{blur,blur}}) {
                     const auto fallback=decode(chain);QVERIFY(fallback.supported);
                     QVERIFY(fallback.filters.empty());QCOMPARE(fallback.ignoredFilters,size_t(2));
@@ -226,7 +226,7 @@ private slots:
     void unsupportedPlaneFilterFallback() {
         const QJsonObject outline{{"type",2},{"flags",1},{"paramMask",0x23},{"params","00000040ff00ffff0000"}};
         const QJsonObject blur{{"type",1},{"flags",1},{"paramMask",1},{"params","0000803f"}};
-        const QJsonObject unknown{{"type",99}},malformed{{"type",1},{"paramMask",1},{"params","bad hex"}};
+        const QJsonObject unknown{{"type",99},{"flags",1}},malformed{{"type",1},{"flags",1},{"paramMask",1},{"params","bad hex"}};
         auto decode=[&](QJsonArray filters,QJsonObject fields=QJsonObject{}) {
             fields["filters"]=filters;
             return decodePlaneEffects(model::appearanceOf(QJsonDocument(fields).toJson(QJsonDocument::Compact).toStdString()));
@@ -263,7 +263,6 @@ private slots:
         auto forward=decode({outline,blur}),reverse=decode({blur,outline});
         QVERIFY(forward.boundedTreeFilters()); QVERIFY(reverse.boundedTreeFilters());
         QVERIFY(!forward.requiresSimpleSources()); QVERIFY(reverse.requiresSimpleSources());
-        QVERIFY(forward.filters[0].stock && forward.filters[1].stock);
         auto omitted=[&](QJsonArray chain) {
             const auto result=decode(chain);
             return result.supported && result.filters.empty() && result.ignoredFilters==size_t(chain.size());
@@ -271,7 +270,6 @@ private slots:
         QVERIFY(decode({blur,blur,outline}).boundedTreeFilters());
         QJsonArray eight;for(int i=0;i<4;++i) {eight.append(blur);eight.append(outline);}
         QVERIFY(decode(eight).requiresSimpleSources());eight.append(blur);QVERIFY(omitted(eight));
-        auto general=blur;general["flags"]=0;QVERIFY(omitted({outline,general}));
         // The record byte numbers the filter among those of its type (stock 516.1689, stock-parity-world repeated-filters).
         auto second=blur;second["flags"]=2;
         const auto kept=decode({outline,second});QVERIFY(kept.supported);
@@ -357,7 +355,7 @@ private slots:
     }
     void wideOutlineAdmission() {
         PlaneEffects effects;
-        PlaneFilter outline; outline.kind=PlaneFilter::Outline; outline.stock=true;
+        PlaneFilter outline; outline.kind=PlaneFilter::Outline;
         effects.filters={outline};
         for (double size : {0.0,.125,.5,1.5,2.75,4.25,8.0,16.0,31.5,32.0,33.25,64.5,100.0,256.25,512.0,1024.0,8192.0}) {
             effects.filters[0].size=size;
@@ -382,10 +380,6 @@ private slots:
         for (auto kind : {PlaneFilter::Blur,PlaneFilter::Shadow}) {
             effects=admitted;effects.filters[0].kind=kind;QVERIFY(effects.valid({224,224}));
         }
-        // The wider limit/byte-step policy cannot leak into the legacy profile.
-        effects=admitted;effects.filters[0].stock=false;QVERIFY(!effects.valid({224,224}));
-        effects.filters[0].size=4;effects.filters[0].flags=3;effects.filters[0].color[3]=.5f;
-        QVERIFY(effects.valid({224,224}));QVERIFY(!effects.boundedTreeFilters());
     }
     void stockMasterTreeCallbacks() {
         QStringList phases;QString inventoryError;
@@ -511,11 +505,10 @@ private slots:
             }
             return masters>0;
         };
-        for(const QString key:{"reset","apart","filter","blur","outline-size","outline-fraction","outline-negative","outline-nan","outline-infinity","outline-flags","outline-unknown-flags","outline-alpha","outline-record","outline-mask","outline-hex","chain","transform","target","text","placement","offset","cycle","work","siblings"}) {
+        for(const QString key:{"reset","apart","filter","outline-size","outline-fraction","outline-negative","outline-nan","outline-infinity","outline-flags","outline-unknown-flags","outline-alpha","outline-record","outline-mask","outline-hex","chain","transform","target","text","placement","offset","cycle","work","siblings"}) {
             auto changed=fields;
             if(key=="reset" || key=="apart") changed["appearanceFlags"]=double(uint32_t(fields["appearanceFlags"].toDouble()) | (key=="reset" ? 0x00400000u : 0x08000000u));
-            if(key=="filter") changed["filters"]=QJsonArray{QJsonObject{{"type",99}}};
-            if(key=="blur") changed["filters"]=QJsonArray{QJsonObject{{"type",1},{"paramMask",1},{"params",QJsonObject{{"bstr","0000803f"}}}}};
+            if(key=="filter") changed["filters"]=QJsonArray{QJsonObject{{"type",99},{"flags",1}}};
             if(key.startsWith("outline-") || key=="chain") {
                 // Extended sizes/alpha and known outline flags admit; unknown bits,
                 // malformed parameters and nine-operation chains still fall back.
@@ -544,7 +537,7 @@ private slots:
             if(key=="siblings") children.append(children[1]);
             changed["overlays"]=children;
             setFields(w.appearances.at(rootId), QJsonDocument(changed).toJson(QJsonDocument::Compact).toStdString());
-            const bool filterFallback=key=="filter" || key=="blur" || key.startsWith("outline-") || key=="chain";
+            const bool filterFallback=key=="filter" || key.startsWith("outline-") || key=="chain";
             const bool admitted=filterFallback || key=="reset"; // stock material continuation admits RGB resets
             QCOMPARE(refused(),!admitted);
             const bool extended=key=="outline-size" || key=="outline-fraction" || key=="outline-alpha" || key=="outline-flags" ||
@@ -641,12 +634,11 @@ private slots:
         for(const auto& s:f.sprites) if(s.kind==MapSprite::Master) QVERIFY(s.planeEffects->supported);
         // Even a suppressed local leaf is validated: unsupported effects cannot
         // silently become admitted merely because its ink would be discarded.
-        for(const QString key:{"group","both-group-flags","reset","blur","relative-plane","bounds","descendant"}) {
+        for(const QString key:{"group","both-group-flags","reset","relative-plane","bounds","descendant"}) {
             auto changed=childFields;
             if(key=="group") changed["appearanceFlags"]=double(0x04000004u);
             if(key=="both-group-flags") changed["appearanceFlags"]=double(0x0c000004u);
             if(key=="reset") changed["appearanceFlags"]=double(0x00400004u);
-            if(key=="blur") changed["filters"]=QJsonArray{QJsonObject{{"type",1},{"paramMask",1},{"params",QJsonObject{{"bstr","0000803f"}}}}};
             if(key=="relative-plane") changed["plane"]=-32766;
             if(key=="bounds") changed["pixelX"]=8193;
             if(key=="descendant") changed["overlays"]=QJsonArray{int(childId)};
@@ -799,7 +791,7 @@ private slots:
             const auto text=QString(R"({"filters":[{"type":3,"flags":%1,"paramMask":31,"params":"0000804004080faa00000000000000c000000000"}]})").arg(identity);
             const auto e=decodePlaneEffects(model::appearanceOf(text.toStdString()));
             QVERIFY(e.supported);QCOMPARE(e.ignoredFilters,size_t(0));QCOMPARE(e.filters.size(),size_t(1));
-            const auto& f=e.filters[0];QVERIFY(f.stock);QCOMPARE(f.kind,PlaneFilter::Shadow);
+            const auto& f=e.filters[0];QCOMPARE(f.kind,PlaneFilter::Shadow);
             QCOMPARE(f.size,4.0);QCOMPARE(f.y,2.0);QCOMPARE(f.color[3],170.f/255);
             QVERIFY(e.boundedTreeFilters());QVERIFY(e.relayFilters());QVERIFY(e.sourceCoverage({224,224}));
             for(double size:{0.0,.0001,.5,4.0,6.25,32.0,100.0,1024.0})
@@ -809,7 +801,7 @@ private slots:
                     QVERIFY(wide.valid({224,224}));
                 }
         }
-        PlaneEffects bounds;PlaneFilter shadow;shadow.kind=PlaneFilter::Shadow;shadow.stock=true;
+        PlaneEffects bounds;PlaneFilter shadow;shadow.kind=PlaneFilter::Shadow;
         bounds.filters={shadow};
         for(double invalid:{-1.0,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}) {
             auto e=bounds;e.filters[0].size=invalid;QVERIFY(!e.valid({224,224}));
@@ -833,9 +825,9 @@ private slots:
     }
     void orderedPlaneFilterDecoding() {
         const auto decoded=decodePlaneEffects(model::appearanceOf(R"({"filters":[
-            {"type":1,"paramMask":1,"params":{"bstr":"0000403f"}},
-            {"type":2,"paramMask":35,"params":{"bstr":"0000a03f804020800200"}},
-            {"type":3,"paramMask":31,"params":{"bstr":"0000003f102030ff000000c0000040400000803f"}}
+            {"type":1,"flags":1,"paramMask":1,"params":{"bstr":"0000403f"}},
+            {"type":2,"flags":1,"paramMask":35,"params":{"bstr":"0000a03f804020800200"}},
+            {"type":3,"flags":1,"paramMask":31,"params":{"bstr":"0000003f102030ff000000c0000040400000803f"}}
         ]})"));
         QVERIFY(decoded.supported); QCOMPARE(decoded.filters.size(),size_t(3));
         QCOMPARE(decoded.filters[0].kind,PlaneFilter::Blur); QCOMPARE(decoded.filters[0].size,.75);
@@ -843,18 +835,17 @@ private slots:
         QCOMPARE(decoded.filters[1].flags,2); QCOMPARE(decoded.filters[1].color[3],128.f/255);
         QCOMPARE(decoded.filters[2].kind,PlaneFilter::Shadow); QCOMPARE(decoded.filters[2].x,-2);
         QCOMPARE(decoded.filters[2].y,-3); QCOMPARE(decoded.filters[2].grow,1.0);
-        QVERIFY(decodePlaneEffects(model::appearanceOf(R"({"filters":[{"type":2},{"type":3}]})")).supported);
         for(const auto* record:{
-            R"({"type":1})", R"({"type":4})", R"({"type":2,"flags":1})",
-            R"({"type":1,"paramMask":2,"params":{"bstr":"00000000"}})",
-            R"({"type":1,"paramMask":1,"params":{"bstr":"0000807f"}})",
-            R"({"type":1,"paramMask":1,"params":{"bstr":"000000"}})",
-            R"({"type":2,"paramMask":32,"params":{"bstr":"0400"}})",
-            R"({"type":3,"paramMask":4,"params":{"bstr":"0000003f"}})"}) {
+            R"({"type":1,"flags":1})", R"({"type":4,"flags":1})", R"({"type":2,"flags":1})",
+            R"({"type":1,"flags":1,"paramMask":2,"params":{"bstr":"00000000"}})",
+            R"({"type":1,"flags":1,"paramMask":1,"params":{"bstr":"0000807f"}})",
+            R"({"type":1,"flags":1,"paramMask":1,"params":{"bstr":"000000"}})",
+            R"({"type":2,"flags":1,"paramMask":32,"params":{"bstr":"0400"}})",
+            R"({"type":3,"flags":1,"paramMask":36,"params":{"bstr":"0000003f0000"}})"}) {
             const auto fallback=decodePlaneEffects(model::appearanceOf(std::string("{\"filters\":[")+record+"]}"));
             QVERIFY2(fallback.supported,record);QVERIFY(fallback.filters.empty());QCOMPARE(fallback.ignoredFilters,size_t(1));
         }
-        QVERIFY(decodePlaneEffects(model::appearanceOf(R"({"filters":[{"type":1,"paramMask":1,"params":{"bstr":"0000a040"}}]})")).supported);
+        QVERIFY(decodePlaneEffects(model::appearanceOf(R"({"filters":[{"type":1,"flags":1,"paramMask":1,"params":{"bstr":"0000a040"}}]})")).supported);
         auto wideChain=decoded;wideChain.filters[0].size=5;QVERIFY(!wideChain.valid({32,32}));
         auto sharpChain=decoded; sharpChain.filters[1].flags=1; QVERIFY(sharpChain.valid({32,32}));
         auto tooMany=decoded; tooMany.filters.resize(9); QVERIFY(!tooMany.valid({32,32}));

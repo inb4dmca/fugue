@@ -6,7 +6,7 @@ layout(std140, binding = 0) uniform Appearance {
     mat4 matrix;
     vec4 offset;
     vec4 options;
-    vec4 effect; // operation, size, stock padding / general silhouette growth, flags
+    vec4 effect; // operation, size, padding, flags
     vec4 effectColor;
     vec4 texel;
     vec4 blurKernel[5]; // two (offset, weight) pairs per vector
@@ -30,7 +30,7 @@ vec4 borderAt(ivec2 p) {
 float outlineAlpha(float a) {
     // Stock byte-step alpha stored in RGBA16F must be recovered before sampling:
     // half-float approximations of n/255 otherwise accumulate across the ladder.
-    return texel.w > 0.5 ? floor(a*255.0+0.5)/255.0 : a;
+    return floor(a*255.0+0.5)/255.0;
 }
 float alphaAt(ivec2 p) { return outlineAlpha(borderAt(p).a); }
 vec4 borderLinear(vec2 p) {
@@ -39,22 +39,16 @@ vec4 borderLinear(vec2 p) {
                mix(borderAt(base + ivec2(0,1)), borderAt(base + ivec2(1,1)), f.x), f.y);
 }
 float alphaLinear(vec2 pixel, vec2 delta) {
-    vec2 p = pixel+delta;
-    if (texel.w > 0.5) {
-        // D3D9 readback profile: normalized-coordinate grid, then texel weights.
-        // Use LOGICAL dimensions, not pooled storage or division by 1/size.
-        vec2 coord = floor((pixel+delta*texel.xy)*1048576.0+0.5)/1048576.0;
-        p = coord*round(vec2(1.0)/texel.xy)-vec2(0.5);
-        ivec2 b = ivec2(floor(p)); vec2 f = floor(fract(p)*256.0+0.5)/256.0;
-        float xy = floor(f.x*f.y*256.0+0.5)/256.0;
-        // Quantize the cross weight, deriving the others to preserve unit sum.
-        vec4 w = vec4(1.0-f.x-f.y+xy,f.x-xy,f.y-xy,xy);
-        vec4 a = vec4(alphaAt(b),alphaAt(b+ivec2(1,0)),alphaAt(b+ivec2(0,1)),alphaAt(b+ivec2(1,1)));
-        return floor(dot(w,a)*65535.0+0.5)/65535.0;
-    }
-    ivec2 base = ivec2(floor(p)); vec2 f = fract(p);
-    return mix(mix(alphaAt(base), alphaAt(base + ivec2(1,0)), f.x),
-               mix(alphaAt(base + ivec2(0,1)), alphaAt(base + ivec2(1,1)), f.x), f.y);
+    // D3D9 readback profile: normalized-coordinate grid, then texel weights.
+    // Use LOGICAL dimensions, not pooled storage or division by 1/size.
+    vec2 coord = floor((pixel+delta*texel.xy)*1048576.0+0.5)/1048576.0;
+    vec2 p = coord*round(vec2(1.0)/texel.xy)-vec2(0.5);
+    ivec2 b = ivec2(floor(p)); vec2 f = floor(fract(p)*256.0+0.5)/256.0;
+    float xy = floor(f.x*f.y*256.0+0.5)/256.0;
+    // Quantize the cross weight, deriving the others to preserve unit sum.
+    vec4 w = vec4(1.0-f.x-f.y+xy,f.x-xy,f.y-xy,xy);
+    vec4 a = vec4(alphaAt(b),alphaAt(b+ivec2(1,0)),alphaAt(b+ivec2(0,1)),alphaAt(b+ivec2(1,1)));
+    return floor(dot(w,a)*65535.0+0.5)/65535.0;
 }
 vec4 blurLinear(vec2 pixel) {
     // Linear sampler with transparent (not replicated) edge texels. Recover
@@ -128,7 +122,7 @@ void main() {
             }
             result = stockBytes(sampled); return;
         } else if (effect.x == 15.0 || effect.x == 16.0) {
-            // Stock WavePS / RipplePS (byondwin 516.1688 HLSL), one pass for up to ten records. t is the
+            // Stock 516.1688 wave / ripple, one pass for up to ten records. t is the
             // normalized coordinate on stock's own surface; output pixels map into the input by effect.zw.
             vec2 t = (floor(uv*texel.zw)+vec2(0.5)+effect.zw-effectColor.xy)/effectColor.zw;
             int n = int(waves[0].x);
@@ -153,13 +147,13 @@ void main() {
             }
             result = floor(clamp(stockSurfaceAt(t,waves[0].y > 0.5),0.0,1.0)*255.0+0.5)/255.0; return;
         } else if (effect.x == 17.0) {
-            // Stock rgbThresholdPS: keep a pixel when any straight channel exceeds the threshold.
+            // Stock bloom threshold: keep a pixel when any straight channel exceeds the threshold.
             src = floor(src*255.0+0.5)/255.0;
             float ia = src.a > 0.0 ? 1.0/src.a : 1.0;
             vec4 t = clamp(src*vec4(ia,ia,ia,1.0)-vec4(effectColor.rgb,1.0),0.0,1.0);
             result = any(greaterThan(t,vec4(0.0))) ? src : vec4(0.0); return;
         } else if (effect.x == 18.0) {
-            // Stock spreadoutPS on the outline's geometry (OutlineVS): nine summed taps, renormalized by alpha.
+            // Stock bloom spread on the outline's geometry: nine summed taps, renormalized by alpha.
             vec2 dimensions = round(vec2(1.0)/texel.xy);
             vec2 p = (uv*(dimensions*texel.xy)-vec2(0.5))*(vec2(1.0)+2.0*effect.z*texel.xy)+vec2(0.5);
             float t = effect.y, d = t*0.70710677;
@@ -192,7 +186,7 @@ void main() {
                 vec2 delta = axis*tap.x;
                 result += (blurLinear(pixel-delta)+blurLinear(pixel+delta))*tap.y;
             }
-        } else if (effect.x < 4.5 && texel.w > 0.5) {
+        } else if (effect.x < 4.5) {
             // Paired stock samples use 8-bit fractions and bytes on BOTH axes.
             ivec2 p = ivec2(floor(uv*(round(vec2(1.0)/texel.xy)+2.0*effect.z))-effect.z);
             ivec2 axis = effect.x < 3.5 ? ivec2(1,0) : ivec2(0,1);
@@ -204,31 +198,20 @@ void main() {
                 result += (blurByte(p,axis,-tap.x)+blurByte(p,axis,tap.x))*tap.y;
             }
             result = stockBytes(result); return;
-        } else if (effect.x < 4.5) {
-            // General Gaussian: bounded full support, edge clamp, per-axis bytes.
-            vec4 sum = vec4(0.0); float weights = 0.0;
-            int radius = min(300, int(ceil(3.0 * effect.y)));
-            for (int i = -radius; i <= radius; ++i) {
-                float weight = exp(-float(i*i)/(2.0*effect.y*effect.y));
-                vec2 delta = effect.x < 3.5 ? vec2(float(i)*texel.x,0) : vec2(0,float(i)*texel.y);
-                sum += iconAt(uv + delta) * weight; weights += weight;
-            }
-            result = sum / weights;
         } else if (effect.x < 5.5) {
             // D3DXSprite uses float(width * reciprocalWidth) for its UV extent;
-            // OutlineVS then expands around 0.5. Neither product cancels exactly.
+            // the outline then expands around 0.5. Neither product cancels exactly.
             vec2 dimensions = round(vec2(1.0)/texel.xy);
             vec2 stockUv = (uv*(dimensions*texel.xy)-vec2(0.5))*
                 (vec2(1.0)+2.0*effect.z*texel.xy)+vec2(0.5);
-            if (texel.w > 0.5) src = blurLinear(stockUv/texel.xy-vec2(0.5));
-            if (texel.w > 0.5 && src.a > 0.0) {
+            src = blurLinear(stockUv/texel.xy-vec2(0.5));
+            if (src.a > 0.0) {
                 // Recover every A8R8G8B8 channel from the half-float surface.
                 // Alpha-only rescaling accumulates RGB error in translucent ladders.
                 src = floor(src*255.0+0.5)/255.0;
             }
-            // Stock samples normalized coordinates; general filters keep their
-            // unquantized pixel-space interpolation and historical boundaries.
-            vec2 p = texel.w > 0.5 ? stockUv : uv / texel.xy - vec2(0.5);
+            // Stock samples normalized coordinates.
+            vec2 p = stockUv;
             float t = effect.y, d = mod(floor(effect.w/2.0),2.0) != 0.0 ? t : t*0.70710677;
             float a = src.a + alphaLinear(p,vec2(-t,0)) + alphaLinear(p,vec2(t,0)) +
                 alphaLinear(p,vec2(0,-t)) + alphaLinear(p,vec2(0,t)) +
@@ -237,18 +220,11 @@ void main() {
             a = mod(effect.w,2.0) != 0.0 ? (a >= 0.75 ? 1.0 : 0.0) : min(1.0,a);
             float ring = (1.0-src.a)*effectColor.a*a;
             result = src + vec4(effectColor.rgb*ring,ring);
-        } else if (effect.x < 6.5) {
-            ivec2 p = ivec2(floor(uv/texel.xy)); float a = src.a;
-            for (int y = -4; y <= 4; ++y) for (int x = -4; x <= 4; ++x)
-                if (float(x*x+y*y) <= effect.z*effect.z) a = max(a,alphaAt(p+ivec2(x,y)));
-            a *= effectColor.a;
-            result = vec4(effectColor.rgb*a,a);
         } else if (effect.x > 7.5) result = borderLinear(uv/texel.xy-vec2(0.5));
         else result = src;
-        // General filters round straight channels at operation boundaries and
-        // retain float ladder alpha. The stock outline profile also rounds each
-        // step; it recovers those byte values before its next bilinear sample.
-        if (texel.z > 0.5 && texel.w > 0.5 && effect.x == 5.0) {
+        // The outline rounds each step; it recovers those byte values before its
+        // next bilinear sample. Other passes round straight channels.
+        if (effect.x == 5.0) {
             result = stockBytes(result);
         } else if (texel.z > 1.5) {
             // Plane capture boundary: byte PREMULTIPLIED channels, after blend.

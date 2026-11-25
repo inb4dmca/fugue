@@ -1080,7 +1080,7 @@ private slots:
         QVector<MapPointer> events;
         map.setInputHandler("main.map",true,[&](const MapPointer& p){events.push_back(p);});
         map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map));
-        // Independent D3D9 readbacks of recovered 516.1688 OutlineVS/PS on
+        // Independent D3D9 readbacks of the stock 516.1688 outline on
         // A8R8G8B8 (build/fractional-outline): binary/partial 16px patch, 224px
         // source, growing surfaces. These are not renderer-generated expectations.
         QImage black(224,224,QImage::Format_RGBA8888);black.fill(Qt::black);
@@ -1089,7 +1089,7 @@ private slots:
             MapSprite s;s.image=QImage(16,16,QImage::Format_RGBA8888);
             s.image.fill(QColor(255,255,255,int(v[0])));s.position={96,96};s.plane=1;
             MapSprite m;m.kind=MapSprite::Master;m.plane=1;
-            PlaneFilter o;o.kind=PlaneFilter::Outline;o.stock=true;o.size=v[1];o.color={1,0,1,1};
+            PlaneFilter o;o.kind=PlaneFilter::Outline;o.size=v[1];o.color={1,0,1,1};
             auto e=std::make_shared<PlaneEffects>();e->filters={o};m.planeEffects=e;
             mailbox->publish(black,black.rect(),0,0,{}, {s,m});const auto image=map.grabFramebuffer();
             const auto c=image.pixelColor((2*int(v[2])+1)*image.width()/448,(2*int(v[3])+1)*image.height()/448);
@@ -1126,9 +1126,9 @@ private slots:
             auto sprites=edgeOutline.sprites;
             for(auto& s:sprites) if(s.kind==MapSprite::Master && s.planeEffects) {
                 auto e=std::make_shared<PlaneEffects>(*s.planeEffects);e->filters.clear();
-                PlaneFilter o;o.kind=PlaneFilter::Outline;o.stock=true;o.size=v.size;o.flags=v.flags;
+                PlaneFilter o;o.kind=PlaneFilter::Outline;o.size=v.size;o.flags=v.flags;
                 o.color={float((v.rgb>>16)&255)/255,float((v.rgb>>8)&255)/255,float(v.rgb&255)/255,v.alpha/255.f};
-                PlaneFilter b;b.stock=true;b.size=.5;
+                PlaneFilter b;b.size=.5;
                 for(int i=0;i<v.repeats;++i) {if(v.repeats>1)e->filters.push_back(b);e->filters.push_back(o);}
                 s.planeEffects=e;
             }
@@ -1891,7 +1891,7 @@ private slots:
             return map.grabFramebuffer();
         };
         const auto baseline=frame({});QVERIFY(!baseline.isNull());
-        const QJsonObject unknown{{"type",99}},malformed{{"type",1},{"flags",1},{"paramMask",1},{"params","bad hex"}};
+        const QJsonObject unknown{{"type",99},{"flags",1}},malformed{{"type",1},{"flags",1},{"paramMask",1},{"params","bad hex"}};
         const QJsonObject outline{{"type",2},{"flags",1},{"paramMask",0x23},{"params","00000040ff00ffff0000"}};
         const QJsonObject negative{{"type",1},{"flags",1},{"paramMask",1},{"params","000080bf"}};
         QJsonArray tooMany;for(int i=0;i<9;++i) tooMany.append(outline);
@@ -1986,7 +1986,7 @@ private slots:
             MapSprite pattern;pattern.plane=1;pattern.image=black;pattern.image.fill(Qt::transparent);
             { QPainter p(&pattern.image);p.fillRect(shape=="square" ? QRect(368,208,256,256) : QRect(0,0,496,672),Qt::white); }
             auto frame=[&](double size) {
-                auto effects=std::make_shared<PlaneEffects>();PlaneFilter f;f.stock=true;f.size=size;effects->filters={f};master.planeEffects=effects;
+                auto effects=std::make_shared<PlaneEffects>();PlaneFilter f;f.size=size;effects->filters={f};master.planeEffects=effects;
                 mailbox->publish(black,black.rect(),0,0,geometry,{pattern,master,markers});
                 const auto got=map.grabFramebuffer();
                 QImage source(black.size(),QImage::Format_RGB32);

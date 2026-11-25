@@ -396,7 +396,7 @@ private slots:
         const auto frame=terrain.prepare(w,{},0,false);
         setFields(w.appearances[1], R"({"overlays":[2]})");
         QCOMPARE(scene.prepare(w,frame,{}).size(),1);
-        setFields(w.appearances[1], R"({"filters":[{}],"overlays":[2]})");
+        setFields(w.appearances[1], R"({"filters":[{"type":99,"flags":1}],"overlays":[2]})");
         QVERIFY(scene.prepare(w,frame,{}).empty());
         setFields(w.appearances[1], R"({"hasColor":true,"colorR":0,"colorG":0,"colorB":255,"colorA":128,"overlays":[2]})");
         const auto tinted=scene.prepare(w,frame,{}); QCOMPARE(tinted.size(),1);

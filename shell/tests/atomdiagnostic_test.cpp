@@ -177,7 +177,7 @@ private slots:
         QVERIFY(f.prepare().empty()); QCOMPARE(f.trace.map.first.reason,TraceReason::TransformTree);
         QVERIFY(!info().rows[0].thumbnail.isNull()); QCOMPARE(f.trace.info.outcome,TraceReason::Composed);
         QVERIFY(f.trace.info.tree.nodes[0].transformIgnored);
-        setFields(f.w.appearances[2], "{\"filters\":[{}]}");
+        setFields(f.w.appearances[2], "{\"filters\":[{\"type\":99,\"flags\":1}]}");
         QVERIFY(info().rows[0].thumbnail.isNull()); QCOMPARE(f.trace.info.outcome,TraceReason::InfoUnsupported);
         setFields(f.w.appearances[2], "{}"); f.w.appearances[2].fields.iconResID = 1;
         thumbnails.begin(f.w,[](uint32_t,QByteArray& b){b=QByteArray(4*1024*1024+1,'x');return true;},0);

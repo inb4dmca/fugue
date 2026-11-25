@@ -159,7 +159,7 @@ private slots:
         record["params"]=QString::fromLatin1(bytes.toHex());
         const auto refused=decode({record});QVERIFY(refused.filters.empty());QCOMPARE(refused.ignoredFilters,size_t(1));
     }
-    auto mixed=valid; shell::PlaneFilter blur;blur.stock=true;mixed.filters.push_back(blur);QVERIFY(mixed.valid({32,32}));
+    auto mixed=valid; shell::PlaneFilter blur;mixed.filters.push_back(blur);QVERIFY(mixed.valid({32,32}));
     f.phase("mask");
     auto grouped=QJsonDocument::fromJson(QByteArray::fromStdString(fieldsJson(f.world.appearances[4]))).object();
     grouped["appearanceFlags"]=int(0x14000204);

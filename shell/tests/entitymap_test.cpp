@@ -221,7 +221,7 @@ private slots:
         QCOMPARE(reset.fields.offset, QPoint()); QCOMPARE(reset.fields.tint, (std::array<float,4>{1,1,1,1}));
         const auto transform = shell::decodeEntityAppearance(model::appearanceOf(R"({"hasTransform":true,"transform":[]})"), 32);
         QVERIFY(transform.valid); QVERIFY(!transform.fields.transformValid); QVERIFY(transform.fields.affine);
-        const auto effects = shell::decodeEntityAppearance(model::appearanceOf(R"({"appearanceFlags":268435456,"filters":[{"type":99}]})"), 32);
+        const auto effects = shell::decodeEntityAppearance(model::appearanceOf(R"({"appearanceFlags":268435456,"filters":[{"type":99,"flags":1}]})"), 32);
         QVERIFY(effects.valid); QVERIFY(effects.fields.master); QVERIFY(effects.fields.planeEffects);
         QCOMPARE(effects.fields.planeEffects->ignoredFilters, size_t(1));
     }
@@ -470,7 +470,7 @@ private slots:
         const auto separate=draw();const shell::LocalTargets separatePlan(separate);
         QVERIFY(separatePlan.groups[0].valid);QCOMPARE(separatePlan.groups[0].bounds.size(),QSize(32,32));
         QCOMPARE(std::count_if(separate.begin(),separate.end(),[](const auto& s){return !s.imageIdentity && s.renderTarget.isEmpty();}),1);
-        for(const auto fields:{R"({"renderTarget":"*local","filters":[{}]})",
+        for(const auto fields:{R"({"renderTarget":"*local","filters":[{"type":99,"flags":1}]})",
                                R"({"renderTarget":"*local","hasTransform":true,"transform":[]})"}) {
             setFields(w.appearances[1], fields);const auto refused=draw();
             const shell::LocalTargets rejected(refused);QVERIFY(!rejected.groups.empty());QVERIFY(!rejected.groups[0].valid);
@@ -670,7 +670,8 @@ private slots:
         QVERIFY(master.planeEffects); QVERIFY(master.planeEffects->supported); QVERIFY(master.planeEffects->matrix);
         QVERIFY(!master.affine); // geometry is viewport-sized, not icon-sized
         QCOMPARE((*master.planeEffects->matrix)[2],3.0);
-        setFields(w.appearances[10], R"({"appearanceFlags":268435456,"filters":[{"type":1,"paramMask":1,"params":{"bstr":"0000803f"}}]})");
+        // A filtered master needs one screen position.
+        setFields(w.appearances[10], R"({"appearanceFlags":268435456,"screenLoc":"1,1","filters":[{"type":1,"flags":1,"paramMask":1,"params":{"bstr":"0000803f"}}]})");
         const auto filtered=draw(); QCOMPARE(filtered.size(),2);
         QVERIFY(filtered.back().planeEffects->supported);
         QCOMPARE(filtered.back().planeEffects->filters.size(),size_t(1));
@@ -682,7 +683,7 @@ private slots:
         QCOMPARE(matrixMaster.back().tint,(std::array<float,4>{1,1,1,1}));
         QVERIFY(matrixMaster.back().planeEffects->supported);
         setFields(w.appearances[10], affinefixture::fields({0,-1,3,1,0,2},
-            R"(,"appearanceFlags":268435456,"filters":[{"type":99}])"));
+            R"(,"appearanceFlags":268435456,"filters":[{"type":99,"flags":1}])"));
         const auto fallback=draw();QCOMPARE(fallback.size(),2);
         QVERIFY(fallback.back().planeEffects->supported);QVERIFY(fallback.back().planeEffects->filters.empty());
         QCOMPARE(fallback.back().planeEffects->ignoredFilters,size_t(1));
@@ -824,7 +825,7 @@ private slots:
         atom.chain.steps[0].easing=0;
         // Placement/effect/ownership transitions are not material interpolation.
         for(const auto* addition:{",\"pixelX\":1",",\"plane\":2,\"hasPlane\":true",
-                ",\"filters\":[{\"type\":1,\"paramMask\":1,\"params\":{\"bstr\":\"0000803f\"}}]"}) {
+                ",\"filters\":[{\"type\":1,\"flags\":1,\"paramMask\":1,\"params\":{\"bstr\":\"0000803f\"}}]"}) {
             auto json=scalar(255); json.insert(json.size()-1,addition); setFields(w.appearances[10], json);
             QCOMPARE(draw(1500).size(),1);
         }
@@ -1671,7 +1672,7 @@ private slots:
             for (const auto& pass : plan->passes) for (const auto& item : pass.items)
                 if (item.effect[0] == op) {
                     ++passes; if (op != 17) QVERIFY(item.params);
-                    // The bar sign's seven waves (record bytes 1..7) share one pass, like stock's ten-wave WavePS.
+                    // The bar sign's seven waves (record bytes 1..7) share one pass, like stock's ten-wave pass.
                     if (name == "sign-static") QCOMPARE((*item.params)[0], 7.f);
                 }
             // wave-split: a WAVE_BOUNDED record starts its own pass.
@@ -2174,7 +2175,7 @@ private slots:
         atom.chain.steps[0].easing=63; QVERIFY(scene.prepare(w,map,reader(),1'500'000'000).empty()); // unknown curve
         atom.chain.steps[0].easing=0; atom.chain.steps[0].flags=8;
         QVERIFY(scene.prepare(w,map,reader(),1'500'000'000).empty());
-        atom.chain.steps[0].flags=0; setFields(w.appearances[1], R"({"filters":[{}]})");
+        atom.chain.steps[0].flags=0; setFields(w.appearances[1], R"({"filters":[{"type":99,"flags":1}]})");
         QVERIFY(!scene.prepare(w,map,reader(),1'500'000'000).empty()); // animates, drawn unfiltered
         setFields(w.appearances[1], affinefixture::fields({0,-1,0,1,0,0}));
         {   // Turn(90) -> identity rotates through 45 degrees at unit scale; a
@@ -2340,7 +2341,7 @@ private slots:
             setFields(w.appearances[2], fields); const auto s=prepare(); QCOMPARE(s.size(),plain.size());
             for(qsizetype i=0;i<s.size();++i) { QVERIFY(s[i].rootAffine); QCOMPARE(s[i].position,plain[i].position); }
         }
-        setFields(w.appearances[2], R"({"filters":[{}]})"); QCOMPARE(prepare().size(),plain.size()); // drawn unfiltered
+        setFields(w.appearances[2], R"({"filters":[{"type":99,"flags":1}]})"); QCOMPARE(prepare().size(),plain.size()); // drawn unfiltered
         setFields(w.appearances[2], child);
         // Any invertible matrix: shear, scale 2, fractional translation, vg's 0.7 shrink.
         for(const auto& m:std::array<std::array<float,6>,4>{{
@@ -2507,7 +2508,7 @@ private slots:
         // Nested target overlays (vg clothing) keep the attachment while every
         // resolved target part stays inside the 32px cell.
         QVERIFY(hasImage(prepare()));
-        setFields(w.appearances[3], R"({"filters":[{}]})"); QVERIFY(hasImage(prepare())); // filtered targets are drawn unfiltered
+        setFields(w.appearances[3], R"({"filters":[{"type":99,"flags":1}]})"); QVERIFY(hasImage(prepare())); // filtered targets are drawn unfiltered
         setFields(w.appearances[3], "{}");
         for(const auto& m:std::array<std::array<float,6>,2>{{{.8f,0,0,0,.8f,0},{1,0,0,0,.7f,0}}}) {
             setFields(w.appearances[1], affinefixture::fields(m,",\"overlays\":[3]"));
@@ -2602,7 +2603,7 @@ private slots:
         const auto replaced=draw(); QCOMPARE(replaced.size(),2); for(const auto& sprite:replaced) QVERIFY(sprite.imageIdentity);
         // A supported empty override still hides the parent. Unsupported effects do not.
         w.appearances[2].fields.iconResID=UINT32_MAX; QVERIFY(draw().empty());
-        setFields(w.appearances[2], R"({"appearanceFlags":262144,"filters":[{}]})"); QVERIFY(draw().empty()); // filters no longer make it unsupported
+        setFields(w.appearances[2], R"({"appearanceFlags":262144,"filters":[{"type":99,"flags":1}]})"); QVERIFY(draw().empty()); // filters no longer make it unsupported
         setFields(w.appearances[2], R"({"appearanceFlags":262144,"renderTarget":"x"})"); QCOMPARE(draw().size(),2);
         const std::array<uint8_t,9> remove{1,9,0,0,0,0,0,0,0};session.ingest(0x76,remove);
         QVERIFY(!shell::mapPointerCurrent(*hit,w,0)); QVERIFY(draw().empty()); hud(9);
@@ -2632,7 +2633,7 @@ private slots:
         for(uint8_t kind:{0,7,255}){w.imageInstances[7].locKind=kind;QCOMPARE(count(),1);}w.imageInstances[7].locKind=1;
         w.imageInstances[7].hasVis=true;QCOMPARE(count(),2);w.imageInstances[7].hasVis=false; // tail independent of root
         setFields(w.appearances[2], R"({"appearanceFlags":262148})"); QCOMPARE(count(),1); // override replaces target
-        setFields(w.appearances[2], R"({"filters":[{}]})"); QCOMPARE(count(),2); // drawn unfiltered
+        setFields(w.appearances[2], R"({"filters":[{"type":99,"flags":1}]})"); QCOMPARE(count(),2); // drawn unfiltered
         setFields(w.appearances[2], R"({"renderTarget":"x"})");QCOMPARE(count(),1);
         // A KEEP_TOGETHER image is drawn (stock 516.1689).
         setFields(w.appearances[2], R"({"appearanceFlags":67108864})");QCOMPARE(count(),2);
@@ -2690,7 +2691,7 @@ private slots:
         setFields(w.appearances[1], affinefixture::fields({0,0,0,0,1,0})); // singular: no image
         { const auto s=prepare(); QVERIFY(std::none_of(s.begin(),s.end(),[](const auto& p){return p.kind==shell::MapSprite::Image;})); }
         setFields(w.appearances[1], affinefixture::fields({0,-1,0,1,0,0}));
-        setFields(w.appearances[2], R"({"filters":[{}]})"); QCOMPARE(prepare().size(),2); // drawn unfiltered
+        setFields(w.appearances[2], R"({"filters":[{"type":99,"flags":1}]})"); QCOMPARE(prepare().size(),2); // drawn unfiltered
         setFields(w.appearances[2], affinefixture::fields({1,0,0,0,1,0})); QCOMPARE(prepare().size(),2);
         setFields(w.appearances[2], R"({"overlays":[3]})"); QCOMPARE(prepare().size(),3);
         // RESET_TRANSFORM (runechat) ignores the target matrix; NO_CLIENT_COLOR is
@@ -3420,7 +3421,6 @@ private slots:
                     QVERIFY(s.planeEffects && s.planeEffects->relayFilters());
                     QCOMPARE(s.planeEffects->ignoredFilters,size_t(0));
                     QCOMPARE(s.planeEffects->filters.size(),size_t(1));
-                    QVERIFY(s.planeEffects->filters[0].stock);
                     QCOMPARE(s.planeSourceDependency,QString("*relay"));
                 }
             }
@@ -3432,9 +3432,9 @@ private slots:
         // Ordinary flat siblings reuse traversal; this is not a one-child flag whitelist.
         f.relay({{"overlays",QJsonArray{4,4}}}); QCOMPARE(f.sprites.size(),5);
         const QJsonObject refused[] = {
-            {{"filters",QJsonArray{QJsonObject{{"type",99}}}}},
-            {{"filters",QJsonArray{QJsonObject{{"type",99}},shell::test::PlaneSourceFixture::blur("0000803f")[0]}},{"overlays",QJsonArray{4}}},
-            {{"filters",QJsonArray{shell::test::PlaneSourceFixture::blur("0000803f")[0],QJsonObject{{"type",99}}}}},
+            {{"filters",QJsonArray{QJsonObject{{"type",99},{"flags",1}}}}},
+            {{"filters",QJsonArray{QJsonObject{{"type",99},{"flags",1}},shell::test::PlaneSourceFixture::blur("0000803f")[0]}},{"overlays",QJsonArray{4}}},
+            {{"filters",QJsonArray{shell::test::PlaneSourceFixture::blur("0000803f")[0],QJsonObject{{"type",99},{"flags",1}}}}},
             {{"filters",QJsonArray{shell::test::PlaneSourceFixture::blur("0000803f")[0],shell::test::PlaneSourceFixture::blur("01008040")[0]}}}, // chain blur >4
             {{"filters",shell::test::PlaneSourceFixture::blur("000080bf")}}, // negative
             {{"filters",shell::test::PlaneSourceFixture::blur("0000807f")}}, // infinity
@@ -3481,7 +3481,7 @@ private slots:
             R"({"maptext":"text"})", R"({"hasTransform":true})",
             R"({"vars":[{"bit":8192,"data":"2000"}]})",
             R"({"filters":[{"type":1,"flags":1,"paramMask":1,"params":"0000803f"}]})",
-            R"({"filters":[{"type":99}]})"
+            R"({"filters":[{"type":99,"flags":1}]})"
         };
         for (const char* fields:refusedChildren) {
             setFields(f.world.appearances[4], fields); f.refresh(); QVERIFY2(noRelay(),fields);
@@ -3493,8 +3493,8 @@ private slots:
         setFields(f.world.appearances[4], "{}"); f.refresh(); QCOMPARE(f.sprites.size(),3); // zero child offsets
         QCOMPARE(f.at({8,72}).click.over.kind,uint8_t(proto::enc::RefTurf));
         const QJsonObject refusedRoots[]={
-            {{"filters",QJsonArray{QJsonObject{{"type",99}}}}},
-            {{"filters",QJsonArray{Fixture::blur("0000803f")[0],QJsonObject{{"type",99}}}}},
+            {{"filters",QJsonArray{QJsonObject{{"type",99},{"flags",1}}}}},
+            {{"filters",QJsonArray{Fixture::blur("0000803f")[0],QJsonObject{{"type",99},{"flags",1}}}}},
             {{"hasTransform",true}}, {{"pixelX",8}}, {{"appearanceFlags",0x0c000204}}
         };
         for (const auto& changes:refusedRoots) {
@@ -3583,9 +3583,9 @@ private slots:
         f.sourceObservation(rows.first().toObject());
         const auto base=QJsonDocument::fromJson(QByteArray::fromStdString(fieldsJson(Fixture{}.world.appearances[2]))).object();
         for (const auto filters:{
-                QJsonArray{QJsonObject{{"type",99}}},
+                QJsonArray{QJsonObject{{"type",99},{"flags",1}}},
                 QJsonArray{Fixture::blur("0000")[0]},
-                QJsonArray{Fixture::blur("0000803f")[0],QJsonObject{{"type",99}}}}) {
+                QJsonArray{Fixture::blur("0000803f")[0],QJsonObject{{"type",99},{"flags",1}}}}) {
             auto master=base; master["filters"]=filters;
             setFields(f.world.appearances[2], QJsonDocument(master).toJson(QJsonDocument::Compact).toStdString()); f.relay({});
             const auto m=std::find_if(f.sprites.cbegin(),f.sprites.cend(),[](const auto& s){return s.kind==shell::MapSprite::Master;});
