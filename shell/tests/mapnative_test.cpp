@@ -79,9 +79,10 @@ static QAction* displayAction(SkinWindow& window, const QString& name) {
     return nullptr;
 }
 
-// Pixel-only cases share the native window/compositor, never a MapWidget's
-// frame, renderer caches, mailbox, metrics or input callbacks. Keep lifecycle,
-// focus, desktop capture and resource-recreation cases on independent windows.
+// A graphics device belongs to the top-level window, so maps shown in one long-lived host share its device and
+// skip creating one each. Every test still gets its own MapWidget: renderer, textures, pipelines, mailbox,
+// metrics and input state are never shared. Tests of the window itself (skin routing, display changes, edges,
+// raster windows, popups) and replays into a new window keep their own top-level.
 class PixelMapHosts {
     std::map<QRhiWidget::Api, std::unique_ptr<QWidget>> windows_;
 public:
@@ -107,6 +108,11 @@ public:
         MapWidget::show();
         host.show(); host.raise();
     }
+protected:
+    void resizeEvent(QResizeEvent* e) override { // the host stays the map's extent
+        MapWidget::resizeEvent(e);
+        if (parentWidget() && parentWidget()->objectName() == "nativePixelTestHost") parentWidget()->resize(size());
+    }
 };
 #endif
 
@@ -121,7 +127,7 @@ private slots:
         const auto mismatch=test::backendMismatch(); QVERIFY2(mismatch.isEmpty(),qPrintable(mismatch));
     }
     void screenshotNativeComposition() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         QString error;
         QVERIFY(map.screenshot(&error).isNull()); QVERIFY(!error.isEmpty());
         map.resize(300, 220); map.setViewSize({3, 2});
@@ -445,7 +451,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(submitted.size()>0,5000);
     }
     void hudPixels() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(320,240);map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         const auto initialMetricTime=MapMetrics::nowNs()+60'000'000'000;metrics->reset(initialMetricTime);
@@ -498,7 +504,7 @@ private slots:
         QVERIFY(!events.back().screen);QCOMPARE(events.back().click.over.kind,fugue::proto::enc::RefTurf);
     }
     void maptextPixels() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(320,240); map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -554,7 +560,7 @@ private slots:
         QCOMPARE(half[0].tint[3],128.f/255);
     }
     void attachmentTreePixels() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -637,7 +643,7 @@ private slots:
         }
     }
     void visPixels() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(320,240);map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -705,7 +711,7 @@ private slots:
         w.vis.erase(turf);QVERIFY(!mapPointerCurrent(events.back(),w,0));
     }
     void imagePixels() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(320,240);map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         const auto initial=MapMetrics::nowNs()+60'000'000'000;metrics->reset(initial);
@@ -780,7 +786,7 @@ private slots:
     void imageTargetTransformPixels() {
         QFETCH(bool,mob);
         const uint32_t targetKey=42u | (mob ? fugue::model::kRegistryA : 0u);
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(160,160); map.setViewSize({5,5});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -903,8 +909,8 @@ private slots:
             {"shrink",3},{"nested",4},{"wide root",2},{"square",3},{"reset",3},{"translate",3}};
         QVERIFY2(receipts==expectedReceipts,qPrintable(path+": incomplete Click receipt inventory"));
         const QString directory=QFileInfo(path).absolutePath();
-        MapWidget map;
-        map.setWindowFlag(Qt::FramelessWindowHint); map.resize(160,160); map.setViewSize({5,5});
+        HostedPixelMap map(pixelHosts_);
+        map.resize(160,160); map.setViewSize({5,5});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
         map.setMetrics(metrics); map.setMailbox(mailbox);
         QVector<MapPointer> events; map.setInputHandler("main.map",true,[&](const MapPointer& p){events.push_back(p);});
@@ -966,7 +972,7 @@ private slots:
         QCOMPARE(metrics->snapshot(warm+1'000'000'000).uploadMBPerSecond,0.0);
     }
     void layerBandsAndMouseOpacity() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(192,192); map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -1023,7 +1029,7 @@ private slots:
         events.clear();QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{96,96});QVERIFY(events.empty());
     }
     void stockOutlinePrecisionAndWorkload() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(448,448); map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -1599,7 +1605,6 @@ private slots:
         QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
     }
     void planeSourceCaptureCoverageNative() {
-        pixelHosts_.hide(); // this case also checks independent resource recreation
         QJsonArray rows; QString inventoryError;
         for (const auto* name:{"source-coverage.json","capture-pixels.json","precision-model.json","master-arithmetic.json"}) {
             QJsonArray recorded;
@@ -1608,7 +1613,7 @@ private slots:
             for (const auto& row:recorded) rows.append(row);
         }
         test::PlaneSourceFixture f;
-        MapWidget map; map.resize(320,192); map.setViewSize({5,3});
+        HostedPixelMap map(pixelHosts_); map.resize(320,192); map.setViewSize({5,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
         map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map));
@@ -2080,15 +2085,15 @@ private slots:
         QCOMPARE(totalErrors,0);QCOMPARE(checkedClicks,retainedClicks);
     }
     void planeCompositingPixels() {
-        pixelHosts_.hide(); // leave cold-start/recreation and subsequent window tests isolated
-        class TestMap : public MapWidget {
+        class TestMap : public HostedPixelMap {
         public:
+            explicit TestMap(PixelMapHosts& hosts) : HostedPixelMap(hosts) {}
             bool recreate = false;
             void render(QRhiCommandBuffer* cb) override {
                 if (recreate) { releaseResources(); initialize(cb); recreate = false; }
                 MapWidget::render(cb);
             }
-        } map;
+        } map(pixelHosts_);
         map.resize(96,96); map.setViewSize({1,1});
         auto metrics = std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox = std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2225,6 +2230,7 @@ private slots:
         const auto before = map.grabFramebuffer(); map.recreate = true;
         QCOMPARE(map.grabFramebuffer(), before);
         MapWidget replay;
+        replay.setWindowFlag(Qt::FramelessWindowHint); // the map's extent, not a titled window's minimum width
         replay.resize(map.size()); replay.setViewSize({1,1}); replay.setMailbox(mailbox);
         replay.show(); QVERIFY(QTest::qWaitForWindowExposed(&replay));
         QCOMPARE(replay.grabFramebuffer(), before);
@@ -2243,7 +2249,7 @@ private slots:
         auto read = [&](uint32_t, QByteArray& out) { out = bytes; return true; };
         TurfMap terrain; EntityMap scene;
         auto geometry = terrain.prepare(w,{},0,false);
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(192,192); map.setViewSize({3,3});
         auto metrics = std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox = std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2307,7 +2313,7 @@ private slots:
         atom.key=7; atom.haveKey=true;
         auto read=[](uint32_t id,QByteArray& out){out=iconfixture::flickAsset(id==456?64:32);return true;};
         TurfMap terrain; EntityMap scene; const auto geometry=terrain.prepare(w,{},0,false);
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(192,192); map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2364,10 +2370,7 @@ private slots:
         const auto geometry=terrain.prepare(w,{},0,false);
         QVERIFY(scene.prepare(w,geometry,read,50000000).isEmpty()); ready=true;
         const auto first=scene.prepare(w,geometry,read,1);
-        MapWidget map;
-        // At forced DPR=1 on a 150% Windows desktop, the native title bar forces
-        // a 176px minimum width. These pixel fixtures require their exact extent.
-        map.setWindowFlag(Qt::FramelessWindowHint);
+        HostedPixelMap map(pixelHosts_);
         map.resize(96,96); map.setViewSize({1,1});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2431,8 +2434,7 @@ private slots:
         data[200] = iconfixture::sheet();
         const auto first=scene.prepare(w,geometry,read); QCOMPARE(first.size(),1);
         QCOMPARE(scene.prepare(w,geometry,read).constData(),first.constData());
-        MapWidget map;
-        map.setWindowFlag(Qt::FramelessWindowHint); // exact extent, independent of native title-bar minimum
+        HostedPixelMap map(pixelHosts_);
         map.resize(96,96); map.setViewSize({1,1});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2483,7 +2485,7 @@ private slots:
         const auto first = scene.prepare(w,geometry,read);
         QCOMPARE(first.size(),1); QCOMPARE(first[0].image.pixelColor(16,16),QColor(Qt::blue));
         QCOMPARE(scene.prepare(w,geometry,{}).constData(),first.constData());
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(96,96); map.setViewSize({1,1});
         auto metrics = std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox = std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2523,7 +2525,7 @@ private slots:
         auto read = [&](uint32_t, QByteArray& out) { out = bytes; return true; };
         TurfMap terrain; EntityMap scene;
         const auto geometry = terrain.prepare(w,{},0,false);
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(192,192); map.setViewSize({3,3});
         auto metrics = std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox = std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2625,8 +2627,8 @@ private slots:
             QCOMPARE(clicksInRecording,recording.clicks);retainedClicks+=clicksInRecording;
         }
         QCOMPARE(retainedSamples,518);QCOMPARE(retainedClicks,130);
-        MapWidget map;
-        map.setWindowFlag(Qt::FramelessWindowHint); map.resize(288,288); map.setViewSize({9,9});
+        HostedPixelMap map(pixelHosts_);
+        map.resize(288,288); map.setViewSize({9,9});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
         map.setMetrics(metrics); map.setMailbox(mailbox);
         TurfMap terrain; EntityMap scene; MapVisibility visibility;
@@ -2749,7 +2751,7 @@ private slots:
             image.fill(id==1?Qt::blue:id==2?Qt::white:id==3?Qt::red:Qt::green);
             QBuffer b(&out); b.open(QIODevice::WriteOnly); return image.save(&b,"PNG");
         };
-        MapWidget map; map.setWindowFlag(Qt::FramelessWindowHint); map.resize(320,320); map.setViewSize({5,5});
+        HostedPixelMap map(pixelHosts_); map.resize(320,320); map.setViewSize({5,5});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
         map.setMetrics(metrics); map.setMailbox(mailbox);
         TurfMap terrain; EntityMap scene; MapVisibility visibility;
@@ -2822,7 +2824,7 @@ private slots:
         QCOMPARE(metrics->snapshot(lightNow+61'000'000'000).uploadMBPerSecond,0.0);
     }
     void sceneLastRenderedPicking() {
-        MapWidget map; map.resize(96,96); map.setViewSize({1,1});
+        HostedPixelMap map(pixelHosts_); map.resize(96,96); map.setViewSize({1,1});
         auto mailbox = std::make_shared<MapMailbox>(std::make_shared<MapMetrics>()); map.setMailbox(mailbox);
         QImage black(32,32,QImage::Format_RGBA8888); black.fill(Qt::black);
         MapSprite entity; entity.image = black; entity.image.fill(Qt::red); entity.atom = 42; entity.cell = {1,1};
@@ -2850,7 +2852,7 @@ private slots:
         QCOMPARE(events.back().click.over.kind,uint8_t(fugue::proto::enc::RefTurf));
     }
     void cameraOnlyFramesDoNotUpload() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(96, 96);
         map.setViewSize(QSize(1, 1));
         QImage terrain(96, 32, QImage::Format_RGBA8888);
@@ -2895,8 +2897,8 @@ private slots:
     }
     void staticAffineSprites() {
         QFETCH(bool, mob);
-        MapWidget map;
-        map.setWindowFlag(Qt::FramelessWindowHint); map.resize(96,96); map.setViewSize({3,3});
+        HostedPixelMap map(pixelHosts_);
+        map.resize(96,96); map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
         map.setMetrics(metrics); map.setMailbox(mailbox);
         QImage terrain(96,96,QImage::Format_RGBA8888); terrain.fill(Qt::white);
@@ -2936,15 +2938,15 @@ private slots:
         QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
     }
     void entitySprites() {
-        class TestMap : public MapWidget {
+        class TestMap : public HostedPixelMap {
         public:
+            explicit TestMap(PixelMapHosts& hosts) : HostedPixelMap(hosts) {}
             bool recreate = false;
             void render(QRhiCommandBuffer* cb) override {
                 if (recreate) { releaseResources(); initialize(cb); recreate = false; }
                 MapWidget::render(cb);
             }
-        } map;
-        map.setWindowFlag(Qt::FramelessWindowHint); // exact extent at forced DPR=1 too
+        } map(pixelHosts_);
         map.resize(160, 96); map.setViewSize({3, 3});
         auto metrics = std::make_shared<MapMetrics>();
         auto mailbox = std::make_shared<MapMailbox>(metrics);
@@ -3017,7 +3019,7 @@ private slots:
         auto restored = map.grabFramebuffer();
         QCOMPARE(pixel(restored, 90, 38), blended);
         {
-            MapWidget replay;
+            MapWidget replay; replay.setWindowFlag(Qt::FramelessWindowHint); // the map's extent exactly
             replay.resize(map.size()); replay.setViewSize({3, 3}); replay.setMailbox(mailbox);
             replay.show(); QVERIFY(QTest::qWaitForWindowExposed(&replay));
             auto retained = replay.grabFramebuffer();
@@ -3035,7 +3037,7 @@ private slots:
         QCOMPARE(pixel(frame, 35, 38), QColor(Qt::white));
     }
     void gestures() {
-        MapWidget map;
+        HostedPixelMap map(pixelHosts_);
         map.resize(256,256); map.setViewSize({4,4});
         auto mailbox = std::make_shared<MapMailbox>(std::make_shared<MapMetrics>());
         map.setMailbox(mailbox);
@@ -3145,8 +3147,7 @@ private slots:
         QCOMPARE(events.size(),size_t(3)); QCOMPARE(events.back().kind,MapPointer::Click);
     }
     void pointerEvents() {
-        MapWidget map;
-        map.setWindowFlag(Qt::FramelessWindowHint); // exact extent at forced DPR=1 too
+        HostedPixelMap map(pixelHosts_);
         map.resize(128, 128); map.setViewSize({2, 2});
         auto metrics = std::make_shared<MapMetrics>();
         auto mailbox = std::make_shared<MapMailbox>(metrics);
