@@ -163,9 +163,9 @@ struct VisFixture {
         return "other";
     }
 };
-bool visStockCase(const QString& set, const QString& name, QJsonObject& out, QString& error) {
+bool readStockCase(const QString& path, const QString& set, const QString& name, QJsonObject& out,
+                   QString& error, qsizetype expectedRows = 0) {
     out = {}; error.clear();
-    const QString path = QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json";
     QJsonDocument doc;
     if (!testinput::readRecordedJson(path, doc, error)) return false;
     const auto fail = [&](const QString& detail) { error = path + ": sets." + set + ": " + detail; return false; };
@@ -173,7 +173,8 @@ bool visStockCase(const QString& set, const QString& name, QJsonObject& out, QSt
     if (!doc.isObject() || !sets.isObject() || !sets.toObject()[set].isArray())
         return fail("expected an array of named cases");
     const auto rows = sets.toObject()[set].toArray();
-    if (set == "c" && rows.size() != 12) return fail("expected 12 retained transformed-holder cases");
+    if (expectedRows && rows.size() != expectedRows)
+        return fail(QString("expected %1 retained cases").arg(expectedRows));
     QSet<QString> names;
     QJsonObject found;
     for (qsizetype i = 0; i < rows.size(); ++i) {
@@ -189,9 +190,13 @@ bool visStockCase(const QString& set, const QString& name, QJsonObject& out, QSt
     out = found;
     return true;
 }
+bool visStockCase(const QString& set, const QString& name, QJsonObject& out, QString& error) {
+    return readStockCase(QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json", set, name, out, error, set == "c" ? 12 : 0);
+}
 }
 class EntityMapTest : public QObject {
     Q_OBJECT
+    bool screenRangeDataReady_ = false;
 private slots:
     void appearanceDecoderValuesAndWireFlags() {
         const auto decoded = shell::decodeEntityAppearance(model::appearanceOf(R"({"dir":4,"hasPlane":true,"plane":-32767,
@@ -700,12 +705,30 @@ private slots:
     // turns its plane (the plane relay) and also each overlay about its own pivot; an overlay's own matrix applies first.
     // With KEEP_TOGETHER a master matrix draws nothing, and the overlay is hidden with or without a matrix.
     void masterTreeTransformsLikeStock() {
-        QJsonArray cases;
-        {
-            QFile file(QString(FUGUE_TEST_DATA_DIR) + "/master-transform-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-            cases = QJsonDocument::fromJson(file.readAll()).object()["cases"].toArray();
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/master-transform-world/stock.json";
+        QJsonDocument doc; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, doc, error), qPrintable(error));
+        const auto cases = doc.object()["cases"].toArray();
+        QSet<QString> remaining{"plain", "master-turn", "master-scale", "master-shift", "child-turn",
+                                "master-turn-child-scale", "master-scale-child-turn", "solo-master-turn",
+                                "group-plain", "group-master-turn", "group-child-turn"};
+        QVERIFY2(cases.size() == remaining.size(), qPrintable(path + ": expected 11 retained master-tree cases"));
+        for (const auto& value : cases) {
+            const auto row = value.toObject();
+            const QString name = row["case"].toString(), context = path + ": case " + name + ": ";
+            QVERIFY2(value.isObject() && remaining.remove(name), qPrintable(context + "missing, unknown or duplicate case name"));
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{row["fugueDiffOver8"]}, 1, 0, std::numeric_limits<int>::max()),
+                     qPrintable(context + "fugueDiffOver8 must be an explicit nonnegative integer"));
+            if (name.startsWith("group") || name.startsWith("solo")) {
+                QVERIFY2(row["blue"].isNull(), qPrintable(context + "blue must be explicitly null for the hidden overlay"));
+            } else {
+                QVERIFY2(testinput::isIntegerTuple(row["blue"], 4, 0, 223),
+                         qPrintable(context + "blue must retain four integer bounds in the 224-pixel map"));
+                const auto blue = row["blue"].toArray();
+                QVERIFY2(blue[0].toInt() <= blue[2].toInt() && blue[1].toInt() <= blue[3].toInt(),
+                         qPrintable(context + "blue bounds must be ordered"));
+            }
         }
-        QVERIFY(cases.size() >= 11);
         const float c = 0.70710677f;
         for (const auto& value : cases) {
             const auto row = value.toObject(); const auto name = row["case"].toString();
@@ -1492,13 +1515,17 @@ private slots:
     }
     void atomFiltersReachLikeStock() {
         QFETCH(QString, set); QFETCH(QString, name);
-        QJsonObject stock;
-        {
-            QFile file(QString(FUGUE_TEST_DATA_DIR) + "/atom-filter-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-            for (const auto& c : QJsonDocument::fromJson(file.readAll()).object()["sets"].toObject()[set].toArray())
-                if (c.toObject()["case"].toString() == name) stock = c.toObject();
-        }
-        QVERIFY(!stock.isEmpty()); QCOMPARE(stock["fugueDiffOver8"].toInt(), 0); // the grabs agreed after the change
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/atom-filter-world/stock.json";
+        QJsonObject stock; QString error;
+        QVERIFY2(readStockCase(path, set, name, stock, error, set == "a" ? 14 : 12), qPrintable(error));
+        const QString context = path + ": sets." + set + " case " + name + ": ";
+        QVERIFY2(testinput::isIntegerTuple(QJsonArray{stock["fugueDiffOver8"]}, 1, 0, std::numeric_limits<int>::max()),
+                 qPrintable(context + "fugueDiffOver8 must be an explicit nonnegative integer"));
+        const QStringList fields = name == "overlay-own" ? QStringList{"ownRingBelowOverlay"} :
+            QStringList{"ringAroundBox", name.endsWith("underlay") ? "ringBesideUnderlay" : "ringBelowOverlay"};
+        for (const auto& field : fields)
+            QVERIFY2(stock[field].isBool(), qPrintable(context + field + " must be an explicit boolean"));
+        QCOMPARE(stock["fugueDiffOver8"].toInt(), 0); // the grabs agreed after the change
         // outline size 1, colour #ff0000, DM flags 0; record flag 1 is the captured stock envelope.
         const std::string outline = R"({"type":2,"paramMask":35,"flags":1,"params":"0000803fff0000ff0000"})";
         auto w = world();
@@ -1551,14 +1578,17 @@ private slots:
     }
     void transformedGroupsLikeStock() {
         QFETCH(QString, set); QFETCH(QString, name);
-        QJsonObject stock;
-        {
-            QFile file(QString(FUGUE_TEST_DATA_DIR) + "/transform-group-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-            for (const auto& c : QJsonDocument::fromJson(file.readAll()).object()["sets"].toObject()[set].toArray())
-                if (c.toObject()["case"].toString() == name) stock = c.toObject();
-        }
-        QVERIFY(!stock.isEmpty()); QVERIFY(stock["drawn"].toBool()); QCOMPARE(stock["fugueDiffOver8"].toInt(), 0);
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/transform-group-world/stock.json";
+        QJsonObject stock; QString error;
+        QVERIFY2(readStockCase(path, set, name, stock, error, 12), qPrintable(error));
+        const QString context = path + ": sets." + set + " case " + name + ": ";
+        QVERIFY2(stock["drawn"].isBool(), qPrintable(context + "drawn must be an explicit boolean"));
+        QVERIFY2(testinput::isIntegerTuple(QJsonArray{stock["fugueDiffOver8"]}, 1, 0, std::numeric_limits<int>::max()),
+                 qPrintable(context + "fugueDiffOver8 must be an explicit nonnegative integer"));
+        QVERIFY(stock["drawn"].toBool()); QCOMPARE(stock["fugueDiffOver8"].toInt(), 0);
         if (name == "outline-scale") { // filter first: the 1 px outline is 2 px wide where the matrix stretches it
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{stock["redColumnsLeft"], stock["redRowsAbove"]}, 2, 0, 96),
+                     qPrintable(context + "outline widths must be explicit integer counts in the 96-pixel crop"));
             QCOMPARE(stock["redColumnsLeft"].toInt(), 2); QCOMPARE(stock["redRowsAbove"].toInt(), 1);
         }
         const std::string outline = R"({"type":2,"paramMask":35,"flags":1,"params":"0000803fff0000ff0000"})";
@@ -1739,13 +1769,11 @@ private slots:
     }
     void filterReachLikeStock() {
         QFETCH(QString, set); QFETCH(QString, name);
-        QJsonObject stock;
-        {
-            QFile file(QString(FUGUE_TEST_DATA_DIR) + "/filter-reach-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-            for (const auto& c : QJsonDocument::fromJson(file.readAll()).object()["sets"].toObject()[set].toArray())
-                if (c.toObject()["case"].toString() == name) stock = c.toObject();
-        }
-        QVERIFY(!stock.isEmpty());
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/filter-reach-world/stock.json";
+        QJsonObject stock; QString error;
+        QVERIFY2(readStockCase(path, set, name, stock, error, set == "a" ? 15 : 8), qPrintable(error));
+        QVERIFY2(testinput::isIntegerTuple(QJsonArray{stock["red"], stock["magenta"]}, 2, 0, std::numeric_limits<int>::max()),
+                 qPrintable(path + ": sets." + set + " case " + name + ": red and magenta must be explicit nonnegative integer counts"));
         QVERIFY(stock["red"].toInt() > 0 || stock["magenta"].toInt() > 0); // stock draws the filter's ink
         const std::string outline = R"({"type":2,"paramMask":35,"flags":1,"params":"0000803fff0000ff0000"})";
         const std::array<float,6> quarter{0,1,0,-1,0,0};
@@ -1840,14 +1868,16 @@ private slots:
     }
     void imageTreesTransformLikeStock() {
         QFETCH(QString, name);
-        QJsonObject stock;
-        {
-            QFile file(QString(FUGUE_TEST_DATA_DIR) + "/image-tree-transform-world/stock.json"); QVERIFY(file.open(QIODevice::ReadOnly));
-            for (const auto& c : QJsonDocument::fromJson(file.readAll()).object()["sets"].toObject()["a"].toArray())
-                if (c.toObject()["case"].toString() == name) stock = c.toObject();
-        }
-        QVERIFY(!stock.isEmpty()); QCOMPARE(stock["fugueDiffOver8"].toInt(), 0);
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/image-tree-transform-world/stock.json";
+        QJsonObject stock; QString error;
+        QVERIFY2(readStockCase(path, "a", name, stock, error, 16), qPrintable(error));
+        const QString context = path + ": sets.a case " + name + ": ";
+        QVERIFY2(testinput::isIntegerTuple(QJsonArray{stock["fugueDiffOver8"]}, 1, 0, std::numeric_limits<int>::max()),
+                 qPrintable(context + "fugueDiffOver8 must be an explicit nonnegative integer"));
+        QCOMPARE(stock["fugueDiffOver8"].toInt(), 0);
         const auto yellow = stock["yellow"].toArray(); QCOMPARE(yellow.size(), 4);
+        QVERIFY2(testinput::isIntegerTuple(QJsonArray{yellow[2], yellow[3]}, 2, 1, 96),
+                 qPrintable(context + "yellow width and height must be positive integer sizes in the 96-pixel crop"));
         const std::array<float,6> quarter{0,1,0,-1,0,0}, wide{2,0,0,0,1,0};
         auto w = world(); w.atoms[42].renderIdentity = 10;
         setFields(w.appearances[1], name == "own-turn" ? "{}" : affinefixture::fields(name.endsWith("turn") ? quarter : wide));
@@ -3201,27 +3231,63 @@ private slots:
         QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).empty()); // 272 copies, no clipped-prefix admission
     }
     void screenRangeStockCorpus_data() {
+        screenRangeDataReady_ = false;
         QTest::addColumn<QString>("text"); QTest::addColumn<QSize>("view");
         QTest::addColumn<QList<QPoint>>("observed");
-        QFile file(QFINDTESTDATA("../../tests/data/screen-loc-range-world/stock-positions.json"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto cases=QJsonDocument::fromJson(file.readAll()).array(); QCOMPARE(cases.size(),1904);
-        int admitted=0;
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/screen-loc-range-world/stock-positions.json";
+        QJsonDocument doc; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, doc, error), qPrintable(error));
+        QVERIFY2(doc.isArray(), qPrintable(path + ": expected an array of screen-range observations"));
+        const auto cases = doc.array();
+        QVERIFY2(cases.size() == 1904, qPrintable(path + ": expected 1904 retained screen-range observations"));
+        const QSet<QString> exclusions{"RIGHT+1:-192,SOUTH TO WEST:-192,SOUTH", "WEST,TOP+1:-128 TO WEST,SOUTH:-128"};
+        std::map<std::tuple<QString, QString, QString>, int> occurrences;
+        int admitted = 0;
+        for (qsizetype i = 0; i < cases.size(); ++i) {
+            const auto c = cases[i].toObject();
+            const QString context = path + QString(": row %1: ").arg(i + 1);
+            QVERIFY2(cases[i].isObject(), qPrintable(context + "expected an observation object"));
+            const QString text = c["text"].toString(), view = c["view"].toString(), group = c["group"].toString();
+            QVERIFY2(!text.isEmpty() && !group.isEmpty(), qPrintable(context + "text and group must be nonempty strings"));
+            QVERIFY2(view == "7x5" || view == "8x6", qPrintable(context + "view must be the retained 7x5 or 8x6 size"));
+            // These two generators each retained the same zero-offset control twice.
+            const bool repeatedControl = text == "WEST,SOUTH TO WEST,SOUTH" && view == "7x5" &&
+                                         (group == "tile-offsets" || group == "endpoint-modes");
+            const int count = ++occurrences[{group, view, text}];
+            QVERIFY2(count <= (repeatedControl ? 2 : 1), qPrintable(context + "unexpected duplicate group/view/text case"));
+            const bool excluded = group == "large-pixels" && view == "7x5" && exclusions.contains(text);
+            QVERIFY2(c.contains("excluded") == excluded, qPrintable(context + "only the two retained reversed-pixel cases are excluded"));
+            if (excluded) {
+                QVERIFY2(c["excluded"].toString() == "reversed pixel-offset range", qPrintable(context + "missing exclusion reason"));
+                continue;
+            }
+            QVERIFY2(c["positions"].isArray(), qPrintable(context + "positions must be an explicit array; an empty observation is valid"));
+            const QSize size = view == "7x5" ? QSize(7, 5) : QSize(8, 6);
+            for (const auto& position : c["positions"].toArray()) {
+                QVERIFY2(testinput::isIntegerTuple(position, 2, -12, 236), qPrintable(context + "position must contain two integer marker origins"));
+                const auto xy = position.toArray();
+                QVERIFY2(QRect(QPoint(), size * 32).contains(QRect(QPoint(xy[0].toInt() + 12, xy[1].toInt() + 12), QSize(8, 8))),
+                         qPrintable(context + "retained marker must be fully inside the view"));
+            }
+            ++admitted;
+        }
+        QVERIFY2(occurrences.size() == 1902, qPrintable(path + ": expected 1902 distinct group/view/text cases and two repeated controls"));
+        QCOMPARE(admitted,1902);
         for (qsizetype i=0;i<cases.size();++i) {
             const auto c=cases[i].toObject();
             if (c.contains("excluded")) continue; // two retained reversed-pixel observations, NOT parity passes
-            const auto dims=c["view"].toString().split('x'); QCOMPARE(dims.size(),2);
+            const auto dims=c["view"].toString().split('x');
             QList<QPoint> positions;
             for (const auto p:c["positions"].toArray()) {
                 const auto xy=p.toArray(); positions.append({xy[0].toInt(),xy[1].toInt()});
             }
             QTest::newRow(qPrintable(QString::number(i+1))) << c["text"].toString()
                 << QSize(dims[0].toInt(),dims[1].toInt()) << positions;
-            ++admitted;
         }
-        QCOMPARE(admitted,1902);
+        screenRangeDataReady_ = true;
     }
     void screenRangeStockCorpus() {
+        QVERIFY2(screenRangeDataReady_, "screen-loc-range-world/stock-positions.json data validation did not complete");
         QFETCH(QString,text); QFETCH(QSize,view); QFETCH(QList<QPoint>,observed);
         const auto loc=shell::ScreenLoc::parse(text); QVERIFY2(loc.has_value(),qPrintable(text));
         QList<QPoint> visible;
