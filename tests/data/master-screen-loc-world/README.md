@@ -14,6 +14,13 @@ are a white size-1 outline, a size-2 blur, a green drop shadow, `alpha = 0`, `co
 relay object (`render_source = "*cap"`, `screen_loc = "2,2"`). The `obj` effect is a control: the same object
 without `PLANE_MASTER`, with the cyan square as its own icon. Between phases the screen is emptied.
 
+The world is 15x15 with two levels. Level 1 is the original room: only its 7x7 corner has a floor icon, and the
+first captures, taken when the world was 7x7, were taken again with this world and came out identical. A phase with a
+third field `wide` (`8,1|obj|wide`) moves the eye to 8,8 on level 2, where the turf columns are dark, green and blue
+by x modulo 3, a yellow square stands on the default plane at 6,8 (in the view), 12,8 (past it) and, moved 16
+pixels right, 5,9, a blue tile at 4,8, a cyan square on plane 1 at 12,9 and a yellow one moved 16 pixels right at
+5,10, the turf at 10,10 is coloured magenta by a colour matrix and an object at 10,6 orange by another.
+
 ## Observations
 
 `stock-observations.json` holds, for each phase, its capture and the number of pixels of each marker colour in the
@@ -50,7 +57,8 @@ an overlay at 7,1 at 192..207 (`7,1|ov`).
   icons are in the same places.
 - A range with a percent end: the master acts, and the overlays are where the control object's icons are, which is
   not a plain grid between the two ends. `0%,0% to 50%,50%` and `1,1 to 50%,50%` draw one overlay at 1,1;
-  `2,2 to 100%,3` draws two, at 7,2 and 7,3; `50%,50% to 6,6` draws sixteen, from 4,4 to the top right corner.
+  `2,2 to 100%,3` draws two, at 7,2 and 7,3; `50%,50% to 6,6` draws sixteen, from 4,4 to the top right corner (the
+  rule is in the next section).
 
 In the larger maps part of the world next to the added tiles is black as well (a 16 pixel strip on the left for
 `8,1`; the top 64 rows for `1,9`); it is the same for the master and the control object and is not examined here.
@@ -64,27 +72,93 @@ A master off the view, alone or as a range, acts and asks for the larger map lik
 are drawn there once the scene has grown, which is the frame after the one that learns of the placement, and are
 left out until then or when the scene cannot grow (`EntityMapTest::masterOffViewActsInTheLargerMap`, which compares
 the square's and the overlay's places with these captures). A range's grid follows its first end's pixel offsets for
-masters and ordinary objects (`EntityMapTest::masterRangePixelOffsetsFollowTheFirstEnd`).
+masters and ordinary objects (`EntityMapTest::masterRangePixelOffsetsFollowTheFirstEnd`), when the range is written
+from its lower end.
 
-Still refused, which drops the plane, for a master with KEEP_TOGETHER, overlays, underlays or a blur, outline or
-shadow filter: a range with a percent end, and a range written from its upper end down that has a pixel offset
-(`3:8,3 to 1,1`). Stock places both as it does for an ordinary object; Fugue does not place those ranges for
-ordinary objects either, the percent rule is not understood from these five captures, and the reversed form has one.
-Different offsets on an edge-aligned end (`LEFT`, `TOP`) were not tried and stay unplaced.
+## Percent ends, ranges written backwards, anchors and named maps
+
+A second set of 108 phases (captured together, with the level 2 phases below, on 516.1689) has, in each entry, the
+whole map counted and `"copies"`: the left, top and visible pixels of every cyan square, from the top. The older
+entries were given `"copies"` from their captures too. In every `|ov` phase the master's overlays are exactly where
+the `|obj` control's icon copies are, and every `|alpha0` phase of a placed master hides the square: a master places
+its range like an ordinary screen object. The rule, per axis, on this 7x7 view:
+
+- The tile part of each end (its number, or its anchor, with CENTER at 4 and EAST at 7; LEFT counts as 1) orders the
+  ends, counts the copies and decides how far the map grows. A percent does neither: it moves the grid like a pixel
+  offset, by that share of the view less one tile. `2,1 to 50%,1` draws two copies from 4,1; `50%,1 to 3,1` three
+  from 4,1; `25%,1 to 3,1` three from 2.5,1; `1,1 to 3+50%,1` three from 1,1; `50%,50% to 6,6` sixteen from 4,4 of
+  which those past the view are not drawn; `50%,1 to 6,1` four (4 to 7), the map unchanged; `50%,1 to 9,1` grows the
+  map by two columns as `1,1 to 9,1` would; `3+100%,1 to 1,1` shows one copy, at 7,1, and the map keeps its size.
+  A single `5+50%,1` (8,1) is not drawn and does not grow the map, and that master still acts.
+- Two ends on the same tile keep the first end's percent and offsets: `1,1 to 50%,1` is one copy at 1,1, `50%,1 to
+  1,1` one at 4,1, `100%,1 to 50%,1` one at 7,1, `1,1 to 100%,100%` one at 1,1, `100%:-8,100% to 1,1` one at 7,1
+  less 8 pixels.
+- Written from the lower end up, the first end's percent and offsets move the grid (`1:8,1 to 50%,1`,
+  `50%:8,1 to 3,1`, `LEFT+50%:8,1 to 3,1` 8 pixels right of the plain form).
+- Written from the upper end down, the grid starts at the lower end and is moved by the percents and offsets of both
+  ends added together: `3,1 to 1:8,1` 8 pixels right, `3:4,1 to 1:8,1` 12, `3:8,3:8 to 1:4,1:4` 12 both ways,
+  `3:-8,3 to 1,1` 8 left (the first column half cut), `3:40,3 to 1,1` 40 right; `3+50%,1 to 1,1` three from 4,1,
+  `2+50%,1 to 1+25%,1` two from 5.5,1, `3,1 to 2+25%,1` two from 3.5,1, `3,1 to LEFT+50%,1` three from 4,1,
+  `EAST-50%,1 to 1,1` seven from -2,1 of which 1 to 4 show. Each axis on its own: `1:8,3:8 to 3,1` is 8 pixels right
+  and 8 up.
+- On this odd view CENTER is a whole tile, and a range from it down is like any other: `CENTER,1 to 1,1` four copies
+  from 1,1, `CENTER+25%,1 to 1,1` four from 2.5,1. `CENTER to 6,6`, `CENTER,CENTER to 6,6`, `1,1 to CENTER,CENTER`,
+  `LEFT,BOTTOM to 3,3`, `WEST,1 to EAST,1`, `WEST,SOUTH to EAST,NORTH`, `1,1 to 3,TOP` (three copies on the bottom
+  row) and `LEFT,BOTTOM to RIGHT,TOP` (one at 1,1) were tried too, as were `RIGHT-50%,1 to 1,1` (one at 4,1),
+  `RIGHT-50%:8,1 to 1,1` (8 pixels right of it), `RIGHT-50%,1 to 3,1` (4 to 6) and `1,1 to RIGHT-50%,1` (1,1).
+- One end off the view: `5,5 to 9,9` grows the map by two columns and rows and draws the sixteen copies; `0,0 to
+  2,2` grows it by one column and row on the left and bottom.
+- `map:1,1` and `map:1,1 to 3,3`, where `map` is the id of this world's only map: nothing is drawn, and such a
+  master does nothing (`|alpha0` and `|outline` leave the square as it is).
+
+Fugue places all of these as stock does, for masters and ordinary objects (`EntityMapTest::masterLocStockPositions`
+compares every `|obj` and `|ov` entry with `"copies"`, the map's growth and the master's overlays; the
+`screenLocationGrammar` cases cite these phases). Still not placed, which refuses a master tree with overlays,
+KEEP_TOGETHER or tree filters: a range written backwards with a pixel offset on an edge-aligned end (`RIGHT`, `TOP`,
+`LEFT`, `BOTTOM`) or a percent on a `RIGHT` or `TOP` second end, different offsets with an edge-aligned end other than
+a first end's own before a plain second end, a range running down to a CENTER, and one running down from a half tile.
+
+## What the larger map shows (level 2, `|wide`)
+
+With this skin (`icon-size = 32`, a 224x224 map for the 7x7 view) the larger map is not scaled: it is centred and
+cut by the control, and world and screen objects stand where the larger map puts them (the red square 16 pixels left
+for `8,1|obj|wide`, 32 for `9,1`, 16 right and up for `0,0`, 32 down for `1,9`; Fugue shows the same). What fills it:
+
+- The world past the view is drawn in the added tiles, turfs and objects on any plane: for `8,1` and `9,1` the
+  turfs of column 12, the yellow square at 12,8 and the cyan one on plane 1 at 12,9 show in the new column(s).
+- A black strip covers the world at the control's left and top, 16 pixels times (near + max(near, far)) for the
+  tiles added on the near (left, top) and far (right, bottom) side: 16 pixels wide for `8,1`, 32 for `0,4`, `9,1` and
+  `0,0` (and 16 rows on top for `0,0`), 64 rows for `1,9`. Objects on the default plane and on plane 1 under it are
+  hidden (the yellow squares at 5,9 and 5,10 for `8,1`); screen objects are drawn over it (the overlays of
+  `6,6 to 9,9|ov|wide` in the top 64 rows).
+- An atom coloured by a colour matrix is drawn as if the view filled the control less the strip, scaled to it: the
+  magenta turf at 10,10 is 29 pixels wide at 165..193 for `8,1` instead of 32 at 144..175, which stays black; the same
+  at 13/14 of a tile for one added column or row and 6/7 for two.
+
+Fugue differs in all three (`stockprobe.py pair` of `8,1_obj_wide`, `0,4_obj_wide`, `9,1_obj_wide`, `1,9_obj_wide`
+and `8,1_obj`): the added tiles are black, there is no strip (the world shows to the control's edge), and the
+colour-matrix atoms stand at their own tiles. Not changed: the rule was measured only with a control the size of the
+view and 32 pixel tiles, and the strip clips the world but not screen objects, which Fugue's compositing cannot yet
+express.
 
 ## Reproduction
 
 Requires BYOND and Python/Pillow. Stage icons, then this world:
 
 ```sh
-python -B tests/data/local-relay-world/prepare.py <runtime>
-cp tests/data/master-screen-loc-world/world.dm tests/data/master-screen-loc-world/world.dmf <runtime>/
+python -B tests/data/master-screen-loc-world/prepare.py <runtime>
 dm.exe <runtime>/world.dme
 python -B tests/data/master-screen-loc-world/collect.py <runtime> <out> "1,1|outline" "null|outline" ...
 python -B tests/data/master-screen-loc-world/collect.py <runtime> <out> --port=18851 "8,1|ov" "8,1|obj" ...
+python -B tests/data/master-screen-loc-world/measure.py <out> --copy > <entries.json>
 ```
 
-`collect.py` hosts the world with DreamDaemon `-safe -invisible` on TCP port 18811 (or the one given by a leading
-`--port=`), starts DreamSeeker, writes each
-phase to `phase.txt`, waits for READY and captures the client area with `PrintWindow`. It stops only the two
-processes it started. The window must not be minimised.
+`prepare.py` stages the icons `local-relay-world/prepare.py` generates and this world. `collect.py` hosts the world
+with DreamDaemon `-safe -invisible` on TCP port 18811 (or the one given by a leading `--port=`), starts DreamSeeker,
+writes each phase to `phase.txt`, waits for READY and captures the client area with `PrintWindow`, 1.5 s after READY
+and again 0.3 s later (`stable`: the two were identical). It stops only the two processes it started. The window
+must not be minimised. `measure.py` makes the entries of the second set from a run (the counts, bounds and copies
+described above; it does not count `blurred`) and copies its captures here under the fixture's names; `measure.py
+--add-copies` gave the older entries their copies. The world also takes its phase from `world.params` `case`, with
+`_` for `|` and `~` for `:`, so `tools/stockprobe/stockprobe.py --world tests/data/master-screen-loc-world --params
+case={} pair 8,1_obj_wide` grabs stock and Fugue side by side.

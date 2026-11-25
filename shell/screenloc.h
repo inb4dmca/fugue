@@ -113,16 +113,16 @@ struct ScreenLoc {
             result.last = *last; result.range = true;
             // The grid starts at the lower endpoint, on a half tile or a fraction too (CENTER on an even view, 2.5),
             // and covers the other one (stock 516.1689, stock-parity-world screen-loc-forms,
-            // screen-loc-percent-ranges). The whole grid is moved by the first end's pixel offsets; the second
-            // end's are ignored (master-screen-loc-world "1,1 to 3:8,3", "1:40,1 to 3,3", "1:4,1:8 to 3:12,3").
-            // A range with a percent end is not placed: stock draws one icon for "1,1 to 50%,50%", a column for
-            // "2,2 to 100%,3" and a grid past the far end for "50%,50% to 6,6", and the rule is not known.
-            // Different offsets on an edge-aligned end (LEFT, TOP) were not tried and are not placed either.
+            // screen-loc-percent-ranges); positions() says how percents and pixel offsets move it.
+            // Different offsets with an edge-aligned end (LEFT, TOP) were not tried and are not placed, except an
+            // edge-aligned first end's own before a plain second end: they move the grid ("LEFT+50%:8,1 to 3,1" is 8
+            // pixels right of "LEFT+50%,1 to 3,1", "RIGHT-50%:8,1 to 1,1" of "RIGHT-50%,1 to 1,1",
+            // master-screen-loc-world).
             const auto untried = [](const Axis& a, const Axis& b) {
-                return a.pixels != b.pixels && (a.anchor != Anchor::Tile || b.anchor != Anchor::Tile);
+                const bool tried = a.anchor != Anchor::Tile && b.anchor == Anchor::Tile && !b.pixels;
+                return a.pixels != b.pixels && (a.anchor != Anchor::Tile || b.anchor != Anchor::Tile) && !tried;
             };
             if (untried(result.first.x, result.last.x) || untried(result.first.y, result.last.y)) return {};
-            for (const auto& p : {result.first, result.last}) if (p.x.percent != 0 || p.y.percent != 0) return {};
         }
         return result;
     }
@@ -130,9 +130,11 @@ struct ScreenLoc {
     // larger, black where there is no map, and centres the larger scene: 0,6 adds a column on the left, 0:16,6 too,
     // 18:8,6 (a pixel offset past the edge) none, and an icon of two tiles on the last column or the top row one more
     // (stock 516.1689, stock-parity-world screen-loc-off-view-*). icon: the root icon's size in whole tiles.
+    // A percent enlarges nothing, like a pixel offset: "5+50%,1" (8 on a 7 wide view) is not drawn and the map keeps
+    // its size, and so does "3+100%,1 to 1,1", whose copies reach 9 (master-screen-loc-world).
     QMargins outside(QSize view, QSize icon = {1, 1}) const {
         const auto at = [](const Axis& a, int dimension) {
-            return a.tiles + a.relative * dimension + a.percent * (dimension - 1) + (a.anchor == Anchor::FarEdge ? dimension - 1 : 0);
+            return a.tiles + a.relative * dimension + (a.anchor == Anchor::FarEdge ? dimension - 1 : 0);
         };
         QMargins m;
         for (const Point* p : {&first, &last}) {
@@ -150,29 +152,45 @@ struct ScreenLoc {
     // outside: the tiles around the view that the scene has room for (TurfMap::Frame's geometry.hud).
     std::vector<QPoint> positions(QSize view, int tile, QMargins outside = {}) const {
         if (view.isEmpty() || view.width() > 16384 || view.height() > 16384 || tile <= 0 || tile > 4096) return {};
-        const auto local = [](const Axis& a, int dimension) { return a.tiles + a.relative * dimension + a.percent * (dimension - 1); };
+        // The tile part of an axis: what places the scene, orders a range and counts its copies. A percent is added
+        // afterwards, like a pixel offset (master-screen-loc-world: "2,1 to 50%,1" is two copies from 4,1).
+        const auto local = [](const Axis& a, int dimension) { return a.tiles + a.relative * dimension; };
+        const auto share = [](double percent, int dimension) { return percent * (dimension - 1); };
         const auto shift = [](const Axis& a, int dimension) { return a.anchor == Anchor::FarEdge ? dimension - 1 : 0; };
+        // A percent that lands between pixels goes to the left and up (RIGHT-10% at 489.6 is 489, BOTTOM+33%
+        // at 116.2 is 117).
+        const auto pixel = [&](double at, double percent, bool vertical) {
+            return int(percent != 0 ? (vertical ? std::ceil((at-1)*tile) : std::floor((at-1)*tile)) : std::lround((at-1)*tile));
+        };
         if (!range) {
             const double x = local(first.x,view.width()) + shift(first.x,view.width());
             const double y = local(first.y,view.height()) + shift(first.y,view.height());
-            // Automatic logical-view expansion remains outside this subset.
+            // Automatic logical-view expansion remains outside this subset. A percent past the edge is placed there
+            // and not seen, as in stock.
             if (x < 1 - outside.left() || y < 1 - outside.bottom() || x > view.width() + outside.right() ||
                 y > view.height() + outside.top()) return {};
-            // A percent that lands between pixels goes to the left and up (RIGHT-10% at 489.6 is 489, BOTTOM+33%
-            // at 116.2 is 117).
-            return {QPoint(int(first.x.percent != 0 ? std::floor((x-1)*tile) : std::lround((x-1)*tile))+first.x.pixels,
-                           int(first.y.percent != 0 ? std::ceil((y-1)*tile) : std::lround((y-1)*tile))+first.y.pixels)};
+            return {QPoint(pixel(x + share(first.x.percent,view.width()),first.x.percent,false)+first.x.pixels,
+                           pixel(y + share(first.y.percent,view.height()),first.y.percent,true)+first.y.pixels)};
         }
-        // Reversed pixel-offset grids have additional stock behavior not covered here.
-        if ((first.x.pixels || first.y.pixels || last.x.pixels || last.y.pixels) &&
-            (local(first.x,view.width()) > local(last.x,view.width()) ||
-             local(first.y,view.height()) > local(last.y,view.height()))) return {};
         struct Run { int origin = 0, count = 0; };
-        const auto run = [&](const Axis& a, const Axis& b, int dimension, int near, int far) -> Run {
+        const auto run = [&](const Axis& a, const Axis& b, int dimension, int near, int far, bool vertical) -> Run {
             const double av = local(a,dimension), bv = local(b,dimension);
-            // A range that runs down from a half tile or to a CENTER fills stock's whole view or more
-            // (NORTH,EAST TO CENTER,CENTER; 12,8 to CENTER+1,9 on an 18 wide view): not drawn here.
-            if (bv < av && (a.relative == .5 || b.relative == .5 || av - bv != std::floor(av - bv))) return {};
+            // A range that runs down from a half tile or to a CENTER on one fills stock's whole view or more
+            // (NORTH,EAST TO CENTER,CENTER; 12,8 to CENTER+1,9 on an 18 wide view): not drawn here. From a CENTER that
+            // is a whole tile (an odd view) it runs down like any other ("CENTER,1 to 1,1", master-screen-loc-world).
+            if (bv < av && ((a.relative == .5 && av != std::floor(av)) || b.relative == .5 || av - bv != std::floor(av - bv))) return {};
+            // Written from its upper end down, a range of tile ends starts at the lower end and is moved by the
+            // percents and pixel offsets of both ends; otherwise by the first end's alone (stock 516.1689,
+            // master-screen-loc-world "3:4,1 to 1:8,1" 12 pixels right, "2+50%,1 to 1+25%,1" from 5.5, "1,1 to 3+50%,1"
+            // from 1, "1,1 to 50%,1" from 1: two ends on the same tile keep the first). A LEFT end counts as tile 1
+            // ("3,1 to LEFT+50%,1" from 4); pixel offsets with an edge-aligned end, or a percent with a RIGHT or TOP
+            // end, were not tried.
+            const bool reversed = bv < av && a.anchor != Anchor::FarEdge;
+            if (reversed && (a.anchor != Anchor::Tile || b.anchor != Anchor::Tile) &&
+                (a.pixels || b.pixels || (b.anchor == Anchor::FarEdge && (a.percent != 0 || b.percent != 0)))) return {};
+            const double percent = reversed ? a.percent + b.percent : a.percent;
+            const int pixels = reversed ? a.pixels + b.pixels : a.pixels;
+            if (a.anchor == Anchor::FarEdge && bv < av && (a.pixels || b.pixels)) return {};
             double lo = av, hi = bv;
             const Axis* origin = &a;
             // Stock 516: edge alignment is NOT a tile endpoint. Far-edge -> tile
@@ -190,10 +208,11 @@ struct ScreenLoc {
             // aligned repetition instead clips to the existing viewport, verified
             // even when its range extends past the far edge. Do not expand here.
             if (origin->anchor != Anchor::FarEdge && (lo < 1 - near || hi > dimension + far)) return {};
-            return {int(std::lround((lo-1+shift(*origin,dimension))*tile))+a.pixels,count};
+            // Copies a percent carries past the scene are not seen and enlarge nothing ("3+100%,1 to 1,1" shows 7,1).
+            return {pixel(lo+shift(*origin,dimension)+share(percent,dimension),percent,vertical)+pixels,count};
         };
-        const auto x = run(first.x,last.x,view.width(),outside.left(),outside.right());
-        const auto y = run(first.y,last.y,view.height(),outside.bottom(),outside.top());
+        const auto x = run(first.x,last.x,view.width(),outside.left(),outside.right(),false);
+        const auto y = run(first.y,last.y,view.height(),outside.bottom(),outside.top(),true);
         // Bound the WHOLE range before allocation, including clipped copies.
         if (!x.count || !y.count || x.count*y.count > 256) return {};
         std::vector<QPoint> out; out.reserve(x.count*y.count);

@@ -876,8 +876,7 @@ private slots:
     }
     // A range's grid is moved by its first end's pixel offsets and ignores the second end's (stock 516.1689,
     // master-screen-loc-world "1,1 to 3:8,3", "1,1 to 3:40,3", "1:8,1 to 3,3", "1:4,1:8 to 3:12,3", the same for a
-    // master's overlays and an object). A range with a percent end, or one written backwards with a pixel offset,
-    // is still not placed, which refuses a master tree: stock draws those like an ordinary object's range.
+    // master's overlays and an object), when it is written from its lower end.
     void masterRangePixelOffsetsFollowTheFirstEnd() {
         std::map<QString,QJsonObject> phases; QString error;
         QVERIFY2(masterLocPhases(phases, error), qPrintable(error));
@@ -915,10 +914,105 @@ private slots:
             QCOMPARE(n,1); QCOMPARE(moved.size(),size_t(9));
             for (size_t i=0;i<9;++i) QCOMPARE(moved[i]-grid[i], stock.topLeft()-plain.topLeft());
         }
-        for (const char* unplaced : {"1,1 to 50%,50%", "0%,0% to 50%,50%", "50%,50% to 6,6", "2,2 to 100%,3", "3:8,3 to 1,1"}) {
-            QVERIFY2(phases.contains(QString(unplaced) + "|ov"), unplaced); // measured, and not reproduced
-            const auto [n,none]=draw(unplaced);
-            QVERIFY2(n<0 && none.empty(), unplaced);
+        // A range with a percent end, or one written backwards with a pixel offset, is placed too and the master acts
+        // (where each copy goes: masterLocStockPositions).
+        for (const char* placed : {"1,1 to 50%,50%", "0%,0% to 50%,50%", "50%,50% to 6,6", "2,2 to 100%,3", "3:8,3 to 1,1"}) {
+            QVERIFY2(phases.contains(QString(placed) + "|ov"), placed);
+            const auto [n,copies]=draw(placed);
+            QVERIFY2(n==1 && !copies.empty(), placed);
+        }
+    }
+    // Every measured "|obj" and "|ov" phase of master-screen-loc-world that lists its "copies" (each cyan square's left,
+    // top and visible pixels in the 224x224 window, stock 516.1689): the squares an object or a master's overlay at
+    // that screen_loc shows here, and how much the map grows, as stock. Percent ranges, ranges written backwards with
+    // pixel offsets, CENTER, LEFT and RIGHT ends, named maps and ends off the view are among them.
+    void masterLocStockPositions() {
+        std::map<QString,QJsonObject> phases; QString error;
+        QVERIFY2(masterLocPhases(phases, error), qPrintable(error));
+        auto w=world(); shell::TurfMap terrain; shell::EntityMap scene;
+        w.bounds.viewW=w.bounds.viewH=7; // the view stock was measured in
+        w.hudOrder={100}; w.hudAppid[100]=10; w.hudIdentity[100]={2,7,11};
+        auto overlays=[&](const QString& loc, const QMargins& margins) {
+            setFields(w.appearances[10], std::string("{\"appearanceFlags\":268435456,\"hasPlane\":true,\"plane\":1,\"overlays\":[1],\"screenLoc\":\"") +
+                loc.toStdString() + "\"}");
+            // Overlay positions are taken from the world sprite's, which the larger scene moves too.
+            std::vector<QPoint> at; int masters=0; QPoint entity;
+            const auto frame=terrain.prepare(w,{},0,false,margins);
+            for (const auto& s : scene.prepare(w,frame,reader(),0,nullptr,true)) {
+                if (s.kind==shell::MapSprite::Master) masters += s.planeEffects && s.planeEffects->supported ? 1 : -100;
+                else if (s.kind==shell::MapSprite::Screen) at.push_back(s.position);
+                else if (s.kind==shell::MapSprite::Entity) entity=s.position;
+            }
+            for (auto& p : at) p -= entity;
+            return std::tuple{masters,at,frame.source.translated(-entity)};
+        };
+        const auto [baseMasters,base,baseSource]=overlays("1,1",{});
+        QCOMPARE(baseMasters,1); QCOMPARE(base.size(),size_t(1));
+        int checked=0, masters=0;
+        for (const auto& [phase,row] : phases) {
+            if (!row.contains("copies") || !(phase.endsWith("|obj") || phase.endsWith("|ov"))) continue;
+            const QString text=phase.section('|',0,0);
+            if (text=="null" || text=="empty" || text=="bogus") continue; // no screen_loc: masterWithoutScreenLocIsInert
+            std::vector<std::array<int,3>> stock;
+            for (const auto& c : row["copies"].toArray()) {
+                QVERIFY2(testinput::isIntegerTuple(c,3,0,50176),qPrintable(phase));
+                stock.push_back({c[0].toInt(),c[1].toInt(),c[2].toInt()});
+            }
+            // Here: the 16x16 square at the top left of each copy's tile, in the window stock centres the map in.
+            std::vector<std::array<int,3>> here;
+            QMargins grown;
+            const auto target=shell::ScreenLoc::target(text);
+            QVERIFY2(target,qPrintable(phase));
+            const auto loc=target->map.isEmpty() ? shell::ScreenLoc::parse(target->location) : std::nullopt;
+            QVERIFY2(loc || !target->map.isEmpty(),qPrintable(phase));
+            if (loc) {
+                grown=loc->outside({7,7});
+                for (const auto& p : loc->positions({7,7},32,grown)) {
+                    const QRect square(p.x()+16*(grown.left()-grown.right()),192-p.y()+16*(grown.top()-grown.bottom()),16,16);
+                    const QRect seen=square & QRect(0,0,224,224);
+                    if (!seen.isEmpty()) here.push_back({seen.left(),seen.top(),seen.width()*seen.height()});
+                }
+            }
+            std::sort(here.begin(),here.end(),[](const auto& a,const auto& b) { return std::pair(a[1],a[0])<std::pair(b[1],b[0]); });
+            QVERIFY2(here==stock,qPrintable(phase));
+            // How far the map grew: stock's red square, when it shows, moved by half of what was added on each side.
+            QRect part;
+            if (masterLocBounds(phases,phase,"part",part) && row["counts"].toObject()["part"].toInt()==256)
+                QVERIFY2(part.topLeft()==QPoint(96+16*(grown.left()-grown.right()),96+16*(grown.top()-grown.bottom())),qPrintable(phase));
+            ++checked;
+            // A master's overlays stand where the object's squares do, and the master acts once. (Whether a master
+            // on another map acts is "map:1,1|alpha0".)
+            if (!phase.endsWith("|ov") || !loc) continue;
+            overlays(text,{}); // the frame that learns of the placement asks for the larger map
+            QCOMPARE(scene.hudMargins(),grown);
+            const auto [n,at,source]=overlays(text,grown);
+            QVERIFY2(n==1,qPrintable(phase));
+            QCOMPARE(source.size(),baseSource.size()+QSize(32*(grown.left()+grown.right()),32*(grown.top()+grown.bottom())));
+            std::vector<QPoint> expected;
+            for (const auto& p : loc->positions({7,7},32,grown)) {
+                const QPoint position=base[0]+QPoint(p.x(),-p.y());
+                if (QRect(position,QSize(32,32)).intersects(source)) expected.push_back(position);
+            }
+            auto order=[](const QPoint& a,const QPoint& b) { return a.x()!=b.x() ? a.x()<b.x() : a.y()<b.y(); };
+            auto got=at; std::sort(got.begin(),got.end(),order); std::sort(expected.begin(),expected.end(),order);
+            QVERIFY2(got==expected,qPrintable(phase));
+            ++masters;
+        }
+        QVERIFY(checked>=90); QVERIFY(masters>=40);
+        // A master whose screen_loc names a map, even the default map's own id ("map" in this world's skin), does
+        // nothing on the default map: the square shows (no alpha 0) and has no outline. A percent past the view
+        // ("5+50%,1"), a percent range and a backwards range with offsets act.
+        for (const QString loc : {"map:1,1|alpha0", "map:1,1 to 3,3|alpha0", "map:1,1|outline"}) {
+            QVERIFY2(phases.contains(loc),qPrintable(loc));
+            QCOMPARE(phases[loc]["counts"].toObject()["part"].toInt(-1),256);
+            QCOMPARE(phases[loc]["counts"].toObject()["outline"].toInt(-1),0);
+            const auto [n,at,source]=overlays(loc.section('|',0,0),{});
+            QVERIFY2(n==0 && at.empty(),qPrintable(loc));
+        }
+        for (const QString loc : {"5+50%,1|alpha0", "1,1 to 100%,100%|alpha0", "3:8,3:8 to 1,1|alpha0", "50%,50% to 6,6|alpha0"}) {
+            QVERIFY2(phases.contains(loc),qPrintable(loc));
+            QCOMPARE(phases[loc]["counts"].toObject()["part"].toInt(-1),0);
+            QVERIFY2(std::get<0>(overlays(loc.section('|',0,0),{}))==1,qPrintable(loc));
         }
     }
     // A master tree keeps its filters under a matrix: they run before it (stock 516.1689, master-transform-world
@@ -3193,8 +3287,11 @@ private slots:
         QCOMPARE(at("4:16,2:16 to 10:16,2:16",{15,7}),
                  (std::vector<QPoint>{{112,48},{144,48},{176,48},{208,48},{240,48},{272,48},{304,48}}));
         QCOMPARE(at("4:16,2:16 To 10:16,2:16",{15,7}),at("4:16,2:16 to 10:16,2:16",{15,7}));
-        QVERIFY(at("10:16,2:16 to 4:16,2:16",{15,7}).empty());
-        QVERIFY(at("3:-8,3:8 to 4:-8,2:8").empty());
+        // Written from the upper end down, both ends' offsets move the grid (master-screen-loc-world "3:4,1 to 1:8,1").
+        QCOMPARE(at("10:16,2:16 to 4:16,2:16",{15,7}),
+                 (std::vector<QPoint>{{128,48},{160,48},{192,48},{224,48},{256,48},{288,48},{320,48}}));
+        QCOMPARE(at("3:-8,3:8 to 4:-8,2:8"),
+                 (std::vector<QPoint>{{56,48},{88,48},{56,80},{88,80}}));
         QCOMPARE(at("3:-8,2:8 tO 4:-8,3:8"),
                  (std::vector<QPoint>{{56,40},{88,40},{56,72},{88,72}}));
         QCOMPARE(at("3:8,2:8 to 4:8,3:8",{7,5},16),
@@ -3211,8 +3308,14 @@ private slots:
         QCOMPARE(at("1,1:5 to 2,2:6"), (std::vector<QPoint>{{0,5},{32,5},{0,37},{32,37}}));
         QCOMPARE(at("1,1 to 3:8,2:40"), at("1,1 TO 3,2"));
         QCOMPARE(at("1:5, 1 TO 2, 2"), at("1:5,1 TO 2,2"));
+        // Written backwards, the grid starts at the lower end moved by both ends' offsets ("3:8,3 to 1,1|obj",
+        // "3,1 to 1:8,1|obj"); a percent moves a range like an offset, and its tile part orders the ends and counts the
+        // copies ("1,1 to 50%,50%|obj" one copy, "50%,50% to 3,3|obj" three from 4,4 on master-screen-loc-world's 7x7).
+        QCOMPARE(at("3:8,3 to 1,1"), at("1:8,1 to 3,3"));
+        QCOMPARE(at("3,3 to 1:8,1"), at("1:8,1 to 3,3"));
+        QCOMPARE(at("1,1 to 50%,50%",{7,7}), (std::vector<QPoint>{{0,0}}));
+        QCOMPARE(at("50%,50% to 3,3",{7,7}), at("4,4 to 6,6",{7,7}));
         for (const auto* invalid : {"", "garbage", "1", "1,1,1", "map:1,1", "1+1+1,1",
-                                  "3:8,3 to 1,1", "3,3 to 1:8,1", "1,1 to 50%,50%", "50%,50% to 3,3",
                                   "1:16,1:16 to 2:16,2:16 to 3:16,3:16",
                                   "2:16,2:16 to 1.5:16,1:16", "2,2 TO 1.5,1", "NORTH,EAST TO CENTER,CENTER",
                                   "1,1 TO 17,16", "1,1 TO 16384,16384", "1e30,1", "1:999999999999999,1"})

@@ -471,8 +471,10 @@ private slots:
         f.setLocation("1,1 TO 2,1");QCOMPARE(counts(),std::pair(1,2*single.second));
         // The second end's pixel offset is ignored ("1,1 to 3:8,3" there).
         f.setLocation("1,1 TO 2:3,1");QCOMPARE(counts(),std::pair(1,2*single.second));
-        // A range with a percent end is not placed and is still refused (stock draws one overlay for "1,1 to 50%,50%").
-        f.setLocation("1,1 TO 50%,50%");QVERIFY(refused());
+        // A range with a percent end is placed like an object's: one overlay for "1,1 to 50%,50%", two ends on one tile.
+        f.setLocation("1,1 TO 50%,50%");QCOMPARE(counts(),single);
+        // A form this does not place is refused (different pixel offsets on a RIGHT end were not tried).
+        f.setLocation("1,1 TO RIGHT:8,1");QVERIFY(refused());
         // Off the view the master acts; its overlay is outside this scene, which the fixture does not enlarge ("8,1" there).
         f.setLocation("8,1");QVERIFY(!refused());QCOMPARE(counts(),std::pair(1,0));
         QCOMPARE(f.entities.hudMargins(),QMargins(0,0,1,0));
@@ -565,7 +567,7 @@ private slots:
             if(key=="transform") {changed["hasTransform"]=true;changed["transform"]=QJsonArray{};}
             if(key=="target") changed["renderTarget"]="*refused";
             if(key=="text") changed["maptext"]="refused";
-            if(key=="placement") changed["screenLoc"]="1,1 TO 50%,50%"; // a range this does not place
+            if(key=="placement") changed["screenLoc"]="1,1 TO RIGHT:8,1"; // a range this does not place
             if(key=="offset") changed["pixelX"]=7;
             auto children=fields["overlays"].toArray();
             if(key=="cycle") children.append(int(rootId));
