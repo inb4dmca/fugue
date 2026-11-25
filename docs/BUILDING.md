@@ -69,6 +69,28 @@ to avoid copying unrelated packages. Keep the output directory together; do not
 copy just the `.exe`. For distributable packages, use `packaging/windows/package.ps1`
 with `-BuildDir build/ninja/release` and the matching `-DependencyBin`.
 
+### One-command local tests
+
+`tools/test.ps1` configures, builds and runs the tests, with the same local settings and parameters as
+`tools/build.ps1`:
+
+```powershell
+./tools/test.ps1 -Label fast        # the inner loop: headless suites of a few seconds each
+./tools/test.ps1                    # every test, including those that open windows on the desktop
+./tools/test.ps1 -Regex shell_entitymap
+./tools/test.ps1 Debug -Label fast  # the same tests unoptimised, for stepping through a failure
+```
+
+It builds `RelWithDebInfo` in `build/ninja/relwithdebinfo` by default: an optimised development build that keeps
+the test hooks and debug information, links release Qt and the dependency tree's release libraries, and runs the
+suite several times faster than `Debug` (the CPU-bound suites about ten times). Run tests in it unless you need
+the debugger's view of unoptimised code; `Debug` uses `build.ps1`'s `build/ninja/debug` tree with the debug
+libraries. The two differ as the configurations do: `RelWithDebInfo` defines `NDEBUG` and `QT_NO_DEBUG`, so
+`assert`, `Q_ASSERT` and the debug runtime's container and heap checks apply only in `Debug`. `-Label`, `-ExcludeLabel` and `-Regex` are CTest's `-L`, `-LE`
+and `-R` (see [test profiles](#test-profiles)); `-TestJobs N` sets the number of concurrent test processes and
+`-NoBuild` reruns the tests of the existing build. The script adds Qt's and the dependency tree's DLL directories
+to `PATH` for the test processes only.
+
 ### Manual build
 
 Install [vcpkg](https://github.com/microsoft/vcpkg) and bootstrap it. Qt comes from the Qt installer, while the
@@ -195,9 +217,18 @@ cmake --build build --parallel 2
 ctest --test-dir build -L portable --no-tests=error --output-on-failure
 ```
 
-For Windows multi-config builds, use the configured build directory and `-C Release`
-as shown above, with Qt/dependency DLLs on PATH. Keep compiler/test logs locally;
-inspect failures and report skipped cases separately from passes.
+For Windows multi-config builds, use `tools/test.ps1` ([above](#one-command-local-tests)), or the
+configured build directory and its configuration (`-C RelWithDebInfo`, `-C Release`) with Qt/dependency
+DLLs on PATH. Keep compiler/test logs locally; inspect failures and report skipped cases separately from passes.
+
+Test an optimised build. A single-config tree defaults to `RelWithDebInfo`; an unoptimised `Debug` build
+against debug Qt runs the same checks several times slower and is for debugging a failure. While editing,
+run the fast tier, then the full selection before sending a change:
+
+```bash
+ctest --test-dir build -L fast -j 8 --no-tests=error --output-on-failure   # seconds
+ctest --test-dir build -j 8 --no-tests=error --output-on-failure           # everything available
+```
 
 Use CTest to discover the current tests and labels:
 
@@ -224,6 +255,8 @@ the whole suite in one process.
 CTest entries declare their requirements with these labels:
 
 - `portable`: logic and replay checks that run with offscreen Qt.
+- `fast`: the portable checks that take a few seconds each in an optimised build: no GPU device, no window
+  and no WebEngine. Entries are fast unless their registration says otherwise.
 - `gpu`: rendering checks that require a working graphics backend.
 - `native`: window-system integration checks that require a display.
 - `device`: checks that require a real output device.

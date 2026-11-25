@@ -92,6 +92,7 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/masteropacity_test.cpp)
     set_tests_properties(shell_masteropacity_${profile} PROPERTIES
       LABELS "master-opacity;${profile}")
   endforeach()
+  set_property(TEST shell_masteropacity_portable APPEND PROPERTY LABELS fast)
   set_tests_properties(shell_masteropacity_portable PROPERTIES
     ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=offscreen")
   set_tests_properties(shell_masteropacity_gpu PROPERTIES
@@ -190,6 +191,8 @@ if(TARGET browse_test)
   fugue_test_entry(browse_runtime fugue_run_browse_runtime)
   fugue_add_test(shell_browse_dock fugue_tests browse_dock -o -,txt)
   fugue_add_test(shell_browse_runtime fugue_tests browse_runtime -o -,txt)
+  # WebEngine start-up and page loads: portable, but outside the fast tier.
+  set_tests_properties(shell_browse shell_browse_dock shell_browse_runtime PROPERTIES LABELS portable)
 endif()
 fugue_shell_test(shell_recipefiler recipefiler_test)  # browse_rsc runtime icons (DDMI recipes) filed for pages as PNG
 fugue_shell_test(shell_prompt   prompt_test)      # alert()/input() PromptHost, the INFO control's StatPanelWidget, paste in every key-taking widget

@@ -25,7 +25,9 @@ Tests that replay a recorded session use data under `tests/data/`; a recording s
 world rather than a real game, so the expected values are understood and the data is ours to publish. Stock observations establish parity;
 explicit Fugue invariants establish requirements such as bounded work and correct lifetimes.
 
-Please run the portable suite and the affected capability profiles before sending a change. Report unavailable profiles and
+Test an optimised build (`RelWithDebInfo`, the default of `tools/test.ps1` and of a single-config tree); `Debug` runs
+the same checks several times slower. `ctest -L fast -j 8` is the inner loop. Please run the portable suite and the
+affected capability profiles before sending a change. Report unavailable profiles and
 skipped cases separately; they do not establish verification.
 
 ## Scenario lifecycle

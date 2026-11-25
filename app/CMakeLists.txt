@@ -10,7 +10,8 @@ endif()
 fugue_add_test(version fugue-qt --version)
 set_tests_properties(version PROPERTIES PASS_REGULAR_EXPRESSION "^fugue-qt ${PROJECT_VERSION}(-dev)?\n")
 fugue_add_test(webcheck fugue-qt webcheck)
-set_tests_properties(webcheck PROPERTIES PASS_REGULAR_EXPRESSION "webcheck ok\n")
+set_tests_properties(webcheck PROPERTIES PASS_REGULAR_EXPRESSION "webcheck ok\n"
+  LABELS portable) # starts WebEngine: outside the fast tier
 if(WIN32 AND TARGET Qt6::QOffscreenIntegrationPlugin)
   # The deployed app's qt.conf points at its minimal plugin bundle (windows only).
   # This developer-only test needs offscreen from the selected SDK, not extra shipped plugins.

@@ -4,9 +4,11 @@ add_executable(fugue_tests ${PROJECT_SOURCE_DIR}/tests/runner.cpp)
 target_include_directories(fugue_tests PRIVATE ${PROJECT_BINARY_DIR})
 target_link_libraries(fugue_tests PRIVATE Qt6::Core Qt6::Test)
 
+# Entries start as portable and fast: headless checks that take a few seconds each, the inner-loop selection
+# (`ctest -L fast`). An entry that needs a GPU device, a window, a device or WebEngine replaces these labels.
 function(fugue_add_test name)
   add_test(NAME ${name} COMMAND ${ARGN})
-  set_tests_properties(${name} PROPERTIES LABELS portable TIMEOUT 120
+  set_tests_properties(${name} PROPERTIES LABELS "portable;fast" TIMEOUT 120
     FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;FUGUE_AUDIO=none;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 endfunction()
