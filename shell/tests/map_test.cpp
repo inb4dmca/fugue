@@ -50,18 +50,25 @@ static QAction* displayAction(SkinWindow& window, const QString& name) {
 class MapTest : public QObject {
     Q_OBJECT
 private slots:
-    void liveOpenGLOverride() {
-        const bool existed=qEnvironmentVariableIsSet("FUGUE_MAP_OPENGL");
-        const auto original=qgetenv("FUGUE_MAP_OPENGL");
+    // FUGUE_GPU_BACKEND asks for the map's graphics API (which one is created, the native suites check).
+    void backendSelection() {
+        const bool existed=qEnvironmentVariableIsSet("FUGUE_GPU_BACKEND");
+        const auto original=qgetenv("FUGUE_GPU_BACKEND");
         const auto restore=qScopeGuard([&] {
-            if(existed) qputenv("FUGUE_MAP_OPENGL",original);else qunsetenv("FUGUE_MAP_OPENGL");
+            if(existed) qputenv("FUGUE_GPU_BACKEND",original);else qunsetenv("FUGUE_GPU_BACKEND");
         });
-        qunsetenv("FUGUE_MAP_OPENGL");MapWidget ordinary;
-        qputenv("FUGUE_MAP_OPENGL","1");MapWidget forced;
+        qunsetenv("FUGUE_GPU_BACKEND");MapWidget ordinary;
+        qputenv("FUGUE_GPU_BACKEND","opengl");MapWidget forced;
         QCOMPARE(forced.api(),QRhiWidget::Api::OpenGL);
-        qputenv("FUGUE_MAP_OPENGL","0");MapWidget disabled;
-        QCOMPARE(disabled.api(),ordinary.api());
-        // Explicit per-widget selection remains available to the native tests.
+        qputenv("FUGUE_GPU_BACKEND","OpenGL");MapWidget anyCase;
+        QCOMPARE(anyCase.api(),QRhiWidget::Api::OpenGL);
+        qputenv("FUGUE_GPU_BACKEND","d3d11");MapWidget direct;
+        QCOMPARE(direct.api(),QRhiWidget::Api::Direct3D11);
+        qputenv("FUGUE_GPU_BACKEND","metal");MapWidget metal;
+        QCOMPARE(metal.api(),QRhiWidget::Api::Metal);
+        qputenv("FUGUE_GPU_BACKEND","nonsense");MapWidget unknown;
+        QCOMPARE(unknown.api(),ordinary.api());
+        // A widget's own selection still overrides the environment.
         forced.setApi(ordinary.api());QCOMPARE(forced.api(),ordinary.api());
     }
     void displaySettingsRoute() {

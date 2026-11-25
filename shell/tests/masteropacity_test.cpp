@@ -3,6 +3,7 @@
 #include "tests/testmain.h"
 #include "shell/tests/replayfixture.h"
 #include "shell/tests/gpucomparison.h"
+#include "shell/tests/backendcheck.h"
 #include "shell/entityappearance.h"
 #include "shell/mapwidget.h"
 #include <algorithm>
@@ -278,26 +279,18 @@ private slots:
         QFETCH(QJsonObject,phase);
         MasterOpacityFixture f; QVERIFY2(f.load(phase,setup_),qPrintable(f.error));
         test::GpuComparison gpu;
-#ifdef Q_OS_WIN
-        const bool openGL=false;
-#else
-        const bool openGL=true;
-#endif
-        QVERIFY2(gpu.initialize(openGL,f.frame.source.size(),true),
-                 "GPU profile requires a working QRhi device (Windows: software D3D11; elsewhere: OpenGL)");
+        QVERIFY2(gpu.initialize(f.frame.source.size()),
+                 "GPU profile requires a working QRhi device on the entry's backend");
         const auto error=pixelError(gpu.render(gpu.bounded,f.sprites,f.frame.source,Qt::black),
             phase["checkpoint"].toObject(),sourceSize_,"gpu");
         QVERIFY2(error.isEmpty(),qPrintable(error));
     }
-    void native_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void native() {
         QVERIFY2(QGuiApplication::platformName()!="offscreen" && QGuiApplication::platformName()!="minimal",
                  "Native profile requires a window system and a working QRhi backend");
-        QFETCH(bool,openGL);
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        const auto mismatch=test::backendMismatch(); QVERIFY2(mismatch.isEmpty(),qPrintable(mismatch));
+        const bool openGL=test::backendIsOpenGL();
+        MapWidget map;
         const auto view=setup_["view"].toArray();
         map.resize(sourceSize_*2); map.setViewSize({view[0].toInt(),view[1].toInt()});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);

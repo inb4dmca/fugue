@@ -33,6 +33,7 @@
 #include "shell/tests/masterplacementfixture.h"
 #include "shell/tests/filtertypesfixture.h"
 #include "shell/mapwidget.h"
+#include "shell/tests/backendcheck.h"
 #include "shell/compositionplan.h"
 #include "shell/browserpane.h"
 #include "shell/skinwindow.h"
@@ -100,7 +101,7 @@ class HostedPixelMap : public MapWidget {
 public:
     explicit HostedPixelMap(PixelMapHosts& hosts) : hosts_(hosts) {}
     void show() {
-        auto& host = hosts_.get(api()); // setApi() has already selected this case's backend
+        auto& host = hosts_.get(api()); // the entry's backend (FUGUE_GPU_BACKEND)
         if (!parentWidget()) setParent(&host);
         host.resize(size()); move(0,0);
         MapWidget::show();
@@ -117,16 +118,10 @@ private slots:
         const auto platform=QGuiApplication::platformName();
         QVERIFY2(platform!="offscreen" && platform!="minimal",
                  "Native MapWidget checks require a window system and a working QRhi backend");
-    }
-    void screenshotNativeComposition_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
+        const auto mismatch=test::backendMismatch(); QVERIFY2(mismatch.isEmpty(),qPrintable(mismatch));
     }
     void screenshotNativeComposition() {
-        QFETCH(bool, openGL);
         MapWidget map;
-        if (openGL) map.setApi(QRhiWidget::Api::OpenGL);
         QString error;
         QVERIFY(map.screenshot(&error).isNull()); QVERIFY(!error.isEmpty());
         map.resize(300, 220); map.setViewSize({3, 2});
@@ -199,17 +194,7 @@ private slots:
         map.setMailbox(std::make_shared<MapMailbox>(metrics));
         QVERIFY(map.screenshot().isNull()); // session replacement invalidates capture
     }
-    void namedMapRoutingPixels_data() {
-        QTest::addColumn<bool>("gl");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void namedMapRoutingPixels() {
-        QFETCH(bool,gl);
-        const auto old=qgetenv("FUGUE_MAP_OPENGL");
-        const bool existed=qEnvironmentVariableIsSet("FUGUE_MAP_OPENGL");
-        const auto restore=qScopeGuard([&] { if(existed) qputenv("FUGUE_MAP_OPENGL",old);else qunsetenv("FUGUE_MAP_OPENGL"); });
-        qputenv("FUGUE_MAP_OPENGL",gl ? "1" : "0");
         SkinWindow window; window.setMapViewSize(1,1);
         QVERIFY(window.loadSkin(R"(window "main"
     elem "main"
@@ -271,17 +256,11 @@ private slots:
         QVERIFY(routes[0].id!=oldRoute);QVERIFY(!routes[0].mailbox->forRender(0));
         QCOMPARE(main->grabFramebuffer(),baseline);
     }
-    void displayPixels_data() {
-        QTest::addColumn<bool>("gl");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void displayPixels() {
-        QFETCH(bool, gl);
         SkinWindow window;
         window.setMapViewSize(1,1);
         QVERIFY(window.loadSkin(displaySkin).isEmpty()); wireDisplayCommands(window);
         auto* map = dynamic_cast<MapWidget*>(window.map()); QVERIFY(map);
-        if (gl) map->setApi(QRhiWidget::Api::OpenGL);
         auto metrics = std::make_shared<MapMetrics>(); auto mailbox = std::make_shared<MapMailbox>(metrics);
         map->setMetrics(metrics); map->setMailbox(mailbox);
         QImage terrain(32,32,QImage::Format_RGBA8888); terrain.fill(Qt::black);
@@ -386,19 +365,16 @@ private slots:
         QCOMPARE(metrics->snapshot(now+62'000'000'000).uploadMBPerSecond,0.0);
         // A recreated MAP consumes the retained scene and its own presentation settings.
         const auto retained=map->grabFramebuffer();
-        MapWidget replay; if (gl) replay.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget replay;
         replay.resize(map->size()); replay.setViewSize({2,2}); replay.setMailbox(mailbox);
         replay.setPresentationSettings(map->presentationSettings()); replay.show();
         QVERIFY(QTest::qWaitForWindowExposed(&replay));
         QCOMPARE(replay.grabFramebuffer(),retained);
     }
-    void normalStockEdges_data() { displayPixels_data(); }
     void normalStockEdges() {
-        QFETCH(bool, gl);
         SkinWindow window; window.setMapViewSize(3,3);
         QVERIFY(window.loadSkin(displaySkin).isEmpty()); wireDisplayCommands(window);
         auto* map = dynamic_cast<MapWidget*>(window.map()); QVERIFY(map);
-        if (gl) map->setApi(QRhiWidget::Api::OpenGL);
         auto metrics = std::make_shared<MapMetrics>(); auto mailbox = std::make_shared<MapMailbox>(metrics);
         map->setMetrics(metrics); map->setMailbox(mailbox);
         QImage scene(96,96,QImage::Format_RGBA8888);
@@ -468,14 +444,8 @@ private slots:
         // No grabFramebuffer(): that could conceal a missing normal submission path.
         QTRY_VERIFY_WITH_TIMEOUT(submitted.size()>0,5000);
     }
-    void hudPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void hudPixels() {
-        QFETCH(bool,openGL);
-        MapWidget map;if(openGL)map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(320,240);map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         const auto initialMetricTime=MapMetrics::nowNs()+60'000'000'000;metrics->reset(initialMetricTime);
@@ -527,9 +497,8 @@ private slots:
         publish(1);map.grabFramebuffer();QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{240,40});
         QVERIFY(!events.back().screen);QCOMPARE(events.back().click.over.kind,fugue::proto::enc::RefTurf);
     }
-    void maptextPixels_data() { visPixels_data(); }
     void maptextPixels() {
-        QFETCH(bool,openGL); MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(320,240); map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -584,13 +553,8 @@ private slots:
         QCOMPARE(metrics->snapshot(warm+1'000'000'000).uploadMBPerSecond,0.0);
         QCOMPARE(half[0].tint[3],128.f/255);
     }
-    void visPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
-    void attachmentTreePixels_data() { visPixels_data(); }
     void attachmentTreePixels() {
-        QFETCH(bool,openGL);MapWidget map;if(openGL)map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -642,10 +606,8 @@ private slots:
         for(int64_t now:{1000,1250,1500,1750,2100}) {f.refresh(now);publish();}
         QCOMPARE(metrics->snapshot(warm+1'000'000'000).uploadMBPerSecond,0.0);
     }
-    void visMaterialPixels_data() { visPixels_data(); }
     void visMaterialPixels() {
-        QFETCH(bool,openGL);
-        HostedPixelMap map(pixelHosts_); if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        HostedPixelMap map(pixelHosts_);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -675,7 +637,7 @@ private slots:
         }
     }
     void visPixels() {
-        QFETCH(bool,openGL); MapWidget map; if(openGL)map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(320,240);map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -742,12 +704,8 @@ private slots:
         QCOMPARE(events.back().visHit->path[0].holder,turf);QVERIFY(mapPointerCurrent(events.back(),w,0));
         w.vis.erase(turf);QVERIFY(!mapPointerCurrent(events.back(),w,0));
     }
-    void imagePixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;QTest::newRow("OpenGL") << true;
-    }
     void imagePixels() {
-        QFETCH(bool,openGL);MapWidget map;if(openGL)map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(320,240);map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         const auto initial=MapMetrics::nowNs()+60'000'000'000;metrics->reset(initial);
@@ -816,14 +774,13 @@ private slots:
         QVERIFY(mapPointerCurrent(events.back(),w,0));w.hudIdentity[42].membership=89;QVERIFY(!mapPointerCurrent(events.back(),w,0));
     }
     void imageTargetTransformPixels_data() {
-        QTest::addColumn<bool>("openGL"); QTest::addColumn<bool>("mob");
-        QTest::newRow("native-object") << false << false; QTest::newRow("OpenGL-object") << true << false;
-        QTest::newRow("native-mob-tree") << false << true; QTest::newRow("OpenGL-mob-tree") << true << true;
+        QTest::addColumn<bool>("mob");
+        QTest::newRow("object") << false; QTest::newRow("mob-tree") << true;
     }
     void imageTargetTransformPixels() {
-        QFETCH(bool,openGL); QFETCH(bool,mob);
+        QFETCH(bool,mob);
         const uint32_t targetKey=42u | (mob ? fugue::model::kRegistryA : 0u);
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(160,160); map.setViewSize({5,5});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -909,12 +866,11 @@ private slots:
         click({5,5}); QCOMPARE(events.back().imageIdentity,w.imageInstances[7].identity); // stock blackness is presentation-only
     }
     void ordinaryRootTreePixels_data() {
-        QTest::addColumn<bool>("openGL"); QTest::addColumn<bool>("mob");
-        QTest::newRow("native-object") << false << false; QTest::newRow("OpenGL-object") << true << false;
-        QTest::newRow("native-mob") << false << true; QTest::newRow("OpenGL-mob") << true << true;
+        QTest::addColumn<bool>("mob");
+        QTest::newRow("object") << false; QTest::newRow("mob") << true;
     }
     void ordinaryRootTreePixels() {
-        QFETCH(bool,openGL); QFETCH(bool,mob);
+        QFETCH(bool,mob);
         const QString path=QString(FUGUE_TEST_DATA_DIR)+"/root-transform-world/stock-observations.json";
         QJsonDocument observations; QString inventoryError;
         QVERIFY2(fugue::testinput::readRecordedJson(path,observations,inventoryError),qPrintable(inventoryError));
@@ -947,7 +903,7 @@ private slots:
             {"shrink",3},{"nested",4},{"wide root",2},{"square",3},{"reset",3},{"translate",3}};
         QVERIFY2(receipts==expectedReceipts,qPrintable(path+": incomplete Click receipt inventory"));
         const QString directory=QFileInfo(path).absolutePath();
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.setWindowFlag(Qt::FramelessWindowHint); map.resize(160,160); map.setViewSize({5,5});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
         map.setMetrics(metrics); map.setMailbox(mailbox);
@@ -1009,9 +965,8 @@ private slots:
         for(int i=0;i<12;++i) {w.atoms.begin()->second.pixelX=i%2; publish(); map.grabFramebuffer();}
         QCOMPARE(metrics->snapshot(warm+1'000'000'000).uploadMBPerSecond,0.0);
     }
-    void layerBandsAndMouseOpacity_data() { visPixels_data(); }
     void layerBandsAndMouseOpacity() {
-        QFETCH(bool,openGL); MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(192,192); map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -1067,13 +1022,8 @@ private slots:
         QVERIFY(mapPointerCurrent(stack[0],w,0));
         events.clear();QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{96,96});QVERIFY(events.empty());
     }
-    void stockOutlinePrecisionAndWorkload_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void stockOutlinePrecisionAndWorkload() {
-        QFETCH(bool,openGL);
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(448,448); map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -1173,13 +1123,7 @@ private slots:
         many[0].position.rx()+=1;budgetFrame(black.rect());many[0].position.rx()-=1;budgetFrame(black.rect());
         QCOMPARE(metrics->snapshot(warm+61'000'000'000).uploadMBPerSecond,0.0);
     }
-    void sharedPixelHostIsolation_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void sharedPixelHostIsolation() {
-        QFETCH(bool,openGL);
         WId nativeWindow = 0;
         QPointer<QWidget> host;
         for (const QColor color : {QColor(Qt::red),QColor(Qt::green)}) {
@@ -1187,7 +1131,6 @@ private slots:
             {
                 HostedPixelMap map(pixelHosts_);
                 retired = &map;
-                if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
                 QCOMPARE(map.viewSize(),QSize(0,0));
                 QVERIFY(map.presentationSettings()==MapPresentationSettings{});
                 map.resize(96,96); map.setViewSize({1,1});
@@ -1211,15 +1154,10 @@ private slots:
             QCOMPARE(host->winId(),nativeWindow);
         }
     }
-    void hudRelayPixelsAndInput_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;QTest::newRow("OpenGL") << true;
-    }
     void hudRelayPixelsAndInput() {
-        QFETCH(bool,openGL);
         QJsonArray rows; QString inventoryError;
         QVERIFY2(test::HudRelayFixture::rows(rows,inventoryError),qPrintable(inventoryError));
-        HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        HostedPixelMap map(pixelHosts_);
         map.resize(448,320);map.setViewSize({7,5});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -1244,15 +1182,10 @@ private slots:
             QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
         }
     }
-    void positionedMasterPixelsAndInput_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;QTest::newRow("OpenGL") << true;
-    }
     void positionedMasterPixelsAndInput() {
-        QFETCH(bool,openGL);
         QJsonArray rows; QString inventoryError;
         QVERIFY2(test::MasterPlacementFixture::rows(rows,inventoryError),qPrintable(inventoryError));
-        HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        HostedPixelMap map(pixelHosts_);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -1277,12 +1210,7 @@ private slots:
             QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
         }
     }
-    void masterMaterialPixelsAndInput_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void masterMaterialPixelsAndInput() {
-        QFETCH(bool,openGL);
         const QString dir=QString(FUGUE_TEST_DATA_DIR)+"/master-material-world/";
         QJsonDocument observations; QString inventoryError;
         QVERIFY2(fugue::testinput::readRecordedJson(dir+"stock.json",observations,inventoryError),qPrintable(inventoryError));
@@ -1310,7 +1238,7 @@ private slots:
             }
         }
         QVERIFY2(cases.contains("parallax"),qPrintable(dir+"stock.json: missing parallax checkpoints"));
-        HostedPixelMap map(pixelHosts_); if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        HostedPixelMap map(pixelHosts_);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -1365,16 +1293,11 @@ private slots:
             QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
         }
     }
-    void masterTreePixelsAndInput_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void masterTreePixelsAndInput() {
-        QFETCH(bool,openGL);
         QStringList phases;
         QString inventoryError;
         QVERIFY2(test::MasterTreeFixture::phases(phases,inventoryError),qPrintable(inventoryError));
-        HostedPixelMap map(pixelHosts_); if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        HostedPixelMap map(pixelHosts_);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -1820,17 +1743,17 @@ private slots:
         f.sprites=saved; QCOMPARE(publish(),recovered);
     }
     void unsupportedPlaneFilterPixelsAndInput_data() {
-        QTest::addColumn<bool>("openGL");QTest::addColumn<QString>("phase");
-        for(const bool gl:{false,true}) for(const QString phase:{QString("overlay-nested-tint"),QString("g-overlay-nested-group-apart-overlap-alpha")})
-            QTest::newRow(qPrintable((gl?"OpenGL-":"native-default-")+phase)) << gl << phase;
+        QTest::addColumn<QString>("phase");
+        for(const QString phase:{QString("overlay-nested-tint"),QString("g-overlay-nested-group-apart-overlap-alpha")})
+            QTest::newRow(qPrintable(phase)) << phase;
     }
     void unsupportedPlaneFilterPixelsAndInput() {
-        QFETCH(bool,openGL);QFETCH(QString,phase);
+        QFETCH(QString,phase);
         test::MasterTreeFixture f;QVERIFY2(f.load(phase),qPrintable(f.error));
         auto& world=f.session.worldMut();QCOMPARE(world.hudAppid.size(),size_t(1));
         const auto root=world.hudAppid.begin()->second;
         auto fields=QJsonDocument::fromJson(QByteArray::fromStdString(fieldsJson(world.appearances.at(root)))).object();
-        HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);map.resize(448,448);map.setViewSize({7,7});
+        HostedPixelMap map(pixelHosts_);map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
         QVector<MapPointer> events;map.setInputHandler("map",true,[&](const MapPointer& p){events.push_back(p);});
@@ -1879,16 +1802,10 @@ private slots:
     }
     // Wave, ripple and bloom pixels against stock samples (tests/data/filter-types-world, 516.1688): the atom's
     // filter surface over the fixture's floor, one case at a time.
-    void filterTypesPixelsLikeStock_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void filterTypesPixelsLikeStock() {
-        QFETCH(bool,openGL);
         QJsonArray rows; QString inventoryError;
         QVERIFY2(fugue::test::filtertypes::recordRows(rows,inventoryError),qPrintable(inventoryError));
-        HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        HostedPixelMap map(pixelHosts_);
         map.resize(160,160);map.setViewSize({5,5});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -1913,14 +1830,8 @@ private slots:
         }
         QCOMPARE(checked,21);
     }
-    void standaloneBlurPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void standaloneBlurPixels() {
-        QFETCH(bool,openGL);
-        HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        HostedPixelMap map(pixelHosts_);
         map.resize(992,672);map.setViewSize({31,21});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -1962,7 +1873,7 @@ private slots:
                 QJsonObject row{{"shape",shape},{"size",size},{"pixelsOverOne",overOne},{"differingPixels",differing},{"maxChannelDifference",maximum}};
                 report.push_back(row);qInfo().noquote()<<"standalone-blur"<<QJsonDocument(row).toJson(QJsonDocument::Compact);
                 const auto dump=qEnvironmentVariable("FUGUE_BLUR_REPORT_DIR");
-                if(!dump.isEmpty()) {QVERIFY(QDir().mkpath(dump));QVERIFY(got.save(dump+"/"+shape+"-"+QString::number(size)+(openGL?"-opengl.png":"-default.png")));}
+                if(!dump.isEmpty()) {QVERIFY(QDir().mkpath(dump));QVERIFY(got.save(dump+"/"+shape+"-"+QString::number(size)+(test::backendIsOpenGL()?"-opengl.png":"-default.png")));}
                 QCOMPARE(overOne,0); // unchanged independent-stock one-LSB tolerance
                 if(size==96) at96=got;if(size==99) at99=got;if(size==100) at100=got;
             }
@@ -1990,17 +1901,11 @@ private slots:
         }
         const auto directory=qEnvironmentVariable("FUGUE_BLUR_REPORT_DIR");
         if(!directory.isEmpty()) {
-            QVERIFY(QDir().mkpath(directory));QFile file(directory+(openGL?"/native-opengl.json":"/native-default.json"));
+            QVERIFY(QDir().mkpath(directory));QFile file(directory+(test::backendIsOpenGL()?"/native-opengl.json":"/native-default.json"));
             QVERIFY(file.open(QIODevice::WriteOnly));file.write(QJsonDocument(report).toJson());
         }
     }
-    void stockShadowPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void stockShadowPixels() {
-        QFETCH(bool,openGL);
         const QString canonicalDir=QString(FUGUE_TEST_DATA_DIR)+"/stock-shadow-world";
         const QString dir=qEnvironmentVariable("FUGUE_SHADOW_FIXTURE",canonicalDir),path=dir+"/observations.json";
         const bool canonical=QDir(dir).canonicalPath()==QDir(canonicalDir).canonicalPath();
@@ -2078,7 +1983,7 @@ private slots:
             QCOMPARE(rows.size(),35);QCOMPARE(wireNames,requiredWire);
             QCOMPARE(filterRecords,46);QCOMPARE(retainedClicks,6);
         }
-        HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        HostedPixelMap map(pixelHosts_);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
@@ -2137,7 +2042,7 @@ private slots:
             }
             qInfo().noquote()<<"stock-shadow"<<name<<"pixels-over-one"<<errors<<"max"<<maximum;
             const auto report=qEnvironmentVariable("FUGUE_SHADOW_REPORT");
-            if(!report.isEmpty()) {QDir().mkpath(report);got.save(report+"/"+name+(openGL?"-gl.png":"-default.png"));}
+            if(!report.isEmpty()) {QDir().mkpath(report);got.save(report+"/"+name+(test::backendIsOpenGL()?"-gl.png":"-default.png"));}
             totalErrors+=errors;
             if(!row["edge"].toBool() && (!row["target"].toBool() || wire)) {
                 const auto hit=mapPointerAt({104,104},{224,224},{7,7},domain,coordinates,"map",true,sprites);
@@ -2174,14 +2079,8 @@ private slots:
         }
         QCOMPARE(totalErrors,0);QCOMPARE(checkedClicks,retainedClicks);
     }
-    void planeCompositingPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void planeCompositingPixels() {
         pixelHosts_.hide(); // leave cold-start/recreation and subsequent window tests isolated
-        QFETCH(bool, openGL);
         class TestMap : public MapWidget {
         public:
             bool recreate = false;
@@ -2190,7 +2089,6 @@ private slots:
                 MapWidget::render(cb);
             }
         } map;
-        if (openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(96,96); map.setViewSize({1,1});
         auto metrics = std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox = std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2326,18 +2224,12 @@ private slots:
         QCOMPARE(metrics->snapshot(now + 61'000'000'000).uploadMBPerSecond, 0.0);
         const auto before = map.grabFramebuffer(); map.recreate = true;
         QCOMPARE(map.grabFramebuffer(), before);
-        MapWidget replay; if (openGL) replay.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget replay;
         replay.resize(map.size()); replay.setViewSize({1,1}); replay.setMailbox(mailbox);
         replay.show(); QVERIFY(QTest::qWaitForWindowExposed(&replay));
         QCOMPARE(replay.grabFramebuffer(), before);
     }
-    void rgbaResetPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void rgbaResetPixels() {
-        QFETCH(bool, openGL);
         fugue::model::World w;
         w.bounds = {true,20,20,0,3,3,3,3}; w.resync.haveOrigin = true;
         w.resources = {{123,0}};
@@ -2351,7 +2243,7 @@ private slots:
         auto read = [&](uint32_t, QByteArray& out) { out = bytes; return true; };
         TurfMap terrain; EntityMap scene;
         auto geometry = terrain.prepare(w,{},0,false);
-        MapWidget map; if (openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(192,192); map.setViewSize({3,3});
         auto metrics = std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox = std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2407,12 +2299,7 @@ private slots:
         QCOMPARE(events.back().click.over.kind,uint8_t(fugue::proto::enc::RefObj));
         QCOMPARE(events.back().click.over.ref,42u); // root alpha never erases source-alpha coverage
     }
-    void flickPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void flickPixels() {
-        QFETCH(bool,openGL);
         fugue::model::World w;
         w.bounds={true,20,20,0,3,3,3,3}; w.resync.haveOrigin=true; w.resources={{123,0},{456,0}};
         auto& ap=w.appearances[1]; ap.fields.iconResID=0; setFields(ap, "{}");
@@ -2420,7 +2307,7 @@ private slots:
         atom.key=7; atom.haveKey=true;
         auto read=[](uint32_t id,QByteArray& out){out=iconfixture::flickAsset(id==456?64:32);return true;};
         TurfMap terrain; EntityMap scene; const auto geometry=terrain.prepare(w,{},0,false);
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(192,192); map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2461,12 +2348,10 @@ private slots:
         QCOMPARE(first[0].image.pixelColor(32,0),QColor(50,70,20));
     }
     void animationPixels_data() {
-        QTest::addColumn<bool>("openGL"); QTest::addColumn<bool>("opacityMob");
-        QTest::newRow("native-default") << false << false; QTest::newRow("OpenGL") << true << false;
-        QTest::newRow("native-default-opacity-mob") << false << true; QTest::newRow("OpenGL-opacity-mob") << true << true;
+        QTest::addColumn<bool>("opacityMob");
+        QTest::newRow("plain") << false; QTest::newRow("opacity-mob") << true;
     }
     void animationPixels() {
-        QFETCH(bool,openGL);
         fugue::model::World w;
         w.bounds={true,20,20,0,1,1,1,1}; w.resync.haveOrigin=true; w.resources={{123,0}};
         QFETCH(bool,opacityMob);
@@ -2479,7 +2364,7 @@ private slots:
         const auto geometry=terrain.prepare(w,{},0,false);
         QVERIFY(scene.prepare(w,geometry,read,50000000).isEmpty()); ready=true;
         const auto first=scene.prepare(w,geometry,read,1);
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         // At forced DPR=1 on a 150% Windows desktop, the native title bar forces
         // a 176px minimum width. These pixel fixtures require their exact extent.
         map.setWindowFlag(Qt::FramelessWindowHint);
@@ -2531,13 +2416,7 @@ private slots:
         QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
         QCOMPARE(first[0].image.pixelColor(16,0),QColor(50,70,20));
     }
-    void generatedIconPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void generatedIconPixels() {
-        QFETCH(bool,openGL);
         fugue::model::World w;
         w.bounds = {true,20,20,0,1,1,1,1}; w.resync.haveOrigin = true;
         w.resources = {{100,12},{200,3}};
@@ -2552,7 +2431,7 @@ private slots:
         data[200] = iconfixture::sheet();
         const auto first=scene.prepare(w,geometry,read); QCOMPARE(first.size(),1);
         QCOMPARE(scene.prepare(w,geometry,read).constData(),first.constData());
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.setWindowFlag(Qt::FramelessWindowHint); // exact extent, independent of native title-bar minimum
         map.resize(96,96); map.setViewSize({1,1});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
@@ -2582,13 +2461,7 @@ private slots:
         QCOMPARE(image.pixelColor(image.width()*3/4,image.height()/2),QColor(Qt::blue));
         QCOMPARE(first[0].image.pixelColor(20,0),QColor(Qt::red));
     }
-    void defaultStatePixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void defaultStatePixels() {
-        QFETCH(bool,openGL);
         fugue::model::World w;
         w.bounds = {true,20,20,0,1,1,1,1}; w.resync.haveOrigin = true;
         w.resources = {{123,0}};
@@ -2610,7 +2483,7 @@ private slots:
         const auto first = scene.prepare(w,geometry,read);
         QCOMPARE(first.size(),1); QCOMPARE(first[0].image.pixelColor(16,16),QColor(Qt::blue));
         QCOMPARE(scene.prepare(w,geometry,{}).constData(),first.constData());
-        MapWidget map; if (openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(96,96); map.setViewSize({1,1});
         auto metrics = std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox = std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2629,13 +2502,7 @@ private slots:
         atom.dir = 1; publish(); image = map.grabFramebuffer();
         QCOMPARE(image.pixelColor(image.width()/2,image.height()/2),QColor(Qt::green));
     }
-    void overlayDirectionPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void overlayDirectionPixels() {
-        QFETCH(bool,openGL);
         fugue::model::World w;
         w.bounds = {true,20,20,0,3,3,3,3}; w.resync.haveOrigin = true;
         w.resources = {{123,0}};
@@ -2656,7 +2523,7 @@ private slots:
         auto read = [&](uint32_t, QByteArray& out) { out = bytes; return true; };
         TurfMap terrain; EntityMap scene;
         const auto geometry = terrain.prepare(w,{},0,false);
-        MapWidget map; if (openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(192,192); map.setViewSize({3,3});
         auto metrics = std::make_shared<MapMetrics>(); map.setMetrics(metrics);
         auto mailbox = std::make_shared<MapMailbox>(metrics); map.setMailbox(mailbox);
@@ -2689,12 +2556,7 @@ private slots:
         QCOMPARE(pixel(fixedSouth,48,48),QColor(Qt::green));
         QCOMPARE(pixel(fixedSouth,80,48),QColor(Qt::red)); QCOMPARE(pixel(fixedSouth,80,16),QColor(Qt::red));
     }
-    void blacknessStockPixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void blacknessStockPixels() {
-        QFETCH(bool,openGL);
         struct Recording {const char* name;int cases,samples,clicks;};
         const Recording recordings[]={{"blackness-observations.json",42,10,32},{"source-input-observations.json",14,7,98}};
         const QSet<QString> clickCases{"spill-p0-b1","spill-p1-b1","objs","turfs","ghost","self0","alpha","target"};
@@ -2763,7 +2625,7 @@ private slots:
             QCOMPARE(clicksInRecording,recording.clicks);retainedClicks+=clicksInRecording;
         }
         QCOMPARE(retainedSamples,518);QCOMPARE(retainedClicks,130);
-        MapWidget map; if (openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.setWindowFlag(Qt::FramelessWindowHint); map.resize(288,288); map.setViewSize({9,9});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
         map.setMetrics(metrics); map.setMailbox(mailbox);
@@ -3028,13 +2890,12 @@ private slots:
         QVERIFY(metrics->snapshot(now + 62'000'000'000).uploadMBPerSecond > 0);
     }
     void staticAffineSprites_data() {
-        QTest::addColumn<bool>("gl"); QTest::addColumn<bool>("mob");
-        QTest::newRow("native-default-object") << false << false; QTest::newRow("OpenGL-object") << true << false;
-        QTest::newRow("native-default-mob") << false << true; QTest::newRow("OpenGL-mob") << true << true;
+        QTest::addColumn<bool>("mob");
+        QTest::newRow("object") << false; QTest::newRow("mob") << true;
     }
     void staticAffineSprites() {
-        QFETCH(bool, gl); QFETCH(bool, mob);
-        MapWidget map; if (gl) map.setApi(QRhiWidget::Api::OpenGL);
+        QFETCH(bool, mob);
+        MapWidget map;
         map.setWindowFlag(Qt::FramelessWindowHint); map.resize(96,96); map.setViewSize({3,3});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
         map.setMetrics(metrics); map.setMailbox(mailbox);
@@ -3173,15 +3034,8 @@ private slots:
         frame = map.grabFramebuffer();
         QCOMPARE(pixel(frame, 35, 38), QColor(Qt::white));
     }
-    void gestures_data() {
-        QTest::addColumn<bool>("gl");
-        QTest::newRow("native-default") << false;
-        QTest::newRow("OpenGL") << true;
-    }
     void gestures() {
-        QFETCH(bool, gl);
         MapWidget map;
-        if (gl) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(256,256); map.setViewSize({4,4});
         auto mailbox = std::make_shared<MapMailbox>(std::make_shared<MapMetrics>());
         map.setMailbox(mailbox);
@@ -3327,15 +3181,10 @@ private slots:
         QCOMPARE(events[0].dy, 120.0f); // one notch, as stock reports it
         QVERIFY(events[0].click.mods.shift);
     }
-    void popupReleaseTiming_data() {
-        QTest::addColumn<bool>("gl");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void popupReleaseTiming() {
-        QFETCH(bool,gl);
         test::ReplayFixture f; QVERIFY(f.load("frames-filtered-input.txt","master-tree-world"));
         SkinWindow window; window.resize(448,448);
-        MapWidget map(&window); if(gl) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map(&window);
         map.resize(448,448); map.setViewSize({7,7});
         auto mailbox=std::make_shared<MapMailbox>(std::make_shared<MapMetrics>()); map.setMailbox(mailbox);
         QVector<MapPointer> requests,events;

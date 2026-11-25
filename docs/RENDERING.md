@@ -143,7 +143,7 @@ Set variables for an individual client process, not globally:
 - `FUGUE_ATOM_TRACE_INFO_ROW=7`: optional zero-based published INFO row, independent
   of the selected MAP atom.
 - `FUGUE_ATOM_TRACE_PIXELS=1`: optional bounded alpha inspection of existing images.
-- `FUGUE_MAP_OPENGL=1`: select MAP's OpenGL API before widget construction. Verify
+- `FUGUE_GPU_BACKEND=opengl` (or `d3d11`, `metal`): select MAP's graphics API before widget construction. Verify
   actual backend creation; a requested environment value is not backend evidence.
   `FUGUE_FRAME_TRACE` prints the backend and device that were created.
 - `FUGUE_DUMP_REFUSED=<dir>`: write the bytes of an icon that could not be drawn there.

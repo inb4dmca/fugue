@@ -35,6 +35,8 @@ public:
     void setMetricsVisible(bool visible);
     bool metricsVisible() const;
     QSize viewSize() const { return viewSize_; }
+    // The graphics backend the widget is drawing with ("D3D11", "OpenGL", "Metal"); empty before its first frame.
+    QString createdBackend() const;
     void setPresentationSettings(MapPresentationSettings settings);
     MapPresentationSettings presentationSettings() const { return settings_; }
     QSize presentedViewSize() const;

@@ -30,10 +30,8 @@ QShader shader(const char* path) {
 }
 }  // namespace
 MapWidget::MapWidget(QWidget* parent) : QRhiWidget(parent) {
-    // Explicit diagnostic override for live application probes. Qt's compositor
-    // backend environment alone does not override a QRhiWidget's selected API.
-    if (qEnvironmentVariableIntValue("FUGUE_MAP_OPENGL") == 1) setApi(QRhiWidget::Api::OpenGL);
-    // FUGUE_GPU_BACKEND (docs/USAGE.md) picks the map's graphics API.
+    // FUGUE_GPU_BACKEND (docs/USAGE.md) picks the map's graphics API. Qt's compositor backend environment alone
+    // does not override a QRhiWidget's selected API.
     const QByteArray backend = qgetenv("FUGUE_GPU_BACKEND").toLower();
     if (backend == "opengl") setApi(QRhiWidget::Api::OpenGL);
     else if (backend == "d3d11") setApi(QRhiWidget::Api::Direct3D11);
@@ -161,6 +159,7 @@ void MapWidget::resizeEvent(QResizeEvent* event) {
     placeMetrics();
     if (presentationChanged) presentationChanged();
 }
+QString MapWidget::createdBackend() const { return rhi() ? QString::fromLatin1(rhi()->backendName()) : QString(); }
 MapWidget::~MapWidget() {
     // Retire queued input without calling a handler whose owner may also be
     // tearing down (e.g. a skin rebuild). The worker rejects the expired fence.
@@ -563,7 +562,7 @@ void MapWidget::initialize(QRhiCommandBuffer*) {
         if (presentPipeline_->create()) return;
     }
     releaseResources();
-    // The backend and device actually created (FUGUE_GPU_BACKEND, FUGUE_GPU_SOFTWARE and FUGUE_MAP_OPENGL only ask).
+    // The backend and device actually created (FUGUE_GPU_BACKEND and FUGUE_GPU_SOFTWARE only ask).
     if (std::getenv("FUGUE_FRAME_TRACE") && rhi())
         std::fprintf(stderr, "[render-trace] backend=%s device=%s\n", rhi()->backendName(),
                      rhi()->driverInfo().deviceName.constData());

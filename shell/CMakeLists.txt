@@ -39,19 +39,47 @@ function(fugue_shell_test name stem)
   endif()
 endfunction()
 
-# GPU readback can use software D3D11 without a display on Windows. OpenGL
-# needs the window-system connection even when it only draws into textures.
+# Every GPU and native entry runs on one graphics backend, which its environment names (FUGUE_GPU_BACKEND), so a
+# developer's own environment cannot change it; the suites check the device they got. The tests themselves do not
+# choose. Off-screen devices (tests/gpucomparison.h) are Direct3D 11 or OpenGL; a MapWidget can also use Metal.
+# The machine's own adapter is used; FUGUE_GPU_SOFTWARE=1 in the caller's environment asks for a software one.
 if(WIN32)
   set(_shell_native_platform windows)
-  set(_shell_gpu_platform offscreen)
+  set(_shell_gpu_backends d3d11 opengl)
+  set(_shell_native_backends d3d11 opengl)
 elseif(APPLE)
   set(_shell_native_platform cocoa)
-  set(_shell_gpu_platform cocoa)
+  set(_shell_gpu_backends opengl)
+  set(_shell_native_backends metal opengl)
 else()
   set(_shell_native_platform xcb)
-  set(_shell_gpu_platform xcb)
+  set(_shell_gpu_backends opengl)
+  set(_shell_native_backends opengl)
 endif()
-set(_shell_profile_env "FUGUE_AUDIO=none;FUGUE_MAP_OPENGL=0;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox")
+set(_shell_profile_env "FUGUE_AUDIO=none;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox")
+# fugue_shell_gpu_test(<name> <labels> <command...>): <name>_<backend> for each off-screen backend. Direct3D 11
+# draws into textures without a display; OpenGL needs the window-system connection even then (label display).
+function(fugue_shell_gpu_test name labels)
+  foreach(backend IN LISTS _shell_gpu_backends)
+    fugue_add_test(${name}_${backend} ${ARGN})
+    if(backend STREQUAL "d3d11")
+      set_tests_properties(${name}_${backend} PROPERTIES LABELS "${labels}"
+        ENVIRONMENT "${_shell_profile_env};FUGUE_GPU_BACKEND=${backend};QT_QPA_PLATFORM=offscreen")
+    else()
+      set_tests_properties(${name}_${backend} PROPERTIES LABELS "${labels};display"
+        ENVIRONMENT "${_shell_profile_env};FUGUE_GPU_BACKEND=${backend};QT_QPA_PLATFORM=${_shell_native_platform}")
+    endif()
+  endforeach()
+endfunction()
+# fugue_shell_native_test(<name> <labels> <command...>): <name>_<backend> for each backend a real MapWidget has
+# here, one at a time on the desktop.
+function(fugue_shell_native_test name labels)
+  foreach(backend IN LISTS _shell_native_backends)
+    fugue_add_test(${name}_${backend} ${ARGN})
+    set_tests_properties(${name}_${backend} PROPERTIES LABELS "${labels}" RUN_SERIAL TRUE
+      ENVIRONMENT "${_shell_profile_env};FUGUE_GPU_BACKEND=${backend};QT_QPA_PLATFORM=${_shell_native_platform}")
+  endforeach()
+endfunction()
 
 fugue_shell_test(shell_urlopener urlopener_test)   # macOS QFileOpenEvent URL delivery, without Launch Services
 fugue_shell_test(shell_statview statview_test) # worker INFO thumbnails and row lifetime validation
@@ -86,22 +114,10 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/masteropacity_test.cpp)
   target_link_libraries(masteropacity_test PRIVATE fugue_shell Qt6::Test Qt6::GuiPrivate)
   target_compile_definitions(masteropacity_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
   fugue_add_test(shell_masteropacity_portable fugue_tests masteropacity portable lifetimes -o -,txt)
-  fugue_add_test(shell_masteropacity_gpu fugue_tests masteropacity gpu -o -,txt)
-  fugue_add_test(shell_masteropacity_native fugue_tests masteropacity native -o -,txt)
-  foreach(profile portable gpu native)
-    set_tests_properties(shell_masteropacity_${profile} PROPERTIES
-      LABELS "master-opacity;${profile}")
-  endforeach()
-  set_property(TEST shell_masteropacity_portable APPEND PROPERTY LABELS fast)
-  set_tests_properties(shell_masteropacity_portable PROPERTIES
+  set_tests_properties(shell_masteropacity_portable PROPERTIES LABELS "master-opacity;portable;fast"
     ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=offscreen")
-  set_tests_properties(shell_masteropacity_gpu PROPERTIES
-    ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_gpu_platform}")
-  set_tests_properties(shell_masteropacity_native PROPERTIES RUN_SERIAL TRUE
-    ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
-  if(NOT WIN32)
-    set_property(TEST shell_masteropacity_gpu APPEND PROPERTY LABELS display)
-  endif()
+  fugue_shell_gpu_test(shell_masteropacity_gpu "master-opacity;gpu" fugue_tests masteropacity gpu -o -,txt)
+  fugue_shell_native_test(shell_masteropacity_native "master-opacity;native" fugue_tests masteropacity native -o -,txt)
 endif()
 fugue_shell_test(shell_compositionplan compositionplan_test) # shared model-free graph and admission
 if(TARGET compositionplan_test)
@@ -113,23 +129,9 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/compositiongpu_test.cpp)
   fugue_test_suite(compositiongpu_test tests/compositiongpu_test.cpp)
   target_link_libraries(compositiongpu_test PRIVATE fugue_shell Qt6::Test Qt6::GuiPrivate)
   target_compile_definitions(compositiongpu_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
-  fugue_add_test(shell_composition_stock_gpu fugue_tests compositiongpu stockParityReplay -o -,txt)
-  fugue_add_test(shell_composition_transform_gpu fugue_tests compositiongpu masterTransformFilters -o -,txt)
-  if(WIN32)
-    fugue_add_test(shell_composition_material_gpu fugue_tests compositiongpu contributorMaterialGpu:d3d11 -o -,txt)
-    fugue_add_test(shell_composition_material_opengl_gpu fugue_tests compositiongpu contributorMaterialGpu:opengl -o -,txt)
-    set_tests_properties(shell_composition_material_opengl_gpu PROPERTIES LABELS "composition;gpu;display"
-      ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
-  else()
-    fugue_add_test(shell_composition_material_gpu fugue_tests compositiongpu contributorMaterialGpu:opengl -o -,txt)
-  endif()
-  foreach(workload stock transform material)
-    set_tests_properties(shell_composition_${workload}_gpu PROPERTIES LABELS "composition;gpu"
-      ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_gpu_platform}")
-    if(NOT WIN32)
-      set_property(TEST shell_composition_${workload}_gpu APPEND PROPERTY LABELS display)
-    endif()
-  endforeach()
+  fugue_shell_gpu_test(shell_composition_stock_gpu "composition;gpu" fugue_tests compositiongpu stockParityReplay -o -,txt)
+  fugue_shell_gpu_test(shell_composition_transform_gpu "composition;gpu" fugue_tests compositiongpu masterTransformFilters -o -,txt)
+  fugue_shell_gpu_test(shell_composition_material_gpu "composition;gpu" fugue_tests compositiongpu contributorMaterialGpu -o -,txt)
 endif()
 foreach(animation_test clientanim_test movanim_test visanim_test runechat_test composition_test)
   if(TARGET ${animation_test})
@@ -160,18 +162,25 @@ fugue_shell_test(shell_map      map_test)         # portable configuration, rout
 if(TARGET map_test)
   set_property(TEST shell_map APPEND PROPERTY LABELS map)
 endif()
-fugue_shell_test(shell_map_native mapnative_test) # rendering, presentation and input through a real MapWidget
-if(TARGET mapnative_test)
+# Rendering, presentation and input through a real MapWidget.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/mapnative_test.cpp)
+  fugue_test_suite(mapnative_test tests/mapnative_test.cpp)
+  target_link_libraries(mapnative_test PRIVATE fugue_shell fugue_proto Qt6::Test Qt6::Network Qt6::GuiPrivate)
   target_compile_definitions(mapnative_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
-  target_link_libraries(mapnative_test PRIVATE fugue_proto Qt6::GuiPrivate)
-  set_tests_properties(shell_map_native PROPERTIES LABELS "map;native" RUN_SERIAL TRUE
-    TIMEOUT 300
-    ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
+  fugue_shell_native_test(shell_map_native "map;native" fugue_tests mapnative -o -,txt)
+  foreach(backend IN LISTS _shell_native_backends)
+    set_tests_properties(shell_map_native_${backend} PROPERTIES TIMEOUT 300)
+  endforeach()
 endif()
-fugue_shell_test(shell_map_desktop mapdesktop_test) # desktop-composited pixels; windows must stay foreground and unobstructed
-if(TARGET mapdesktop_test)
-  set_tests_properties(shell_map_desktop PROPERTIES LABELS "map;native;desktop" RUN_SERIAL TRUE
-    ENVIRONMENT "${_shell_profile_env};QT_QPA_PLATFORM=${_shell_native_platform}")
+# Desktop-composited pixels; windows must stay foreground and unobstructed.
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/mapdesktop_test.cpp)
+  fugue_test_suite(mapdesktop_test tests/mapdesktop_test.cpp)
+  target_link_libraries(mapdesktop_test PRIVATE fugue_shell Qt6::Test Qt6::Network)
+  fugue_shell_native_test(shell_map_desktop "map;native;desktop" fugue_tests mapdesktop -o -,txt)
+  if("opengl" IN_LIST _shell_native_backends)
+    # WebEngine's QtQuick graphics API is process-global: the browser above the map has to be on OpenGL too.
+    set_property(TEST shell_map_desktop_opengl APPEND PROPERTY ENVIRONMENT "QSG_RHI_BACKEND=opengl")
+  endif()
 endif()
 fugue_shell_test(shell          shell_test)       # shell input routing
 fugue_shell_test(shell_skincolor skincolor_test)  # winset colours -> widgets

@@ -16,16 +16,9 @@ class CompositionGpuTest : public QObject {
     Q_OBJECT
     QStringList stockSets_;
 private slots:
-    void contributorMaterialGpu_data() {
-        QTest::addColumn<bool>("gl");
-#ifdef Q_OS_WIN
-        QTest::newRow("d3d11")<<false;
-#endif
-        QTest::newRow("opengl")<<true;
-    }
     void contributorMaterialGpu() {
-        QFETCH(bool,gl);GpuComparison gpu;const QRect source(11,-7,193,137);
-        QVERIFY2(gpu.initialize(gl,source.size(),true), "Required GPU backend could not be initialized");
+        GpuComparison gpu;const QRect source(11,-7,193,137);
+        QVERIFY2(gpu.initialize(source.size()), "Required GPU backend could not be initialized");
         int comparisons=0;
         for (int variant=0;variant<9;++variant) {
             auto scene=contributorScene(source,73,variant);
@@ -55,7 +48,7 @@ private slots:
             QCOMPARE(a,b);++comparisons;
         }
         GpuComparison large;const QRect largeSource(-23,17,832,704);
-        QVERIFY2(large.initialize(gl,largeSource.size(),true), "Required GPU backend could not be initialized");
+        QVERIFY2(large.initialize(largeSource.size()), "Required GPU backend could not be initialized");
         const auto dense=contributorScene(largeSource,1024);
         const auto a=large.render(large.reference,dense,largeSource);
         const auto b=large.render(large.bounded,dense,largeSource);
@@ -75,7 +68,7 @@ private slots:
     // replay/<set>.png the map stock DreamSeeker 516.1689 drew for the same world, grabbed six seconds after login
     // (tools/stockprobe/stockprobe.py record writes all three). No channel of any pixel may be more than 8 levels from
     // stock's.
-    // Drawn by Windows' software Direct3D, elsewhere by OpenGL (Mesa's llvmpipe passes: LIBGL_ALWAYS_SOFTWARE=1 under
+    // Drawn on the entry's backend (Mesa's llvmpipe passes on OpenGL: LIBGL_ALWAYS_SOFTWARE=1 under
     // xvfb-run with QT_QPA_PLATFORM=xcb; the offscreen platform has no OpenGL). A missing device fails this GPU check.
 private:
     std::unique_ptr<GpuComparison> replayGpu_;   // one device for every set
@@ -125,12 +118,7 @@ private slots:
         auto& gpu = replayGpu_;
         if (!gpu) {
             gpu = std::make_unique<GpuComparison>();
-#ifdef Q_OS_WIN
-            const bool gl = false;
-#else
-            const bool gl = true;
-#endif
-            if (!gpu->initialize(gl, stock.size(), true)) {
+            if (!gpu->initialize(stock.size())) {
                 gpu.reset();
                 QFAIL("Required GPU backend could not be initialized");
             }
@@ -201,12 +189,7 @@ private slots:
         auto& gpu = transformGpu_;
         if (!gpu) {
             gpu = std::make_unique<GpuComparison>();
-#ifdef Q_OS_WIN
-            const bool gl = false;
-#else
-            const bool gl = true;
-#endif
-            if (!gpu->initialize(gl, source.size(), true)) {
+            if (!gpu->initialize(source.size())) {
                 gpu.reset();
                 QFAIL("Required GPU backend could not be initialized");
             }

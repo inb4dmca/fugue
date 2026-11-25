@@ -272,8 +272,13 @@ ctest --test-dir build -L gpu --no-tests=error --output-on-failure
 ctest --test-dir build -L native --no-tests=error --output-on-failure
 ```
 
+Each GPU and native entry runs on one graphics backend, named at the end of its name (`_d3d11`, `_opengl`,
+`_metal`) and set in its environment as `FUGUE_GPU_BACKEND`; the tests do not choose, and they fail if the device
+they get is another backend's. They use the machine's own adapter. Set `FUGUE_GPU_SOFTWARE=1` to ask for a software
+adapter instead (Direct3D 11's WARP), as CI does; some stock comparisons hold only on a graphics card.
+
 GPU checks that need a window-system connection also carry `display`. On Windows,
-`-L gpu -LE display` selects software D3D11 checks that can run without a desktop.
+`-L gpu -LE display` selects the Direct3D 11 checks, which can run without a desktop.
 Native Windows checks need an unlocked interactive desktop.
 
 Native checks that sample the actual desktop also carry `desktop`. Their test

@@ -173,13 +173,8 @@ private slots:
         QVERIFY(desktop.valid());
         map->setInputHandler("main.map",true,{}); // callback does not outlive the test's vector
     }
-    void screenOffsetRangePixels_data() {
-        QTest::addColumn<bool>("openGL");
-        QTest::newRow("native-default") << false; QTest::newRow("OpenGL") << true;
-    }
     void screenOffsetRangePixels() {
-        QFETCH(bool,openGL);
-        MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
+        MapWidget map;
         map.resize(480,224); map.setViewSize({15,7});
         auto mailbox=std::make_shared<MapMailbox>(std::make_shared<MapMetrics>()); map.setMailbox(mailbox);
         QVector<MapPointer> events;

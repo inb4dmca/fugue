@@ -20,8 +20,21 @@ struct GpuComparison {
     std::unique_ptr<QRhiTextureRenderTarget> target;
     SpriteRenderer reference{false}, bounded{true};
     uint64_t uploaded=0;
-    bool initialize(bool gl, QSize size, bool software = false) {
+    // The backend is the test entry's (FUGUE_GPU_BACKEND: opengl, or d3d11 on Windows; unset: the platform's usual
+    // one), on the machine's own adapter unless FUGUE_GPU_SOFTWARE=1 asks for a software one. False when that
+    // backend is not available here: a test never runs on another backend than its entry names.
+    bool initialize(QSize size) {
         ::initGpuResources();
+        const QByteArray backend=qgetenv("FUGUE_GPU_BACKEND").toLower();
+#ifdef Q_OS_WIN
+        const bool gl=backend=="opengl";
+        if (!gl && !backend.isEmpty() && backend!="d3d11") return false;
+#else
+        const bool gl=true;
+        if (!backend.isEmpty() && backend!="opengl") return false;
+#endif
+        const bool software=qEnvironmentVariableIntValue("FUGUE_GPU_SOFTWARE")==1;
+        Q_UNUSED(software);
         if (gl) {
             QRhiGles2InitParams params;
             fallback.reset(QRhiGles2InitParams::newFallbackSurface());params.fallbackSurface=fallback.get();
@@ -32,7 +45,8 @@ struct GpuComparison {
             rhi.reset(QRhi::create(QRhi::D3D11,&params,software ? QRhi::PreferSoftwareRenderer : QRhi::Flags{}));
 #endif
         }
-        if (!rhi || !rhi->isTextureFormatSupported(QRhiTexture::RGBA16F,QRhiTexture::RenderTarget)) return false;
+        if (!rhi || gl!=(rhi->backend()==QRhi::OpenGLES2) ||
+            !rhi->isTextureFormatSupported(QRhiTexture::RGBA16F,QRhiTexture::RenderTarget)) return false;
         qInfo()<<rhi->backendName()<<rhi->driverInfo().deviceName;
         texture.reset(rhi->newTexture(QRhiTexture::RGBA8,size,1,QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));
         if (!texture->create()) return false;
