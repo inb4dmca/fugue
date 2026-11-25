@@ -178,12 +178,9 @@ void CompositionPlan::plan() {
             effectBounds.adjust(-padding,-padding,padding,padding);
             quad.position = effectBounds.topLeft(); quad.size = effectBounds.size();
             Item item{generated(quad), input};
-            // The last value picks the shader's rounding: the chain's entry copy (7) rounds half up, the filter
-            // passes round the way stock's surfaces read back.
             item.effect = {float(operation), float(size), float(padding), float(filter.flags),
                 filter.color[0], filter.color[1], filter.color[2], filter.color[3],
-                1.0f/inputBounds.width(), 1.0f/inputBounds.height(), 1.0f,
-                operation == 7 ? 0.0f : 1.0f};
+                1.0f/inputBounds.width(), 1.0f/inputBounds.height(), 1.0f, 0.0f};
             return addPass({item},effectBounds);
         };
         auto blur = [&](int input, const PlaneFilter& filter) {
@@ -216,7 +213,7 @@ void CompositionPlan::plan() {
                     Item item{generated(std::move(output)),input};
                     item.effect = {float(9+axis),steps.sizes[i],float(bounds.x()-from.x()),float(bounds.y()-from.y()),
                         float(bounds.width()),float(bounds.height()),0,0,1.0f/from.width(),1.0f/from.height(),
-                        i == steps.count-1 && axis == 1 ? 1.0f : 0.0f,1};
+                        i == steps.count-1 && axis == 1 ? 1.0f : 0.0f,0};
                     input = addPass({item},bounds);
                 }
                 effectBounds = passes[input].bounds;
@@ -253,6 +250,8 @@ void CompositionPlan::plan() {
                 return f.kind == PlaneFilter::Shadow || f.kind == PlaneFilter::Wave ||
                     f.kind == PlaneFilter::Ripple || f.kind == PlaneFilter::Bloom;
             });
+            // Entry copy: premultiplied bytes (13) before a shadow, wave, ripple or bloom, straight bytes rounded half
+            // up (7) otherwise. No retained stock capture tells the two apart: the stock-compared tests pass with either.
             result = filterPass(result,shadow ? 13 : 7,0,PlaneFilter{});
         }
         // Stock's own surface: the content grown by every operation so far (Fugue's capture is padded around it).

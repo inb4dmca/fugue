@@ -232,9 +232,9 @@ void main() {
         } else if (texel.z > 0.5) {
             vec3 rgb = result.a > 0.0 ? result.rgb/result.a : vec3(0.0);
             vec4 bytes = clamp(vec4(rgb,result.a),0.0,1.0)*255.0;
-            // Adding 0.5 can turn a just-below-half byte into an exact integer.
-            // Compare the fractional part instead, preserving the stock threshold.
-            vec4 rounded = (texel.w > 0.5 ? floor(bytes)+step(vec4(0.5),fract(bytes)) : floor(bytes+0.5))/255.0;
+            // Half up. Comparing the fraction differs from floor(bytes+0.5) only at the float just below 0.5,
+            // where adding 0.5 rounds up to 1; the chain's entry copy never produces that value.
+            vec4 rounded = (floor(bytes)+step(vec4(0.5),fract(bytes)))/255.0;
             result = vec4(rounded.rgb*rounded.a,rounded.a);
         }
         if (effect.x > 8.5 && texel.z < 0.5) {
