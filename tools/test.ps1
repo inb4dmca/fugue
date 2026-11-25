@@ -10,6 +10,9 @@ param(
     [string]$Label,
     [string]$ExcludeLabel,
     [string]$Regex,
+    # Graphics backends the GPU and native entries run on: "default" is the client's own on this platform (Vulkan on
+    # Windows), "all" every backend, or a list such as "d3d11,opengl". Changing it reconfigures, so not with -NoBuild.
+    [string]$Backends = "default",
     [string]$QtDir = $env:QTDIR,
     [string]$VcpkgRoot = $env:VCPKG_ROOT,
     # An already installed x64-windows tree; must contain include/, lib/, bin/, debug/.
@@ -106,7 +109,8 @@ if (!$NoBuild) {
         "-S", $root, "-B", $build, "-G", "Ninja Multi-Config", "-DCMAKE_CXX_COMPILER=cl",
         "-DCMAKE_PREFIX_PATH=$QtDir;$DependencyRoot",
         "-DOPENMPT_LIBRARY=$openmpt", "-DZLIB_LIBRARY_DEBUG=$zlib", "-DZLIB_LIBRARY_RELEASE=$zlib",
-        "-DFUGUE_RELEASE=OFF", "-DFUGUE_OPENMPT=ON", "-DFUGUE_HEADLESS_ONLY=OFF", "-DFUGUE_BUILD_SHELL=ON"
+        "-DFUGUE_RELEASE=OFF", "-DFUGUE_OPENMPT=ON", "-DFUGUE_HEADLESS_ONLY=OFF", "-DFUGUE_BUILD_SHELL=ON",
+        "-DFUGUE_TEST_GPU_BACKENDS=$($Backends -replace ',', ';')"
     ) $compilerEnv
     # CTest does not rebuild: a failed build stops here, before stale binaries could be tested.
     Invoke-Checked "cmake" @("--build", $build, "--config", $Configuration, "--parallel", "$Jobs") $compilerEnv

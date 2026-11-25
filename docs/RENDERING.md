@@ -149,7 +149,7 @@ Set variables for an individual client process, not globally:
   window (`shell/gpubackend.h` settles it at start-up and sets Qt's `QSG_RHI_BACKEND` to match). Verify
   actual backend creation; a requested environment value is not backend evidence.
   `FUGUE_FRAME_TRACE` prints the backend and device that were created.
-  Vulkan is experimental: its suites pass, but it has had no use in the client.
+  Windows uses Vulkan unless the machine has none (no loader, or no device listed), then Direct3D 11.
 - `FUGUE_DUMP_REFUSED=<dir>`: write the bytes of an icon that could not be drawn there.
 
 Atom traces describe the direct-world occurrence, not every HUD/image/vis copy.

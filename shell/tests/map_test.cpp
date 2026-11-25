@@ -80,7 +80,7 @@ private slots:
         const auto ours=qgetenv("FUGUE_GPU_BACKEND"),qts=qgetenv("QSG_RHI_BACKEND");
         const auto restore=qScopeGuard([&] {qputenv("FUGUE_GPU_BACKEND",ours);qputenv("QSG_RHI_BACKEND",qts);});
 #if defined(Q_OS_WIN)
-        const QByteArray usual="d3d11";
+        const QByteArray usual=vulkanAvailable() ? "vulkan" : "d3d11"; // Vulkan where the machine has it
 #elif defined(Q_OS_MACOS)
         const QByteArray usual="metal";
 #else
@@ -93,9 +93,10 @@ private slots:
             return result==qgetenv("FUGUE_GPU_BACKEND") && result==qgetenv("QSG_RHI_BACKEND") ? result : QByteArray("differ");
         };
         QCOMPARE(settled(nullptr,nullptr),usual);
-        QCOMPARE(settled(nullptr,"vulkan"),usual); // Qt's variable alone chooses nothing
+        QCOMPARE(settled(nullptr,"opengl"),usual); // Qt's variable alone chooses nothing
         QCOMPARE(settled("OpenGL","d3d11"),QByteArray("opengl"));
         QCOMPARE(settled("vulkan",nullptr),QByteArray("vulkan"));
+        QCOMPARE(settled("d3d11","vulkan"),QByteArray("d3d11"));
         QTest::ignoreMessage(QtWarningMsg,QRegularExpression("FUGUE_GPU_BACKEND=nonsense"));
         QCOMPARE(settled("nonsense","opengl"),usual);
 #ifdef Q_OS_MACOS

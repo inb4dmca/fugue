@@ -79,6 +79,7 @@ with `-BuildDir build/ninja/release` and the matching `-DependencyBin`.
 ./tools/test.ps1                    # every test, including those that open windows on the desktop
 ./tools/test.ps1 -Regex shell_entitymap
 ./tools/test.ps1 Debug -Label fast  # the same tests unoptimised, for stepping through a failure
+./tools/test.ps1 -Backends all      # the GPU and native suites on every graphics backend, not only the default
 ```
 
 It builds `RelWithDebInfo` in `build/ninja/relwithdebinfo` by default: an optimised development build that keeps
@@ -272,20 +273,24 @@ ctest --test-dir build -L gpu --no-tests=error --output-on-failure
 ctest --test-dir build -L native --no-tests=error --output-on-failure
 ```
 
-Each GPU and native entry runs on one graphics backend, named at the end of its name (`_d3d11`, `_opengl`,
-`_metal`) and set in its environment as `FUGUE_GPU_BACKEND`; the tests do not choose, and they fail if the device
-they get is another backend's. They use the machine's own adapter. Set `FUGUE_GPU_SOFTWARE=1` to ask for a software
-adapter instead (Direct3D 11's WARP), as CI does; some stock comparisons hold only on a graphics card.
+Each GPU and native entry runs on one graphics backend, named at the end of its name (`_vulkan`, `_d3d11`,
+`_opengl`, `_metal`) and set in its environment as `FUGUE_GPU_BACKEND`; the tests do not choose, and they fail if the
+device they get is another backend's. They use the machine's own adapter. Set `FUGUE_GPU_SOFTWARE=1` to ask for a
+software adapter instead (Direct3D 11's WARP), as CI does; some stock comparisons hold only on a graphics card.
 
-Vulkan is experimental and optional. Where the Vulkan headers are installed (`vcpkg install vulkan-headers`; they are
-not in `vcpkg.json`), every GPU and native suite also gets a `_vulkan` entry, which needs a Vulkan driver to run.
-To have Vulkan report misuse of its API, install `vulkan-validationlayers` too and run a suite with
+By default the entries exist for one backend only, the one the client itself uses on the platform: Vulkan on
+Windows, OpenGL on Linux, Metal (and OpenGL for the off-screen suites) on macOS. The other backends are tested on
+request: `-DFUGUE_TEST_GPU_BACKENDS=all`, or a list such as `d3d11;opengl` (`tools/test.ps1 -Backends all`, or
+`-Backends d3d11,opengl`). The off-screen suites can use Vulkan only where the Vulkan headers are installed
+(`vcpkg install vulkan-headers`; they are not in `vcpkg.json`), and Vulkan entries need a Vulkan driver to run;
+without the headers the Windows default is Direct3D 11, which is what CI tests. To have Vulkan report misuse of its
+API, install `vulkan-validationlayers` too and run a suite with
 `VK_ADD_LAYER_PATH` set to the directory holding `VkLayer_khronos_validation.json`,
 `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` and `QT_WIDGETS_RHI_DEBUG_LAYER=1`; messages appear as `vkDebug:`
 lines.
 
 GPU checks that need a window-system connection also carry `display`. On Windows,
-`-L gpu -LE display` selects the Direct3D 11 checks, which can run without a desktop.
+`-L gpu -LE display` selects the Direct3D 11 checks, where those are configured, which can run without a desktop.
 Native Windows checks need an unlocked interactive desktop.
 
 Native checks that sample the actual desktop also carry `desktop`. Their test
