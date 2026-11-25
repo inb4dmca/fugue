@@ -59,6 +59,24 @@ model::World world() {
 shell::TurfMap::Read reader() {
     return [bytes = iconBytes()](uint32_t, QByteArray& out) { out = bytes; return true; };
 }
+// What the placement tests below read from master-screen-loc-world: a phase's record, and a marker colour's
+// bounds (left, top, right, bottom) in its 224x224 capture.
+bool masterLocPhases(std::map<QString,QJsonObject>& phases, QString& error) {
+    const QString path = QString(FUGUE_TEST_DATA_DIR) + "/master-screen-loc-world/stock-observations.json";
+    QJsonDocument doc;
+    if (!testinput::readRecordedJson(path, doc, error)) return false;
+    for (const auto& value : doc.object()["phases"].toArray()) phases[value.toObject()["phase"].toString()] = value.toObject();
+    return true;
+}
+bool masterLocBounds(const std::map<QString,QJsonObject>& phases, const QString& phase, const char* colour, QRect& out) {
+    const auto found = phases.find(phase);
+    if (found == phases.end() || found->second["crop"].toArray() != QJsonArray{0,0,224,224}) return false;
+    const QJsonValue value = found->second["bounds"].toObject()[colour];
+    if (!testinput::isIntegerTuple(value, 4, 0, 223)) return false;
+    const auto b = value.toArray();
+    out = QRect(QPoint(b[0].toInt(), b[1].toInt()), QPoint(b[2].toInt(), b[3].toInt()));
+    return true;
+}
 bool samePixelsAndMetadata(const shell::MapSprites& a, const shell::MapSprites& b) {
     if (a.size() != b.size()) return false;
     for (qsizetype i = 0; i < a.size(); ++i) {
@@ -765,6 +783,141 @@ private slots:
             auto order=[](const QPoint& a,const QPoint& b) { return a.x()!=b.x() ? a.x()<b.x() : a.y()<b.y(); };
             std::sort(nine.begin(),nine.end(),order); std::sort(expected.begin(),expected.end(),order);
             QCOMPARE(nine,expected);
+        }
+    }
+    // A master off the view acts on its plane, enlarges the map like an ordinary screen object and draws its overlay
+    // there, alone or as part of a range; a pixel offset past the edge enlarges nothing (stock 516.1689,
+    // master-screen-loc-world "8,1", "0,4", "1,9", "6,6 to 9,9", "9,9 to 10,10", "7:40,1"; "|ov" against "|obj").
+    void masterOffViewActsInTheLargerMap() {
+        std::map<QString,QJsonObject> phases; QString error;
+        QVERIFY2(masterLocPhases(phases, error), qPrintable(error));
+        QRect basePart, baseOverlay;
+        QVERIFY(masterLocBounds(phases, "7,1|ov", "part", basePart) && masterLocBounds(phases, "7,1|ov", "overlay", baseOverlay));
+        for (const QString loc : {"8,1", "0,4", "1,9", "6,6 to 9,9"}) { // stock: a master's overlay is where an object's icon is
+            QVERIFY2(phases.contains(loc + "|ov") && phases.contains(loc + "|obj"), qPrintable(loc));
+            QCOMPARE(phases[loc + "|ov"]["counts"], phases[loc + "|obj"]["counts"]);
+            QCOMPARE(phases[loc + "|ov"]["bounds"], phases[loc + "|obj"]["bounds"]);
+        }
+        for (const QString hidden : {"8,1|alpha0", "8,1|kt-alpha0", "0,4|alpha0", "1,9|alpha0", "7:40,1|alpha0",
+                                     "6,6 to 9,9|alpha0", "9,9 to 10,10|alpha0"}) { // stock: the master acts
+            QVERIFY2(phases.contains(hidden), qPrintable(hidden));
+            QCOMPARE(phases[hidden]["counts"].toObject()["part"].toInt(-1), 0);
+        }
+        auto w=world(); shell::TurfMap terrain; shell::EntityMap scene;
+        w.bounds.viewW=w.bounds.viewH=7; // the view stock was measured in
+        w.hudOrder={100}; w.hudAppid[100]=10; w.hudIdentity[100]={2,7,11};
+        const std::string outline = R"(,"filters":[{"type":2,"paramMask":35,"flags":1,"params":"0000803fffffffff0000"}])";
+        struct Seen { int masters = 0; std::vector<QPoint> at; QPoint entity; QSize source; };
+        auto collect=[&](const shell::MapSprites& sprites, const QSize& source, bool filtered) {
+            Seen seen; seen.source = source;
+            for (const auto& s : sprites) {
+                if (s.kind==shell::MapSprite::Master) {
+                    ++seen.masters;
+                    if (!s.planeEffects || !s.planeEffects->supported || s.planeEffects->filters.size()!=(filtered ? 1u : 0u)) seen.masters=-100;
+                } else if (s.kind==shell::MapSprite::Screen) seen.at.push_back(s.position);
+                else if (s.kind==shell::MapSprite::Entity) seen.entity = s.position;
+            }
+            return seen;
+        };
+        // Where the range's lowest, leftmost overlay stands against the world sprite.
+        auto corner=[](const Seen& seen) {
+            QPoint c = seen.at.front();
+            for (const auto& p : seen.at) c = QPoint(std::min(c.x(), p.x()), std::max(c.y(), p.y()));
+            return c - seen.entity;
+        };
+        struct Case { const char* loc; QMargins margins; size_t count; };
+        for (const std::string& effect : {std::string(), outline}) {
+            auto place=[&](const std::string& loc) {
+                setFields(w.appearances[10], std::string("{\"appearanceFlags\":268435456,\"hasPlane\":true,\"plane\":1,\"overlays\":[1],\"screenLoc\":\"") +
+                    loc + "\"" + effect + "}");
+            };
+            place("7,1");
+            auto frame = terrain.prepare(w,{},0,false);
+            const auto base = collect(scene.prepare(w,frame,reader(),0,nullptr,true), frame.source.size(), !effect.empty());
+            QCOMPARE(base.masters,1); QCOMPARE(base.at.size(),size_t(1)); QCOMPARE(scene.hudMargins(),QMargins());
+            for (const Case& c : {Case{"8,1",{0,0,1,0},1}, Case{"0,4",{1,0,0,0},1}, Case{"1,9",{0,2,0,0},1},
+                                  Case{"6,6 to 9,9",{0,2,2,0},16}, Case{"9,9 to 10,10",{0,3,3,0},4}, Case{"7:24,1",{},1}}) {
+                place(c.loc);
+                // The frame that learns of the placement still has the old scene: the master acts, and its overlay,
+                // which would lie outside that scene, is left out.
+                frame = terrain.prepare(w,{},0,false);
+                const auto before = collect(scene.prepare(w,frame,reader(),0,nullptr,true), frame.source.size(), !effect.empty());
+                QVERIFY2(before.masters==1, c.loc);
+                QCOMPARE(before.at.size(), c.margins.isNull() ? c.count : size_t(0));
+                QCOMPARE(scene.hudMargins(), c.margins);
+                frame = terrain.prepare(w,{},0,false,scene.hudMargins());
+                const auto seen = collect(scene.prepare(w,frame,reader(),0,nullptr,true), frame.source.size(), !effect.empty());
+                QVERIFY2(seen.masters==1, c.loc);
+                QCOMPARE(seen.at.size(), c.count);
+                QCOMPARE(seen.source, base.source + QSize(32*(c.margins.left()+c.margins.right()), 32*(c.margins.top()+c.margins.bottom())));
+                // Stock centres the larger map, so its world moves by half of what was added on each side.
+                QRect part;
+                const QString phase = QString(c.loc) + (QByteArray(c.loc)=="9,9 to 10,10" ? "|ov-outline" : "|ov");
+                QVERIFY2(masterLocBounds(phases, phase, "part", part), qPrintable(phase));
+                QCOMPARE(part.topLeft()-basePart.topLeft(),
+                         QPoint(16*(c.margins.left()-c.margins.right()), 16*(c.margins.top()-c.margins.bottom())));
+                // Where stock shows the overlay it stands as far from the world as it does here. (0,4 and 1,9 are
+                // outside the 224 pixel window; a range's top rows may be.)
+                QRect overlay;
+                if (masterLocBounds(phases, phase, "overlay", overlay))
+                    QCOMPARE(QPoint(overlay.left(), overlay.bottom()) - part.topLeft() - (baseOverlay.bottomLeft() - basePart.topLeft()),
+                             corner(seen) - corner(base));
+                else QVERIFY2(QByteArray(c.loc)!="8,1" && QByteArray(c.loc)!="6,6 to 9,9" && QByteArray(c.loc)!="7:24,1", c.loc);
+            }
+            // A pixel offset that carries the overlay past the edge: the master acts, nothing is drawn or added.
+            place("7:40,1");
+            frame = terrain.prepare(w,{},0,false);
+            const auto past = collect(scene.prepare(w,frame,reader(),0,nullptr,true), frame.source.size(), !effect.empty());
+            QCOMPARE(past.masters,1); QCOMPARE(past.at.size(),size_t(0)); QCOMPARE(scene.hudMargins(),QMargins());
+            QRect none; QVERIFY(!masterLocBounds(phases, "7:40,1|ov-outline", "overlay", none));
+        }
+        QCOMPARE(scene.hudMargins(), QMargins());
+    }
+    // A range's grid is moved by its first end's pixel offsets and ignores the second end's (stock 516.1689,
+    // master-screen-loc-world "1,1 to 3:8,3", "1,1 to 3:40,3", "1:8,1 to 3,3", "1:4,1:8 to 3:12,3", the same for a
+    // master's overlays and an object). A range with a percent end, or one written backwards with a pixel offset,
+    // is still not placed, which refuses a master tree: stock draws those like an ordinary object's range.
+    void masterRangePixelOffsetsFollowTheFirstEnd() {
+        std::map<QString,QJsonObject> phases; QString error;
+        QVERIFY2(masterLocPhases(phases, error), qPrintable(error));
+        QRect plain;
+        QVERIFY(masterLocBounds(phases, "1,1 to 3:8,3|ov", "overlay", plain));
+        QCOMPARE(plain, QRect(QPoint(0,128), QPoint(79,207))); // three columns and rows of the 16 pixel overlay from 1,1
+        for (const QString same : {"1,1 to 3:8,3|obj", "1,1 to 3:40,3|ov"}) {
+            QRect r; QVERIFY2(masterLocBounds(phases, same, "overlay", r), qPrintable(same)); QCOMPARE(r, plain);
+        }
+        QVERIFY(phases.contains("1,1 to 3:8,3|alpha0"));
+        QCOMPARE(phases["1,1 to 3:8,3|alpha0"]["counts"].toObject()["part"].toInt(-1), 0);
+        QCOMPARE(phases["1:4,1:8 to 3:12,3|ov"]["bounds"], phases["1:4,1:8 to 3:12,3|obj"]["bounds"]);
+        auto w=world(); shell::TurfMap terrain; shell::EntityMap scene;
+        w.bounds.viewW=w.bounds.viewH=7; // the view stock was measured in
+        w.hudOrder={100}; w.hudAppid[100]=10; w.hudIdentity[100]={2,7,11};
+        auto draw=[&](const std::string& loc) {
+            setFields(w.appearances[10], std::string("{\"appearanceFlags\":268435456,\"hasPlane\":true,\"plane\":1,\"overlays\":[1],\"screenLoc\":\"") +
+                loc + "\"}");
+            std::vector<QPoint> at; int masters=0;
+            for (const auto& s : scene.prepare(w,terrain.prepare(w,{},0,false),reader(),0,nullptr,true)) {
+                if (s.kind==shell::MapSprite::Master) masters += s.planeEffects && s.planeEffects->supported ? 1 : -100;
+                else if (s.kind==shell::MapSprite::Screen) at.push_back(s.position);
+            }
+            auto order=[](const QPoint& a,const QPoint& b) { return a.x()!=b.x() ? a.x()<b.x() : a.y()<b.y(); };
+            std::sort(at.begin(),at.end(),order);
+            return std::pair{masters,at};
+        };
+        const auto [masters,grid]=draw("1,1 to 3,3");
+        QCOMPARE(masters,1); QCOMPARE(grid.size(),size_t(9));
+        for (const char* loc : {"1,1 to 3:8,3", "1,1 to 3:40,3", "1:8,1 to 3,3", "1:4,1:8 to 3:12,3"}) {
+            QRect stock;
+            QVERIFY2(masterLocBounds(phases, QString(loc) + "|ov", "overlay", stock), loc);
+            QCOMPARE(stock.size(), plain.size());
+            const auto [n,moved]=draw(loc);
+            QCOMPARE(n,1); QCOMPARE(moved.size(),size_t(9));
+            for (size_t i=0;i<9;++i) QCOMPARE(moved[i]-grid[i], stock.topLeft()-plain.topLeft());
+        }
+        for (const char* unplaced : {"1,1 to 50%,50%", "0%,0% to 50%,50%", "50%,50% to 6,6", "2,2 to 100%,3", "3:8,3 to 1,1"}) {
+            QVERIFY2(phases.contains(QString(unplaced) + "|ov"), unplaced); // measured, and not reproduced
+            const auto [n,none]=draw(unplaced);
+            QVERIFY2(n<0 && none.empty(), unplaced);
         }
     }
     // A master tree keeps its filters under a matrix: they run before it (stock 516.1689, master-transform-world
@@ -2914,8 +3067,15 @@ private slots:
         QCOMPARE(at("1,1 TO 16,16",{16,16}).size(),size_t(256));
         QVERIFY(at("1,1 TO 17,16",{17,16}).empty());
         QVERIFY(at("0,0").empty());QVERIFY(at("EAST+1,NORTH").empty());
+        // The first end's pixel offsets move the grid; the second end's are ignored (master-screen-loc-world
+        // "1:8,1 to 3,3|obj", "1,1 to 3:8,3|obj", "1:4,1:8 to 3:12,3|obj").
+        QCOMPARE(at("1:5,1 TO 2,2"), (std::vector<QPoint>{{5,0},{37,0},{5,32},{37,32}}));
+        QCOMPARE(at("1,1:5 to 2,2:6"), (std::vector<QPoint>{{0,5},{32,5},{0,37},{32,37}}));
+        QCOMPARE(at("1,1 to 3:8,2:40"), at("1,1 TO 3,2"));
+        QCOMPARE(at("1:5, 1 TO 2, 2"), at("1:5,1 TO 2,2"));
         for (const auto* invalid : {"", "garbage", "1", "1,1,1", "map:1,1", "1+1+1,1",
-                                  "1:5,1 TO 2,2", "1,1:5 to 2,2:6", "1:16,1:16 to 2:16,2:16 to 3:16,3:16",
+                                  "3:8,3 to 1,1", "3,3 to 1:8,1", "1,1 to 50%,50%", "50%,50% to 3,3",
+                                  "1:16,1:16 to 2:16,2:16 to 3:16,3:16",
                                   "2:16,2:16 to 1.5:16,1:16", "2,2 TO 1.5,1", "NORTH,EAST TO CENTER,CENTER",
                                   "1,1 TO 17,16", "1,1 TO 16384,16384", "1e30,1", "1:999999999999999,1"})
             QVERIFY2(at(invalid).empty(),invalid);
@@ -2994,7 +3154,7 @@ private slots:
         setFields(f.world.appearances[2], local); f.refresh();
         QVERIFY(samePixelsAndMetadata(f.sprites,baseline));
         // A leaf master acts whatever coordinates it has, including a form this does not place.
-        fields["screenLoc"]="1,1 TO 2:3,1";
+        fields["screenLoc"]="1,1 TO 50%,50%";
         setFields(f.world.appearances[2], QJsonDocument(fields).toJson(QJsonDocument::Compact).toStdString());
         f.refresh(); QVERIFY(samePixelsAndMetadata(f.sprites,baseline));
         // Text that is not coordinates makes it no master (stock 516.1689, master-screen-loc-world "bogus").
@@ -3166,7 +3326,7 @@ private slots:
         // Trim token boundaries, not arbitrary internal whitespace or malformed axes.
         for (const auto* text : {" , ", "1, ", " ,1", "1, ,2", "CEN TER,1",
                                 "1 2,1", "CENTER +5,1", "1: 7,1", "1,1 TO ",
-                                "CENTER, RIGHT", "1:5, 1 TO 2, 2"})
+                                "CENTER, RIGHT"})
             QVERIFY2(!shell::ScreenLoc::parse(text), text);
         QVERIFY(!shell::ScreenLoc::parse(QString(257,' ') + "1,1"));
     }

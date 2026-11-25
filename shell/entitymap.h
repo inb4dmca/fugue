@@ -114,7 +114,7 @@ private:
         uint32_t screenOrder = 0;
         uint64_t imageIdentity = 0, targetIdentity = 0, hudIdentity = 0;
         uint16_t key = 0;
-        bool haveKey = false, masterPlacementRefused = false;
+        bool haveKey = false, masterPlacementRefused = false, masterPartsOffScene = false;
         const AppearanceGroup* joined = nullptr; // an image: the target surface its sprites were built into
         std::shared_ptr<const AppearanceGroup> rootGroup; // the KEEP_TOGETHER surface this instance drew, if any
         std::shared_ptr<const VisHit> visHit;

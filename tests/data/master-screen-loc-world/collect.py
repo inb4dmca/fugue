@@ -7,6 +7,7 @@ from PIL import Image
 run = Path(sys.argv[1]).resolve(); out = Path(sys.argv[2]).resolve(); out.mkdir(parents=True, exist_ok=True)
 phases = sys.argv[3:]
 byond = Path('C:/Program Files (x86)/BYOND/bin'); port = 18811
+if phases and phases[0].startswith('--port='): port = int(phases.pop(0)[7:])
 user32 = ctypes.windll.user32; gdi32 = ctypes.windll.gdi32
 user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
 for f, res in ((user32.GetDC, wintypes.HDC), (gdi32.CreateCompatibleDC, wintypes.HDC),

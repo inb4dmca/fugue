@@ -465,13 +465,18 @@ private slots:
         };
         f.setLocation("1,1");const auto single=counts();QCOMPARE(single.first,1);QVERIFY(single.second>0);
         f.setLocation("1,1 TO 2,1");QCOMPARE(counts(),std::pair(1,2*single.second));
-        // A range this does not place, and a position off the view, are still refused (not measured in stock).
-        for(const auto* invalid:{"1,1 TO 2:3,1","8,1"}) {f.setLocation(invalid);QVERIFY(refused());}
+        // The second end's pixel offset is ignored ("1,1 to 3:8,3" there).
+        f.setLocation("1,1 TO 2:3,1");QCOMPARE(counts(),std::pair(1,2*single.second));
+        // A range with a percent end is not placed and is still refused (stock draws one overlay for "1,1 to 50%,50%").
+        f.setLocation("1,1 TO 50%,50%");QVERIFY(refused());
+        // Off the view the master acts; its overlay is outside this scene, which the fixture does not enlarge ("8,1" there).
+        f.setLocation("8,1");QVERIFY(!refused());QCOMPARE(counts(),std::pair(1,0));
+        QCOMPARE(f.entities.hudMargins(),QMargins(0,0,1,0));
         auto& w=f.session.worldMut();w.bounds.maxX=std::max(w.bounds.maxX,9);w.bounds.maxY=std::max(w.bounds.maxY,9); // a world the view fits in
         w.bounds.viewW=9;w.bounds.viewH=9;f.refresh();
-        QVERIFY(!refused()); // Same cached template becomes placeable in the larger view.
-        w.bounds.viewW=7;w.bounds.viewH=7;f.refresh();QVERIFY(refused());
-        w.bounds.viewW=9;w.bounds.viewH=9;f.refresh();QVERIFY(!refused());
+        QCOMPARE(counts(),single); // Same cached template is drawn in the larger view.
+        w.bounds.viewW=7;w.bounds.viewH=7;f.refresh();QCOMPARE(counts(),std::pair(1,0));
+        w.bounds.viewW=9;w.bounds.viewH=9;f.refresh();QCOMPARE(counts(),single);
         f.setLocation("CENTER,CENTER");
         auto leaf=std::find_if(f.sprites.begin(),f.sprites.end(),[](const auto& s){return s.kind==MapSprite::Screen && !s.image.isNull();});
         QVERIFY(leaf!=f.sprites.end());QCOMPARE(leaf->position-f.frame.source.topLeft(),QPoint(160,96));
@@ -556,7 +561,7 @@ private slots:
             if(key=="transform") {changed["hasTransform"]=true;changed["transform"]=QJsonArray{};}
             if(key=="target") changed["renderTarget"]="*refused";
             if(key=="text") changed["maptext"]="refused";
-            if(key=="placement") changed["screenLoc"]="1,1 TO 2:3,1"; // a range this does not place
+            if(key=="placement") changed["screenLoc"]="1,1 TO 50%,50%"; // a range this does not place
             if(key=="offset") changed["pixelX"]=7;
             auto children=fields["overlays"].toArray();
             if(key=="cycle") children.append(int(rootId));

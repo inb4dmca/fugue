@@ -1396,7 +1396,7 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                              -int(std::lround(atom.glide.sy * tile_ * left)));
         }
         if (vis) { origin = vis->origin; screenOrder = vis->screen ? vis->screenOrder : vis->order; }
-        bool screenMasterPlacementRefused = false;
+        bool screenMasterPlacementRefused = false, masterPartsOffScene = false;
         if (hud) {
             const auto& ap = appearance(image ? parentId : atom.appid);
             if (ap.master) {
@@ -1404,12 +1404,23 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                 // commands stay viewport-wide; the renderer ignores their origin.
                 const auto positions = ap.screenPlacement && !ap.screenPlacement->range ?
                     ap.screenPlacement->positions({inner.width() / tile_, inner.height() / tile_}, tile_, around) : std::vector<QPoint>{};
-                // A tree whose one position is off the view, or whose screen_loc is a form this does not place, is
-                // refused, which drops its plane; what stock draws for those was not measured.
                 if (positions.size() == 1) screenPosition = positions.front();
-                else if (!hud->placed) screenMasterPlacementRefused = ap.keepTogether || ap.keepApart ||
-                    !ap.underlays.empty() || !ap.overlays.empty() ||
-                    (ap.planeEffects && ap.planeEffects->boundedTreeFilters());
+                else if (!hud->placed) {
+                    // A master placed off the view acts on its plane like any other, and draws what it owns there,
+                    // in the larger map stock makes for it (stock 516.1689, master-screen-loc-world "8,1", "0,4",
+                    // "6,6 to 9,9"). Until the scene has grown that far, or when it cannot, its parts lie outside
+                    // the scene and are left out: an approximation for a part large enough to reach back in.
+                    const QMargins reach = ap.screenPlacement ?
+                        ap.screenPlacement->outside({inner.width() / tile_, inner.height() / tile_}) : QMargins();
+                    masterPartsOffScene = reach.left() > around.left() || reach.top() > around.top() ||
+                        reach.right() > around.right() || reach.bottom() > around.bottom();
+                    // A tree whose screen_loc is a form this does not place (a range with a percent end, or one
+                    // that runs backwards with pixel offsets) is refused, which drops its plane: stock places a
+                    // master's range like an ordinary screen object's, and those forms are not understood for either.
+                    screenMasterPlacementRefused = !masterPartsOffScene && (ap.keepTogether || ap.keepApart ||
+                        !ap.underlays.empty() || !ap.overlays.empty() ||
+                        (ap.planeEffects && ap.planeEffects->boundedTreeFilters()));
+                }
             }
             // Stock-verified zero-offset leaf alias for view-sized plane sources. CENTER shifts the
             // captured plane and is not equivalent; general source anchoring remains unsupported.
@@ -1497,7 +1508,8 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
         instance.used = epoch_;
         const QPoint cell = vis ? vis->cell : QPoint(atom.x, atom.y);
         const bool shapeChanged = instance.revision != shape.revision || instance.sprites.empty() ||
-            instance.masterPlacementRefused != refuseMasterPlacement || instance.joined != joinGroup.get();
+            instance.masterPlacementRefused != refuseMasterPlacement || instance.masterPartsOffScene != masterPartsOffScene ||
+            instance.joined != joinGroup.get();
         instance.joined = joinGroup.get();
         instance.rootGroup = shape.complete ? shape.rootGroup : nullptr;
         const bool cellChanged = instance.cell != cell || instance.screenOrder != screenOrder ||
@@ -1518,7 +1530,7 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                 instance.sprites.reserve(qsizetype(shape.parts.size()));
                 std::map<const AppearanceGroup*, std::shared_ptr<const AppearanceGroup>> joinedGroups;
                 for (const auto& part : shape.parts) {
-                    if (refuseMasterPlacement && !part.master) continue;
+                    if ((refuseMasterPlacement || masterPartsOffScene) && !part.master) continue;
                     if (hud && hud->repeat && part.master) continue;
                     MapSprite sprite{part.image ? *part.image : QImage(), origin + part.position, origin + shape.iconBottom, cell,
                                      uint32_t(key), atom.key, atom.haveKey, part.plane, part.layer, part.tint};
@@ -1656,7 +1668,7 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
             }
             instance.origin = origin; instance.cell = cell; instance.revision = shape.revision;
             instance.iconSize = shape.iconSize;
-            instance.masterPlacementRefused = refuseMasterPlacement;
+            instance.masterPlacementRefused = refuseMasterPlacement; instance.masterPartsOffScene = masterPartsOffScene;
             instance.screenOrder = screenOrder;
             instance.key = atom.key; instance.haveKey = atom.haveKey;
             instance.imageIdentity = imageIdentity; instance.targetIdentity = targetIdentity; instance.hudIdentity = hudIdentity;
@@ -2221,8 +2233,10 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
         auto positions = ap.master && !masterRange ? std::vector<QPoint>{{}} : ap.screenPlacement ?
             ap.screenPlacement->positions({inner.width() / tile_, inner.height() / tile_}, tile_, around) : std::vector<QPoint>{};
         const bool placedRange = masterRange && !positions.empty();
-        if (ap.master && positions.empty()) positions = {{}}; // a range off the view: left to place()
-        if (!ap.master && ap.screenPlacement) { // what the next frame's scene must hold (TurfMap::prepare)
+        if (ap.master && positions.empty()) positions = {{}}; // a range off the scene or not placed: left to place()
+        // What the next frame's scene must hold (TurfMap::prepare). A plane master off the view enlarges the map
+        // like any other screen object (stock 516.1689, master-screen-loc-world "8,1|ov" against "8,1|obj").
+        if (ap.screenPlacement) {
             const QSize icon = builder.get({atom.appid, 0}).iconSize;
             const auto m = ap.screenPlacement->outside({inner.width() / tile_, inner.height() / tile_},
                                                        {std::max(1, (icon.width() + tile_ - 1) / tile_), std::max(1, (icon.height() + tile_ - 1) / tile_)});

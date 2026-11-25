@@ -111,10 +111,17 @@ struct ScreenLoc {
             const auto last = point(ends[1]);
             if (!last) return {};
             result.last = *last; result.range = true;
-            // Verified translated grids: each axis must have the same pixel offset at both endpoints. The grid
-            // starts at the lower endpoint, on a half tile or a fraction too (CENTER on an even view, 2.5), and
-            // covers the other one (stock 516.1689, stock-parity-world screen-loc-forms, screen-loc-percent-ranges). Percent ends were not tried.
-            if (result.first.x.pixels != result.last.x.pixels || result.first.y.pixels != result.last.y.pixels) return {};
+            // The grid starts at the lower endpoint, on a half tile or a fraction too (CENTER on an even view, 2.5),
+            // and covers the other one (stock 516.1689, stock-parity-world screen-loc-forms,
+            // screen-loc-percent-ranges). The whole grid is moved by the first end's pixel offsets; the second
+            // end's are ignored (master-screen-loc-world "1,1 to 3:8,3", "1:40,1 to 3,3", "1:4,1:8 to 3:12,3").
+            // A range with a percent end is not placed: stock draws one icon for "1,1 to 50%,50%", a column for
+            // "2,2 to 100%,3" and a grid past the far end for "50%,50% to 6,6", and the rule is not known.
+            // Different offsets on an edge-aligned end (LEFT, TOP) were not tried and are not placed either.
+            const auto untried = [](const Axis& a, const Axis& b) {
+                return a.pixels != b.pixels && (a.anchor != Anchor::Tile || b.anchor != Anchor::Tile);
+            };
+            if (untried(result.first.x, result.last.x) || untried(result.first.y, result.last.y)) return {};
             for (const auto& p : {result.first, result.last}) if (p.x.percent != 0 || p.y.percent != 0) return {};
         }
         return result;
@@ -157,7 +164,7 @@ struct ScreenLoc {
                            int(first.y.percent != 0 ? std::ceil((y-1)*tile) : std::lround((y-1)*tile))+first.y.pixels)};
         }
         // Reversed pixel-offset grids have additional stock behavior not covered here.
-        if ((first.x.pixels || first.y.pixels) &&
+        if ((first.x.pixels || first.y.pixels || last.x.pixels || last.y.pixels) &&
             (local(first.x,view.width()) > local(last.x,view.width()) ||
              local(first.y,view.height()) > local(last.y,view.height()))) return {};
         struct Run { int origin = 0, count = 0; };
@@ -183,7 +190,7 @@ struct ScreenLoc {
             // aligned repetition instead clips to the existing viewport, verified
             // even when its range extends past the far edge. Do not expand here.
             if (origin->anchor != Anchor::FarEdge && (lo < 1 - near || hi > dimension + far)) return {};
-            return {int(std::lround((lo-1+shift(*origin,dimension))*tile))+origin->pixels,count};
+            return {int(std::lround((lo-1+shift(*origin,dimension))*tile))+a.pixels,count};
         };
         const auto x = run(first.x,last.x,view.width(),outside.left(),outside.right());
         const auto y = run(first.y,last.y,view.height(),outside.bottom(),outside.top());

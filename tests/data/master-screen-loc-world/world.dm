@@ -61,6 +61,10 @@ mob/player/proc/phases()
 					var/image/I = image('z.dmi', icon_state="img")
 					M.overlays += I
 					M.filters = filter(type="outline", size=1, color="#ffffff")
+				if(fx == "obj")
+					M.appearance_flags = 0
+					M.icon = 'z.dmi'
+					M.icon_state = "img"
 				if(fx == "rt")
 					M.render_target = "*cap"
 					var/obj/R = new
