@@ -403,10 +403,11 @@ private slots:
         }
     }
     void positionedMasterCallbacks() {
-        const auto rows=test::MasterPlacementFixture::rows();QCOMPARE(rows.size(),27);
+        QJsonArray rows;QString inventoryError;
+        QVERIFY2(test::MasterPlacementFixture::rows(rows,inventoryError),qPrintable(inventoryError));
         int clicks=0;
         for(const auto& value:rows) {
-            const auto row=value.toObject();test::MasterPlacementFixture f;QVERIFY(f.load(row));
+            const auto row=value.toObject();test::MasterPlacementFixture f;QVERIFY2(f.load(row),qPrintable(f.error));
             const auto points=row["points"].toArray(),callbacks=row["callbacks"].toArray();
             QCOMPARE(points.size(),callbacks.size());
             for(int i=0;i<points.size();++i) {
@@ -421,11 +422,12 @@ private slots:
         QCOMPARE(clicks,135);
     }
     void positionedMasterMotionAndRefusal() {
-        const auto rows=test::MasterPlacementFixture::rows();
+        QJsonArray rows;QString error;
+        QVERIFY2(test::MasterPlacementFixture::rows(rows,error),qPrintable(error));
         const auto row=std::find_if(rows.begin(),rows.end(),[](const auto& v) {
             const auto r=v.toObject();return r["kind"]=="overlay" && r["placement"]=="center";
         });QVERIFY(row!=rows.end());
-        test::MasterPlacementFixture f;QVERIFY(f.load(row->toObject()));
+        test::MasterPlacementFixture f;QVERIFY2(f.load(row->toObject()),qPrintable(f.error));
         auto pick=[&](QPoint point,const MapSprites& sprites) {
             return *mapPointerAt(point,f.frame.source.size(),{7,7},f.frame.source,f.frame.geometry,"main.map",true,sprites);
         };

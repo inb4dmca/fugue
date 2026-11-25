@@ -233,7 +233,8 @@ private slots:
         w.resync.freed.insert(w.atoms.begin()->first); QVERIFY(!mapPointerCurrent(child,w,7));
     }
     void stockHudAnchorsAndPassMouse() {
-        const auto rows=test::HudRelayFixture::rows();QCOMPARE(rows.size(),12);
+        QJsonArray rows; QString inventoryError;
+        QVERIFY2(test::HudRelayFixture::rows(rows,inventoryError),qPrintable(inventoryError));QCOMPARE(rows.size(),12);
         for(const auto& value:rows) {
             const auto row=value.toObject();test::HudRelayFixture f(row["phase"].toString());
             for(const auto& v:row["clicks"].toArray()) {
@@ -540,10 +541,11 @@ private slots:
         QVERIFY(!mapPointerCurrent(source,f.world,17));
     }
     void planeSourceMatrixRenderedOwnership() {
-        QFile file(QFINDTESTDATA("../../tests/data/relay-gate-world/matrix.json"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
+        QJsonArray rows; QString error;
+        QVERIFY2(test::PlaneSourceFixture::capturePixelObservations(
+            QString(FUGUE_TEST_DATA_DIR)+"/relay-gate-world/matrix.json",rows,error,false),qPrintable(error));
         test::PlaneSourceFixture f;
-        for (const auto& value:test::PlaneSourceFixture::capturePixelObservations(file.readAll(),false)) {
+        for (const auto& value:rows) {
             const auto row=value.toObject();
             if (!row["admitted"].toBool()) continue;
             f.observation(row);
@@ -569,18 +571,13 @@ private slots:
         }
     }
     void planeSourceCaptureCoverage() {
-        QFile file(QFINDTESTDATA("../../tests/data/relay-gate-world/source-coverage.json"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        auto rows=test::PlaneSourceFixture::capturePixelObservations(file.readAll());
-        QFile pixels(QFINDTESTDATA("../../tests/data/relay-gate-world/capture-pixels.json"));
-        QVERIFY(pixels.open(QIODevice::ReadOnly));
-        for (const auto& row:test::PlaneSourceFixture::capturePixelObservations(pixels.readAll())) rows.append(row);
-        QFile precision(QFINDTESTDATA("../../tests/data/relay-gate-world/precision-model.json"));
-        QVERIFY(precision.open(QIODevice::ReadOnly));
-        for (const auto& row:test::PlaneSourceFixture::capturePixelObservations(precision.readAll())) rows.append(row);
-        QFile arithmetic(QFINDTESTDATA("../../tests/data/relay-gate-world/master-arithmetic.json"));
-        QVERIFY(arithmetic.open(QIODevice::ReadOnly));
-        for (const auto& row:test::PlaneSourceFixture::capturePixelObservations(arithmetic.readAll())) rows.append(row);
+        QJsonArray rows; QString error;
+        for (const char* name:{"source-coverage.json","capture-pixels.json","precision-model.json","master-arithmetic.json"}) {
+            QJsonArray recorded;
+            QVERIFY2(test::PlaneSourceFixture::capturePixelObservations(
+                QString(FUGUE_TEST_DATA_DIR)+"/relay-gate-world/"+name,recorded,error),qPrintable(error));
+            for (const auto& row:recorded) rows.append(row);
+        }
         test::PlaneSourceFixture f;
         for (const auto& value:rows) {
             const auto row=value.toObject(); f.sourceObservation(row);

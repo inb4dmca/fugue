@@ -915,6 +915,38 @@ private slots:
     }
     void ordinaryRootTreePixels() {
         QFETCH(bool,openGL); QFETCH(bool,mob);
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/root-transform-world/stock-observations.json";
+        QJsonDocument observations; QString inventoryError;
+        QVERIFY2(fugue::testinput::readRecordedJson(path,observations,inventoryError),qPrintable(inventoryError));
+        const auto clicks=observations.object()["clicks"].toArray();
+        QVERIFY2(clicks.size()==30,qPrintable(path+": expected 30 retained Click receipts"));
+        std::map<QString,int> receipts;
+        QSet<QPair<QString,QString>> checkpoints;
+        for (const auto& value:clicks) {
+            const auto row=value.toObject();
+            const auto context=path+": "+row["case"].toString()+"/"+row["part"].toString();
+            QVERIFY2(!row["part"].toString().isEmpty(),qPrintable(context+": missing part"));
+            const auto checkpoint=qMakePair(row["case"].toString(),row["part"].toString());
+            QVERIFY2(!checkpoints.contains(checkpoint),qPrintable(context+": duplicate checkpoint"));
+            checkpoints.insert(checkpoint);
+            QVERIFY2(fugue::testinput::isIntegerTuple(row["rootLocal"],2,-160,160),qPrintable(context+": invalid rootLocal point"));
+            const auto callback=row["callback"];
+            QVERIFY2(callback.isNull() || callback.isObject(),qPrintable(context+": missing callback"));
+            if (callback.isObject()) {
+                const auto fields=callback.toObject();
+                QVERIFY2(fugue::testinput::isIntegerTuple(QJsonArray{fields["icon-x"],fields["icon-y"]},2,-65535,65535),
+                    qPrintable(context+": invalid icon coordinates"));
+                QVERIFY2(fields.contains("vis-x")==fields.contains("vis-y"),qPrintable(context+": incomplete vis coordinates"));
+                if (fields.contains("vis-x"))
+                    QVERIFY2(fugue::testinput::isIntegerTuple(QJsonArray{fields["vis-x"],fields["vis-y"]},2,-65535,65535),
+                        qPrintable(context+": invalid vis coordinates"));
+            }
+            ++receipts[row["case"].toString()];
+        }
+        const std::map<QString,int> expectedReceipts{{"absent",3},{"identity",3},{"rotate",3},{"reverse",3},
+            {"shrink",3},{"nested",4},{"wide root",2},{"square",3},{"reset",3},{"translate",3}};
+        QVERIFY2(receipts==expectedReceipts,qPrintable(path+": incomplete Click receipt inventory"));
+        const QString directory=QFileInfo(path).absolutePath();
         MapWidget map; if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.setWindowFlag(Qt::FramelessWindowHint); map.resize(160,160); map.setViewSize({5,5});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
@@ -924,10 +956,6 @@ private slots:
         const auto frame=terrain.prepare(w,{},0,false);
         auto publish=[&]{auto sprites=scene.prepare(w,frame,roottreefixture::read,1,nullptr,true);
             mailbox->publish(frame.image,frame.source,0,0,frame.geometry,sprites);};
-        QFile observations(QFINDTESTDATA("../../tests/data/root-transform-world/stock-observations.json"));
-        QVERIFY(observations.open(QIODevice::ReadOnly));
-        const auto clicks=QJsonDocument::fromJson(observations.readAll()).object()["clicks"].toArray();
-        const QString directory=QFileInfo(observations.fileName()).absolutePath();
         map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map)); publish(); map.grabFramebuffer();
         const auto warm=MapMetrics::nowNs()+60'000'000'000; metrics->reset(warm);
         struct Case {const char* name; std::array<float,6> matrix; bool nested=false,wide=false;};
@@ -938,7 +966,7 @@ private slots:
             {"nested",{0,-1,9,1,0,5},true},
             {"wide-root",{0,-1,9,1,0,5},false,true}};
         std::optional<MapPointer> previous; QPoint previousPoint;
-        uint64_t identity=10;
+        uint64_t identity=10;int checkedClicks=0;
         for(int cycle=0;cycle<3;++cycle) for(const auto& c:cases) {
             w=roottreefixture::world(mob,c.nested,c.wide);
             if(QString(c.name)!="absent") roottreefixture::pose(w,c.matrix);
@@ -951,7 +979,7 @@ private slots:
                 QVERIFY(!mapPointerCurrent(*previous,w,frame.geometry.session));
             }
             const auto image=map.grabFramebuffer(); QVERIFY(!image.isNull());
-            const QImage expected(directory+"/stock-"+c.name+".png"); QVERIFY(!expected.isNull());
+            const QImage expected(directory+"/stock-"+c.name+".png"); QCOMPARE(expected.size(),QSize(120,104));
             for(int y=0;y<104;++y) for(int x=0;x<120;++x) {
                 const auto actual=image.pixelColor(int((32+x+0.5)*image.width()/160),int((24+y+0.5)*image.height()/160));
                 const auto want=expected.pixelColor(x,y);
@@ -961,6 +989,7 @@ private slots:
             for(const auto& value:clicks) {
                 const auto row=value.toObject(); QString name=row["case"].toString(); name.replace(' ','-');
                 if(name!=c.name) continue;
+                ++checkedClicks;
                 const auto local=row["rootLocal"].toArray(); const QPoint p=QPoint(71,59)+QPoint(local[0].toInt(),local[1].toInt());
                 QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,p); QVERIFY(!events.empty());
                 const auto hit=events.back();
@@ -976,6 +1005,7 @@ private slots:
                 previous=hit; previousPoint=p;
             }
         }
+        QCOMPARE(checkedClicks,3*24);
         for(int i=0;i<12;++i) {w.atoms.begin()->second.pixelX=i%2; publish(); map.grabFramebuffer();}
         QCOMPARE(metrics->snapshot(warm+1'000'000'000).uploadMBPerSecond,0.0);
     }
@@ -1187,13 +1217,14 @@ private slots:
     }
     void hudRelayPixelsAndInput() {
         QFETCH(bool,openGL);
+        QJsonArray rows; QString inventoryError;
+        QVERIFY2(test::HudRelayFixture::rows(rows,inventoryError),qPrintable(inventoryError));
         HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(448,320);map.setViewSize({7,5});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
         QVector<MapPointer> events;map.setInputHandler("main.map",true,[&](const auto& p){events.push_back(p);});
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
-        const auto rows=test::HudRelayFixture::rows();QCOMPARE(rows.size(),12);
         for(const auto& value:rows) {
             const auto row=value.toObject();test::HudRelayFixture f(row["phase"].toString());
             auto publish=[&] {
@@ -1229,15 +1260,16 @@ private slots:
     }
     void positionedMasterPixelsAndInput() {
         QFETCH(bool,openGL);
+        QJsonArray rows; QString inventoryError;
+        QVERIFY2(test::MasterPlacementFixture::rows(rows,inventoryError),qPrintable(inventoryError));
         HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
         auto mailbox=std::make_shared<MapMailbox>(metrics);map.setMailbox(mailbox);
         QVector<MapPointer> events;map.setInputHandler("main.map",true,[&](const auto& p){events.push_back(p);});
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
-        const auto rows=test::MasterPlacementFixture::rows();QCOMPARE(rows.size(),27);
         for(const auto& value:rows) {
-            const auto row=value.toObject();test::MasterPlacementFixture f;QVERIFY(f.load(row));
+            const auto row=value.toObject();test::MasterPlacementFixture f;QVERIFY2(f.load(row),qPrintable(f.error));
             auto publish=[&] {
                 mailbox->publish(f.frame.image,f.frame.source,0,0,f.frame.geometry,f.sprites);
                 return map.grabFramebuffer();
@@ -1273,6 +1305,33 @@ private slots:
     }
     void masterMaterialPixelsAndInput() {
         QFETCH(bool,openGL);
+        const QString dir=QString(FUGUE_TEST_DATA_DIR)+"/master-material-world/";
+        QJsonDocument observations; QString inventoryError;
+        QVERIFY2(fugue::testinput::readRecordedJson(dir+"stock.json",observations,inventoryError),qPrintable(inventoryError));
+        const auto rows=observations.object()["phases"].toArray();
+        QVERIFY2(rows.size()==23,qPrintable(dir+"stock.json: expected 23 retained material phases"));
+        QSet<QString> labels,cases;
+        for (const auto& value:rows) {
+            const auto row=value.toObject();const auto label=row["label"].toString();
+            const auto context=dir+"stock.json: "+label;
+            QVERIFY2(!label.isEmpty() && !labels.contains(label),qPrintable(context+": missing or duplicate label"));
+            labels.insert(label);
+            const auto name=row["case"].toString();
+            QVERIFY2(!name.isEmpty() && !cases.contains(name),qPrintable(context+": missing or duplicate case"));
+            cases.insert(name);
+            QVERIFY2(!row["golden"].toString().isEmpty(),qPrintable(context+": missing golden"));
+            const auto clicks=row["clicks"].toArray();
+            QVERIFY2(clicks.size()==3,qPrintable(context+": expected three Click receipts"));
+            for (const auto& click:clicks) {
+                const auto entry=click.toObject();
+                QVERIFY2(fugue::testinput::isIntegerTuple(entry["point"],2,0,223),qPrintable(context+": invalid Click point"));
+                const auto expected=entry["expected"].toObject();
+                QVERIFY2(expected["kind"].toString()=="Click",qPrintable(context+": missing Click receipt"));
+                const auto error=test::ReplayFixture::clickObservationError(expected);
+                QVERIFY2(error.isEmpty(),qPrintable(context+": "+error));
+            }
+        }
+        QVERIFY2(cases.contains("parallax"),qPrintable(dir+"stock.json: missing parallax checkpoints"));
         HostedPixelMap map(pixelHosts_); if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
@@ -1280,14 +1339,10 @@ private slots:
         QVector<MapPointer> events;
         map.setInputHandler("map",true,[&](const MapPointer& p){events.push_back(p);});
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
-        const QString dir=QString(FUGUE_TEST_DATA_DIR)+"/master-material-world/";
-        QFile observations(dir+"stock.json");QVERIFY(observations.open(QIODevice::ReadOnly));
-        const auto rows=QJsonDocument::fromJson(observations.readAll()).object()["phases"].toArray();
-        QCOMPARE(rows.size(),23);
         for(const auto& value:rows) {
             const auto row=value.toObject();const auto label=row["label"].toString();
             test::ReplayFixture f;
-            QVERIFY(f.load("frames-"+label+".txt","master-material-world","local-relay-world"));
+            QVERIFY2(f.load("frames-"+label+".txt","master-material-world","local-relay-world"),qPrintable(f.error));
             const QImage stock(dir+row["golden"].toString());QCOMPARE(stock.size(),QSize(224,224));
             int64_t start=0;
             for(const auto& [id,atom]:f.session.world().atoms) start=std::max(start,atom.chain.startNs);
@@ -1567,9 +1622,9 @@ private slots:
         QCOMPARE(pixel(publish(),{79,47}),QColor(30,220,240));
     }
     void planeSourceMatrixNative() {
-        QFile file(QFINDTESTDATA("../../tests/data/relay-gate-world/matrix.json"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto rows=test::PlaneSourceFixture::capturePixelObservations(file.readAll(),false);
+        QJsonArray rows; QString inventoryError;
+        QVERIFY2(test::PlaneSourceFixture::capturePixelObservations(
+            QString(FUGUE_TEST_DATA_DIR)+"/relay-gate-world/matrix.json",rows,inventoryError,false),qPrintable(inventoryError));
         test::PlaneSourceFixture f;
         HostedPixelMap map(pixelHosts_); map.resize(320,192); map.setViewSize({5,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
@@ -1657,18 +1712,13 @@ private slots:
     }
     void planeSourceCaptureCoverageNative() {
         pixelHosts_.hide(); // this case also checks independent resource recreation
-        QFile file(QFINDTESTDATA("../../tests/data/relay-gate-world/source-coverage.json"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        auto rows=test::PlaneSourceFixture::capturePixelObservations(file.readAll());
-        QFile pixels(QFINDTESTDATA("../../tests/data/relay-gate-world/capture-pixels.json"));
-        QVERIFY(pixels.open(QIODevice::ReadOnly));
-        for (const auto& row:test::PlaneSourceFixture::capturePixelObservations(pixels.readAll())) rows.append(row);
-        QFile precision(QFINDTESTDATA("../../tests/data/relay-gate-world/precision-model.json"));
-        QVERIFY(precision.open(QIODevice::ReadOnly));
-        for (const auto& row:test::PlaneSourceFixture::capturePixelObservations(precision.readAll())) rows.append(row);
-        QFile arithmetic(QFINDTESTDATA("../../tests/data/relay-gate-world/master-arithmetic.json"));
-        QVERIFY(arithmetic.open(QIODevice::ReadOnly));
-        for (const auto& row:test::PlaneSourceFixture::capturePixelObservations(arithmetic.readAll())) rows.append(row);
+        QJsonArray rows; QString inventoryError;
+        for (const auto* name:{"source-coverage.json","capture-pixels.json","precision-model.json","master-arithmetic.json"}) {
+            QJsonArray recorded;
+            QVERIFY2(test::PlaneSourceFixture::capturePixelObservations(
+                QString(FUGUE_TEST_DATA_DIR)+"/relay-gate-world/"+name,recorded,inventoryError),qPrintable(inventoryError));
+            for (const auto& row:recorded) rows.append(row);
+        }
         test::PlaneSourceFixture f;
         MapWidget map; map.resize(320,192); map.setViewSize({5,3});
         auto metrics=std::make_shared<MapMetrics>(); map.setMetrics(metrics);
@@ -1885,6 +1935,8 @@ private slots:
     }
     void filterTypesPixelsLikeStock() {
         QFETCH(bool,openGL);
+        QJsonArray rows; QString inventoryError;
+        QVERIFY2(fugue::test::filtertypes::recordRows(rows,inventoryError),qPrintable(inventoryError));
         HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(160,160);map.setViewSize({5,5});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
@@ -1893,9 +1945,8 @@ private slots:
         QImage floor(160,160,QImage::Format_RGBA8888);floor.fill(QColor(16,16,16));
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
         int checked=0;
-        for(const auto& value:fugue::test::filtertypes::recordRows()) {
+        for(const auto& value:rows) {
             const auto row=value.toObject();
-            if(!row.contains("records")) continue;
             mailbox->publish(floor,floor.rect(),0,0,geometry,{fugue::test::filtertypes::sprite(row,{64,64})});
             const auto got=map.grabFramebuffer();QVERIFY(!got.isNull());
             for(const auto& sample:row["samples"].toArray()) {

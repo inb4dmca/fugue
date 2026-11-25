@@ -1,11 +1,18 @@
 #pragma once
 #include "tests/appearancejson.h"
+#include "tests/recordedinput.h"
 #include "shell/entitymap.h"
 #include <QBuffer>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QSet>
+#include <QStringList>
+#include <array>
 #include <bit>
+#include <climits>
+#include <map>
 
 namespace fugue::shell::test {
 // Synthetic assets/geometry from relay-gate-world; expectations in the tests
@@ -63,28 +70,118 @@ struct PlaneSourceFixture {
         setFields(world.appearances[4], QJsonDocument(row["child"].toObject()).toJson(QJsonDocument::Compact).toStdString());
         relay(row["root"].toObject());
     }
-    static QJsonArray capturePixelObservations(const QByteArray& bytes, bool pixelParity=true) {
-        const auto corpus=QJsonDocument::fromJson(bytes).object();
+    static bool capturePixelObservations(const QString& path,QJsonArray& out,QString& error,bool pixelParity=true) {
+        out={};
+        QJsonDocument document;
+        if (!::fugue::testinput::readRecordedJson(path,document,error)) return false;
+        auto fail=[&](const QString& field,const QString& reason) {error=path+": "+field+": "+reason;return false;};
+        if (!document.isObject()) return fail("root","Expected a retained observation object");
+        const auto corpus=document.object();
+        const auto filename=QFileInfo(path).fileName(); const bool matrix=filename=="matrix.json";
         const auto appearances=corpus["appearances"].toArray();
+        const auto pixelSets=corpus["pixels"].toArray(),clickSets=corpus["clicks"].toArray();
+        const auto defaults=corpus["appearanceDefaults"].toObject();
+        if (defaults.isEmpty()) return fail("appearanceDefaults","Expected retained appearance defaults");
+        if (appearances.isEmpty()) return fail("appearances","Expected an appearance table");
+        for (qsizetype i=0;i<appearances.size();++i)
+            if (!appearances[i].isObject()) return fail(QString("appearances[%1]").arg(i),"Expected an appearance object");
+        if (pixelSets.isEmpty() || clickSets.isEmpty()) return fail("pixels/clicks","Expected both observation tables");
+        const bool indexedPixels=corpus.contains("samples"); const auto samples=corpus["samples"].toArray();
+        if (indexedPixels && samples.isEmpty()) return fail("samples","Expected the indexed pixel sample table");
+        const auto validIndex=[](const QJsonValue& value,qsizetype count) {
+            return ::fugue::testinput::isIntegerTuple(QJsonArray{value},1,0,int(count)-1);
+        };
+        const auto validPixel=[](const QJsonValue& value) {
+            if (!::fugue::testinput::isIntegerTuple(value,5,0,255)) return false;
+            const auto pixel=value.toArray(); return pixel[0].toInt()<160 && pixel[1].toInt()<96;
+        };
+        for (qsizetype i=0;i<samples.size();++i)
+            if (!validPixel(samples[i]))
+                return fail(QString("samples[%1]").arg(i),"Expected [x,y,r,g,b] inside 160x96 with RGB bytes");
+        const auto recordedRows=corpus["rows"].toArray();
+        if (recordedRows.isEmpty()) return fail("rows","Expected retained observation rows");
+        if (matrix && recordedRows.size()!=27) return fail("rows","Expected all 27 retained matrix rows");
         QJsonArray rows;
-        for (const auto& value:corpus["rows"].toArray()) {
-            auto row=value.toObject(); if (pixelParity) row["pixelParity"]=true;
+        QSet<QString> names,unsupported;
+        int admittedRows=0,admittedPixels=0,admittedClicks=0;
+        for (qsizetype i=0;i<recordedRows.size();++i) {
+            const QString field=QString("rows[%1]").arg(i);
+            auto row=recordedRows[i].toObject(); const auto name=row["name"].toString();
+            if (name.trimmed().isEmpty() || (matrix && names.contains(name)))
+                return fail(field+".name","Expected a nonempty name, unique within the matrix");
+            names.insert(name);
+            for (const char* flag:{"admitted","pixelParity","partial","precision","yellow"})
+                if ((row.contains(flag) || (matrix && QString(flag)=="admitted")) && !row[flag].isBool())
+                    return fail(field+'.'+flag,"Expected an explicit boolean");
+            const QStringList required=matrix ? QStringList{"root","child"} : QStringList{"root","master","member"};
+            for (const auto& role:required)
+                if (!row.contains(role)) return fail(field+'.'+role,"Missing required appearance reference");
             for (const char* role:{"root","master","member","child","overlap"}) {
                 if (!row.contains(role)) continue;
-                auto fields=corpus["appearanceDefaults"].toObject();
+                if (!validIndex(row[role],appearances.size()))
+                    return fail(field+'.'+role,"Appearance index is missing, noninteger, or outside the retained table");
+                auto fields=defaults;
                 const auto overrides=appearances[row[role].toInt()].toObject();
                 for (auto it=overrides.begin();it!=overrides.end();++it) fields[it.key()]=it.value();
                 row[role]=fields;
             }
-            for (const char* role:{"pixels","clicks"}) row[role]=corpus[role].toArray()[row[role].toInt()];
-            if (corpus.contains("samples")) {
-                QJsonArray pixels; const auto samples=corpus["samples"].toArray();
-                for (const auto& index:row["pixels"].toArray()) pixels.append(samples[index.toInt()]);
-                row["pixels"]=pixels;
+            if (!validIndex(row["pixels"],pixelSets.size()) || !validIndex(row["clicks"],clickSets.size()))
+                return fail(field+".pixels/clicks","Expected valid integer indices into both observation tables");
+            const auto selectedPixels=pixelSets[row["pixels"].toInt()];
+            const auto selectedClicks=clickSets[row["clicks"].toInt()];
+            if (!selectedPixels.isArray() || selectedPixels.toArray().isEmpty())
+                return fail(field+".pixels","Expected at least one retained pixel observation");
+            const bool numericalOnly=filename=="master-arithmetic.json" &&
+                (name=="a-scalar-tint" || name=="a-matrix-tint") &&
+                !corpus["numericalTintProvenance"].toString().trimmed().isEmpty();
+            if (!selectedClicks.isArray() || (!numericalOnly && selectedClicks.toArray().isEmpty()))
+                return fail(field+".clicks","Expected retained Click receipts (except documented numerical-only tint rows)");
+            QJsonArray pixels;
+            const auto pixelValues=selectedPixels.toArray();
+            for (qsizetype sample=0;sample<pixelValues.size();++sample) {
+                QJsonValue pixel=pixelValues[sample];
+                if (indexedPixels) {
+                    if (!validIndex(pixel,samples.size()))
+                        return fail(field+QString(".pixels[%1]").arg(sample),"Pixel sample index is outside the retained table");
+                    pixel=samples[pixel.toInt()];
+                }
+                if (!validPixel(pixel))
+                    return fail(field+QString(".pixels[%1]").arg(sample),"Expected [x,y,r,g,b] inside 160x96 with RGB bytes");
+                pixels.append(pixel);
             }
+            const auto clicks=selectedClicks.toArray();
+            for (qsizetype click=0;click<clicks.size();++click) {
+                const auto c=clicks[click].toArray();
+                if (c.size()!=7 || !c[2].isBool() ||
+                    !::fugue::testinput::isIntegerTuple(QJsonArray{c[0],c[1]},2,0,159) || c[1].toInt()>=96 ||
+                    !::fugue::testinput::isIntegerTuple(QJsonArray{c[3],c[4],c[5],c[6]},4,INT_MIN,INT_MAX))
+                    return fail(field+QString(".clicks[%1]").arg(click),"Expected [x,y,hit,iconX,iconY,visX,visY] inside 160x96");
+            }
+            if (!matrix || row["admitted"].toBool()) {++admittedRows;admittedPixels+=pixels.size();admittedClicks+=clicks.size();}
+            else unsupported.insert(name);
+            row["pixels"]=pixels; row["clicks"]=clicks;
+            if (pixelParity) row["pixelParity"]=true;
             rows.append(row);
         }
-        return rows;
+        if (matrix) {
+            if (admittedRows!=24 || admittedPixels!=346 || admittedClicks!=180)
+                return fail("rows","Expected 24 admitted matrix rows with 346 pixel observations and 180 Click receipts");
+            if (unsupported!=QSet<QString>{"m-rotate","m-rotate-group","m-reverse-rotate-group"})
+                return fail("rows.admitted","Only the three retained unresolved quarter-turn rows may be excluded");
+            for (const char* name:{"m-scale-blur-group","m-blur-group","m-outline-group"})
+                if (!names.contains(name)) return fail("rows","Missing matrix checkpoint: "+QString(name));
+        } else {
+            // Portable consumers must retain the same complete evidence as the
+            // native replay, even when run on their own.
+            const std::map<QString,std::array<int,3>> inventories{
+                {"source-coverage.json",{21,184,184}}, {"capture-pixels.json",{19,147,147}},
+                {"precision-model.json",{13,117,117}}, {"master-arithmetic.json",{16,132,126}}};
+            const auto expected=inventories.find(filename);
+            if (expected==inventories.end() || expected->second!=std::array<int,3>{admittedRows,admittedPixels,admittedClicks})
+                return fail("rows","Incomplete retained row/pixel/Click inventory");
+        }
+        out=rows;
+        return true;
     }
     void sourceObservation(const QJsonObject& row) {
         for (const auto& [name,id]:std::initializer_list<std::pair<const char*,uint32_t>>{{"member",1},{"master",2},{"root",3}})

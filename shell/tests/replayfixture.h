@@ -73,6 +73,31 @@ struct ReplayFixture {
         return ap==session.world().appearances.end() ? std::string() :
             model::plainAtomName(model::parseJson(fieldsJson(ap->second))["name"].bytesOrStr());
     }
+    // Retained Click receipts must not silently turn missing fields into zero
+    // coordinates or a different ownership expectation.
+    static QString clickObservationError(const QJsonObject& expected) {
+        for (const auto* field : {"target","control"})
+            if (expected[field].toString().isEmpty()) return QString("Missing Click %1").arg(field);
+        const auto location=expected["location"];
+        if (!location.isNull() && location.toString().isEmpty()) return "Missing Click location";
+        if (location.isNull() ? !expected["locationXYZ"].isNull() :
+            !::fugue::testinput::isIntegerTuple(expected["locationXYZ"],3,1,65535))
+            return "Invalid Click locationXYZ";
+        const auto params=expected["params"].toObject();
+        auto integer=[&](const char* field) {
+            static const QRegularExpression decimal("^-?[0-9]+$");
+            const auto value=params[field].toString();
+            bool ok=false; value.toInt(&ok);
+            return ok && decimal.match(value).hasMatch();
+        };
+        if (!integer("icon-x") || !integer("icon-y")) return "Invalid Click icon coordinates";
+        if (params.contains("vis-x")!=params.contains("vis-y") ||
+            (params.contains("vis-x") && (!integer("vis-x") || !integer("vis-y"))))
+            return "Invalid Click vis coordinates";
+        static const QRegularExpression screen("^-?[0-9]+:-?[0-9]+,-?[0-9]+:-?[0-9]+$");
+        if (!screen.match(params["screen-loc"].toString()).hasMatch()) return "Invalid Click screen-loc";
+        return {};
+    }
     // Independent stock receipts supply the expected target and coordinates.
     QString checkClick(const MapPointer& p, const QJsonObject& expected) const {
         const auto& loc=p.click.loc;

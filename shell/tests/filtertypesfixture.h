@@ -1,12 +1,13 @@
 // Wave, ripple and bloom cases of tests/data/filter-types-world (stock 516.1688): the fixture's icons, its stock.json
 // rows and one filtered sprite per case. Requires FUGUE_TEST_DATA_DIR.
 #pragma once
-#include <QFile>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <memory>
+#include "tests/recordedinput.h"
 #include "model/json.h"
 #include "shell/mapsprite.h"
 #include "shell/planeeffects.h"
@@ -27,20 +28,81 @@ inline QImage icon(bool shape) {
     return im;
 }
 inline bool shapeIcon(const QString& name) { return name.startsWith("bloom") && name != "bloom-grid"; }
-inline QJsonArray rows(const QString& set = "a") {
-    QFile file(QString(FUGUE_TEST_DATA_DIR) + "/filter-types-world/stock.json");
-    if (!file.open(QIODevice::ReadOnly)) return {};
-    return QJsonDocument::fromJson(file.readAll()).object()["sets"].toObject()[set].toArray();
-}
 // Every row with captured wire records: set a and the bar sign's seven waves in set c.
-inline QJsonArray recordRows() {
-    QJsonArray out;
-    for (const auto* set : {"a", "c"}) for (const auto& r : rows(set)) if (r.toObject().contains("records")) out.append(r);
-    return out;
-}
-inline QJsonObject row(const QString& name, const QString& set = "a") {
-    for (const auto& r : rows(set)) if (r.toObject()["case"].toString() == name) return r.toObject();
-    return {};
+inline bool recordRows(QJsonArray& out, QString& error) {
+    out = {};
+    const QString path = QString(FUGUE_TEST_DATA_DIR) + "/filter-types-world/stock.json";
+    QJsonDocument document;
+    if (!::fugue::testinput::readRecordedJson(path, document, error)) return false;
+    auto fail = [&](const QString& field, const QString& reason) {
+        error = path + ": " + field + ": " + reason;
+        return false;
+    };
+    if (!document.isObject() || !document.object()["sets"].isObject())
+        return fail("sets", "Expected an object of retained capture sets");
+    const auto sets = document.object()["sets"].toObject();
+    QJsonArray recorded;
+    QSet<QString> names;
+    qsizetype sampleCount = 0;
+    for (const auto* set : {"a", "c"}) {
+        const QString field = "sets." + QString(set);
+        if (!sets[set].isArray()) return fail(field, "Expected an array of retained cases");
+        int selected = 0;
+        for (const auto& value : sets[set].toArray()) {
+            if (!value.isObject()) return fail(field, "Expected case objects");
+            const auto row = value.toObject();
+            if (!row.contains("records")) continue; // these captures have no retained replay input
+            const auto name = row["case"].toString();
+            const QString context = field + '.' + name;
+            if (name.isEmpty() || name != name.trimmed() || names.contains(name))
+                return fail(field, "Expected nonempty, unique case names");
+            if (QString(set) == "c" && name != "sign-static")
+                return fail(context, "Expected the retained sign-static wire case");
+            names.insert(name);
+            const auto records = row["records"].toArray();
+            const int expectedRecords = name == "sign-static" ? 7 :
+                name == "wave-two" || name == "wave-split" || name == "ripple-two" ? 2 : 1;
+            if (records.size() != expectedRecords)
+                return fail(context + ".records", QString("Expected %1 retained filter records").arg(expectedRecords));
+            for (const auto& record : records) {
+                const auto filter = record.toObject();
+                if (!::fugue::testinput::isIntegerTuple(QJsonArray{filter["type"], filter["paramMask"]}, 2, 0, 65535) ||
+                    !::fugue::testinput::isIntegerTuple(QJsonArray{filter["flags"]}, 1, 0, 255))
+                    return fail(context + ".records", "Expected integer type, paramMask and flags fields");
+                const auto bytes = hexDecode(filter["params"].toString().toStdString());
+                if (!filter["params"].isString() || !bytes || bytes->empty())
+                    return fail(context + ".records", "Expected nonempty, even-length hexadecimal filter bytes");
+            }
+            if (!row["samples"].isArray()) return fail(context + ".samples", "Expected an explicit sample array");
+            const auto samples = row["samples"].toArray();
+            // ripple-sign changed no stock pixels, so its retained sample list
+            // is intentionally empty. It still exercises record decoding.
+            const int expectedSamples = name == "ripple-sign" ? 0 : 16;
+            if (samples.size() != expectedSamples)
+                return fail(context + ".samples", QString("Expected %1 retained pixel samples").arg(expectedSamples));
+            if (name == "ripple-sign" && (!row["changed"].isDouble() || row["changed"].toDouble(-1) != 0))
+                return fail(context + ".changed", "Expected the retained zero changed-pixel observation");
+            for (const auto& sample : samples) {
+                const auto values = sample.toArray();
+                if (values.size() != 5 ||
+                    !::fugue::testinput::isIntegerTuple(QJsonArray{values[0], values[1]}, 2, -64, 95) ||
+                    !::fugue::testinput::isIntegerTuple(QJsonArray{values[2], values[3], values[4]}, 3, 0, 255))
+                    return fail(context + ".samples", "Expected [x,y,r,g,b] inside the 160x160 map relative to tile (64,64)");
+            }
+            if (!row["fugueDiffOver8"].isDouble() || row["fugueDiffOver8"].toDouble(-1) != 0)
+                return fail(context + ".fugueDiffOver8", "Expected the retained zero-difference observation");
+            recorded.append(row);
+            sampleCount += samples.size();
+            ++selected;
+        }
+        const int expected = QString(set) == "a" ? 20 : 1;
+        if (selected != expected) return fail(field, QString("Expected %1 cases with retained filter records").arg(expected));
+    }
+    for (const char* name : {"ripple-sign", "wave-diag", "ripple-xy", "bloom-soft", "wave-two", "wave-split", "ripple-two"})
+        if (!names.contains(name)) return fail("sets", "Missing required case: " + QString(name));
+    if (sampleCount != 320) return fail("sets", "Expected 320 retained pixel samples");
+    out = recorded;
+    return true;
 }
 inline shell::PlaneEffects effects(const QJsonObject& row) {
     QJsonObject fields{{"filters", row["records"].toArray()}};

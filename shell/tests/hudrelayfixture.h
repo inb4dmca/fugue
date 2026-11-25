@@ -1,13 +1,14 @@
 #pragma once
 #include "tests/appearancejson.h"
+#include "tests/recordedinput.h"
 #include "shell/entitymap.h"
 #include "shell/mapinput.h"
 #include <QBuffer>
-#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <bit>
+#include <limits>
 
 namespace fugue::shell::test {
 // Independent hud-relay-world sources/assets; observations are stock, not our renderer.
@@ -64,9 +65,40 @@ struct HudRelayFixture {
         },0,stats,true);
     }
     MapPointer at(QPoint p) const {return *mapPointerAt(p,{224,160},{7,5},frame.source,frame.geometry,"main.map",true,sprites);}
-    static QJsonArray rows() {
-        QFile f(QString(FUGUE_TEST_DATA_DIR)+"/hud-relay-world/stock.json");
-        return f.open(QIODevice::ReadOnly) ? QJsonDocument::fromJson(f.readAll()).object()["rows"].toArray() : QJsonArray{};
+    static bool rows(QJsonArray& out,QString& error) {
+        out={};
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/hud-relay-world/stock.json";
+        QJsonDocument document;
+        if (!::fugue::testinput::readRecordedJson(path,document,error)) return false;
+        auto fail=[&](const QString& reason) {error=path+": "+reason;return false;};
+        const auto evidence=document.object();const auto rows=evidence["rows"].toArray();
+        if (!document.isObject() || rows.size()!=12) return fail("Expected 12 retained HUD phases");
+        if (evidence["source"].toArray()!=QJsonArray{224,160}) return fail("Expected a 224x160 source");
+        const QRect source(0,0,224,160);
+        QStringList names;
+        for (const auto& value:rows) {
+            const auto row=value.toObject();const auto name=row["phase"].toString();
+            if (name.isEmpty() || name!=name.trimmed() || names.contains(name))
+                return fail("Missing, invalid or duplicate phase name: "+name);
+            names.push_back(name);
+            if (!::fugue::testinput::isIntegerTuple(row["bounds"],4,0,224))
+                return fail(name+": expected four integer ink bounds");
+            const auto b=row["bounds"].toArray();
+            const QRect ink(QPoint(b[0].toInt(),b[1].toInt()),QPoint(b[2].toInt()-1,b[3].toInt()-1));
+            if (ink.isEmpty() || !source.contains(ink)) return fail(name+": ink bounds are outside the source");
+            const auto clicks=row["clicks"].toArray();
+            if (clicks.size()!=2) return fail(name+": expected two Click observations");
+            for (qsizetype i=0;i<clicks.size();++i) {
+                const auto click=clicks[i].toObject();const auto point=click["point"].toArray();
+                const auto target=click["name"].toString();
+                if (!::fugue::testinput::isIntegerTuple(click["point"],2,0,223) ||
+                    !source.contains(QPoint(point[0].toInt(),point[1].toInt())) ||
+                    !::fugue::testinput::isIntegerTuple(click["icon"],2,std::numeric_limits<int>::min(),std::numeric_limits<int>::max()) ||
+                    !click["vis"].isBool() || (target!="floor" && target!="button" && target!="first-relay"))
+                    return fail(QString("%1: invalid Click observation %2").arg(name).arg(i));
+            }
+        }
+        out=rows;return true;
     }
     static QString check(const MapPointer& p,const QJsonObject& expected) {
         const auto name=expected["name"].toString();

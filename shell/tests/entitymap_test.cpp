@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QMap>
 #include <bit>
 #include <functional>
 #include <random>
@@ -1444,13 +1445,16 @@ private slots:
     // Wave, ripple and bloom records (tests/data/filter-types-world, stock 516.1688): every captured record decodes
     // and the atom's filter surface runs stock's operation for it. Pixels: map_test::filterTypesPixelsLikeStock.
     void filterTypesDecodeLikeStock() {
-        const auto rows = test::filtertypes::recordRows();
-        QVERIFY(rows.size() >= 21);
+        QJsonArray rows;
+        QString error;
+        QVERIFY2(test::filtertypes::recordRows(rows, error), qPrintable(error));
+        QCOMPARE(rows.size(), 21);
+        QMap<QString, QJsonObject> byName;
         int checked = 0;
         for (const auto& value : rows) {
             const auto row = value.toObject();
-            if (!row.contains("records")) continue;
             const auto name = row["case"].toString();
+            byName.insert(name, row);
             QCOMPARE(row["fugueDiffOver8"].toInt(), 0);
             const auto effects = test::filtertypes::effects(row);
             QVERIFY2(effects.supported && !effects.ignoredFilters, qPrintable(name));
@@ -1474,11 +1478,11 @@ private slots:
         }
         QCOMPARE(checked, 21);
         // Parameters as stock reads them: wave-diag x=8 y=8 size=1.5 offset=0.25; ripple-xy y=-2 (screen +2).
-        const auto wave = test::filtertypes::effects(test::filtertypes::row("wave-diag")).filters.at(0);
+        const auto wave = test::filtertypes::effects(byName.value("wave-diag")).filters.at(0);
         QCOMPARE(wave.x, 8.0); QCOMPARE(wave.y, -8.0); QCOMPARE(wave.size, 1.5); QCOMPARE(wave.offset, .25);
-        const auto ripple = test::filtertypes::effects(test::filtertypes::row("ripple-xy")).filters.at(0);
+        const auto ripple = test::filtertypes::effects(byName.value("ripple-xy")).filters.at(0);
         QCOMPARE(ripple.y, 2.0); QCOMPARE(ripple.radius, 12.0); QCOMPARE(ripple.repeat, 1.0); QCOMPARE(ripple.falloff, .5);
-        const auto bloom = test::filtertypes::effects(test::filtertypes::row("bloom-soft")).filters.at(0);
+        const auto bloom = test::filtertypes::effects(byName.value("bloom-soft")).filters.at(0);
         QCOMPARE(bloom.size, 2.0); QCOMPARE(bloom.offset, 0.0); QCOMPARE(bloom.color[3], 128.f/255);
     }
     // vg's bar sign animates each wave's offset (filter-types-world set c, stock 516.1688: the phase moves
@@ -3231,10 +3235,11 @@ private slots:
         QVERIFY(std::none_of(local.sprites.begin(),local.sprites.end(),[](const auto& s){return s.atom==201u && !s.renderSource.isEmpty();}));
     }
     void planeSourceMatrix() {
-        QFile file(QFINDTESTDATA("../../tests/data/relay-gate-world/matrix.json"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
+        QJsonArray rows; QString error;
+        QVERIFY2(shell::test::PlaneSourceFixture::capturePixelObservations(
+            QString(FUGUE_TEST_DATA_DIR)+"/relay-gate-world/matrix.json",rows,error,false),qPrintable(error));
         shell::test::PlaneSourceFixture f;
-        for (const auto& value:shell::test::PlaneSourceFixture::capturePixelObservations(file.readAll(),false)) {
+        for (const auto& value:rows) {
             const auto row=value.toObject(); f.observation(row);
             const bool admitted=row["admitted"].toBool();
             const bool found=std::any_of(f.sprites.cbegin(),f.sprites.cend(),[](const auto& s){return s.atom==201u;});
@@ -3278,18 +3283,13 @@ private slots:
     }
     void planeSourceCaptureClassification() {
         using Fixture=shell::test::PlaneSourceFixture;
-        QFile file(QFINDTESTDATA("../../tests/data/relay-gate-world/source-coverage.json"));
-        QVERIFY(file.open(QIODevice::ReadOnly));
-        auto rows=Fixture::capturePixelObservations(file.readAll());
-        QFile pixels(QFINDTESTDATA("../../tests/data/relay-gate-world/capture-pixels.json"));
-        QVERIFY(pixels.open(QIODevice::ReadOnly));
-        for (const auto& row:Fixture::capturePixelObservations(pixels.readAll())) rows.append(row);
-        QFile precision(QFINDTESTDATA("../../tests/data/relay-gate-world/precision-model.json"));
-        QVERIFY(precision.open(QIODevice::ReadOnly));
-        for (const auto& row:Fixture::capturePixelObservations(precision.readAll())) rows.append(row);
-        QFile arithmetic(QFINDTESTDATA("../../tests/data/relay-gate-world/master-arithmetic.json"));
-        QVERIFY(arithmetic.open(QIODevice::ReadOnly));
-        for (const auto& row:Fixture::capturePixelObservations(arithmetic.readAll())) rows.append(row);
+        QJsonArray rows; QString error;
+        for (const char* name:{"source-coverage.json","capture-pixels.json","precision-model.json","master-arithmetic.json"}) {
+            QJsonArray recorded;
+            QVERIFY2(Fixture::capturePixelObservations(
+                QString(FUGUE_TEST_DATA_DIR)+"/relay-gate-world/"+name,recorded,error),qPrintable(error));
+            for (const auto& row:recorded) rows.append(row);
+        }
         Fixture f;
         for (const auto& value:rows) {
             const auto row=value.toObject(); f.sourceObservation(row);
