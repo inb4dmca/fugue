@@ -2050,9 +2050,83 @@ private slots:
     }
     void stockShadowPixels() {
         QFETCH(bool,openGL);
-        const QString dir=qEnvironmentVariable("FUGUE_SHADOW_FIXTURE",QString(FUGUE_TEST_DATA_DIR)+"/stock-shadow-world");
-        QFile observations(dir+"/observations.json");QVERIFY(observations.open(QIODevice::ReadOnly));
-        const auto rows=QJsonDocument::fromJson(observations.readAll()).array();QVERIFY(!rows.empty());
+        const QString canonicalDir=QString(FUGUE_TEST_DATA_DIR)+"/stock-shadow-world";
+        const QString dir=qEnvironmentVariable("FUGUE_SHADOW_FIXTURE",canonicalDir),path=dir+"/observations.json";
+        const bool canonical=QDir(dir).canonicalPath()==QDir(canonicalDir).canonicalPath();
+        QJsonDocument observations;QString inventoryError;
+        QVERIFY2(fugue::testinput::readRecordedJson(path,observations,inventoryError),qPrintable(inventoryError));
+        QVERIFY2(observations.isArray() && !observations.array().isEmpty(),qPrintable(path+": expected shadow observations"));
+        const auto rows=observations.array();
+        const QSet<QString> requiredWire{"shadow-tg-wire","shadow-target-wire","shadow-repeat2-wire"};
+        QSet<QString> names,wireNames;
+        int filterRecords=0,retainedClicks=0;
+        for (const auto& value:rows) {
+            const auto row=value.toObject();const auto name=row["case"].toString();const auto context=path+": "+name;
+            QVERIFY2(!name.isEmpty() && name==name.trimmed() && !names.contains(name),qPrintable(context+": missing or duplicate case"));
+            names.insert(name);
+            QVERIFY2(!row["golden"].toString().isEmpty(),qPrintable(context+": missing golden image"));
+            // External fixtures may select a smaller experiment and retain the
+            // existing defaults for omitted recipe fields. Canonical inputs are explicit.
+            for (const auto* field:{"alpha","masterTint"}) if (canonical || row.contains(field))
+                QVERIFY2(fugue::testinput::isIntegerTuple(QJsonArray{row[field]},1,0,255),qPrintable(context+": invalid "+field));
+            for (const auto* field:{"edge","target"}) if (canonical || row.contains(field))
+                QVERIFY2(row[field].isBool(),qPrintable(context+": invalid "+field));
+            if (canonical || row.contains("effects")) {
+                QVERIFY2(row["effects"].isObject(),qPrintable(context+": missing effects object"));
+                const auto effects=row["effects"].toObject();
+                if (canonical || effects.contains("filters")) {
+                    QVERIFY2(effects["filters"].isArray(),qPrintable(context+": missing filter records"));
+                    const auto filters=effects["filters"].toArray();
+                    if (canonical) QVERIFY2(!filters.isEmpty(),qPrintable(context+": empty filter records"));
+                    for (const auto& entry:filters) {
+                        QVERIFY2(entry.isObject(),qPrintable(context+": invalid filter record"));
+                        const auto filter=entry.toObject();
+                        for (const auto* field:{"type","paramMask","flags"}) if (canonical || filter.contains(field))
+                            QVERIFY2(fugue::testinput::isIntegerTuple(QJsonArray{filter[field]},1,0,QString(field)=="flags" ? 255 : 65535),
+                                     qPrintable(context+": invalid filter "+field));
+                        if (canonical || filter.contains("params"))
+                            QVERIFY2(filter["params"].isString() && fugue::hexDecode(filter["params"].toString().toStdString()).has_value(),
+                                     qPrintable(context+": invalid filter parameter bytes"));
+                        ++filterRecords;
+                    }
+                }
+            }
+            const bool wire=row.contains("frames");
+            if (wire) {
+                QVERIFY2(!row["frames"].toString().isEmpty(),qPrintable(context+": missing wire recording"));
+                wireNames.insert(name);
+                if (canonical) {
+                    QVERIFY2(requiredWire.contains(name),qPrintable(context+": unexpected canonical wire case"));
+                    QVERIFY2(!row["edge"].toBool() && row["inputSupported"].isBool() && row["inputSupported"].toBool(),
+                             qPrintable(context+": canonical wire input checks must be enabled"));
+                    QVERIFY2(row["clicks"].isArray() && row["clicks"].toArray().size()==2,qPrintable(context+": expected two stock Click receipts"));
+                }
+            }
+            if (row.contains("inputSupported"))
+                QVERIFY2(row["inputSupported"].isBool(),qPrintable(context+": invalid inputSupported flag"));
+            if (row.contains("clicks")) {
+                QVERIFY2(row["clicks"].isArray(),qPrintable(context+": invalid Click observations"));
+                const auto clicks=row["clicks"].toArray();
+                QVERIFY2(clicks.isEmpty() || (wire && !row["edge"].toBool() && row["inputSupported"].toBool()),
+                         qPrintable(context+": retained Click receipts would not be exercised"));
+                QSet<QPair<int,int>> points;
+                for (const auto& entry:clicks) {
+                    const auto click=entry.toObject();
+                    QVERIFY2(fugue::testinput::isIntegerTuple(click["point"],2,0,223),qPrintable(context+": invalid Click point"));
+                    const auto point=click["point"].toArray();const auto xy=qMakePair(point[0].toInt(),point[1].toInt());
+                    QVERIFY2(!points.contains(xy),qPrintable(context+": duplicate Click point"));points.insert(xy);
+                    const auto expected=click["expected"].toObject();
+                    QVERIFY2(expected["kind"].toString()=="Click",qPrintable(context+": expected a Click receipt"));
+                    const auto error=test::ReplayFixture::clickObservationError(expected);
+                    QVERIFY2(error.isEmpty(),qPrintable(context+": "+error));
+                    ++retainedClicks;
+                }
+            }
+        }
+        if (canonical) {
+            QCOMPARE(rows.size(),35);QCOMPARE(wireNames,requiredWire);
+            QCOMPARE(filterRecords,46);QCOMPARE(retainedClicks,6);
+        }
         HostedPixelMap map(pixelHosts_);if(openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.resize(448,448);map.setViewSize({7,7});
         auto metrics=std::make_shared<MapMetrics>();map.setMetrics(metrics);
@@ -2060,7 +2134,7 @@ private slots:
         QImage floor(224,224,QImage::Format_RGBA8888);floor.fill(QColor(35,35,35));
         MapGeometry geometry;geometry.region={0,0,7,7};geometry.world={7,7};geometry.tile=32;
         map.show();QVERIFY(QTest::qWaitForWindowExposed(&map));
-        int totalErrors=0;
+        int totalErrors=0,checkedClicks=0;
         for(const auto& value:rows) {
             const auto row=value.toObject();const QString name=row["case"].toString();
             auto effects=std::make_shared<PlaneEffects>(decodePlaneEffects(fugue::model::appearanceOf(
@@ -2092,7 +2166,7 @@ private slots:
             if(row.contains("frames")) {
                 wire=std::make_unique<test::ReplayFixture>();
                 const auto fixture=QDir(QString(FUGUE_TEST_DATA_DIR)).relativeFilePath(dir);
-                QVERIFY(wire->ReplayFixture::load(row["frames"].toString(),fixture));
+                QVERIFY2(wire->ReplayFixture::load(row["frames"].toString(),fixture),qPrintable(wire->error));
                 raster=wire->frame.image;domain=wire->frame.source;coordinates=wire->frame.geometry;sprites=wire->sprites;
                 size_t shadows=0;
                 for(const auto& s:sprites) if(s.kind==MapSprite::Master && s.planeEffects) {
@@ -2132,6 +2206,7 @@ private slots:
                         QVERIFY(picked);
                         const auto error=wire->checkClick(*picked,click["expected"].toObject());
                         QVERIFY2(error.isEmpty(),qPrintable(name+": "+error));
+                        ++checkedClicks;
                     }
                     QVERIFY(mapPointerCurrent(*hit,wire->session.world(),0));
                     auto stale=wire->session.world();
@@ -2147,7 +2222,7 @@ private slots:
             mailbox->publish(raster,domain,0,0,coordinates,sprites);map.grabFramebuffer();
             QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
         }
-        QCOMPARE(totalErrors,0);
+        QCOMPARE(totalErrors,0);QCOMPARE(checkedClicks,retainedClicks);
     }
     void planeCompositingPixels_data() {
         QTest::addColumn<bool>("openGL");
@@ -2670,15 +2745,74 @@ private slots:
     }
     void blacknessStockPixels() {
         QFETCH(bool,openGL);
-        QFile evidence(QFINDTESTDATA("../../tests/data/darkness-world/blackness-observations.json"));
-        QVERIFY(evidence.open(QIODevice::ReadOnly));
-        auto cases=QJsonDocument::fromJson(evidence.readAll()).object()["cases"].toArray();
-        QCOMPARE(cases.size(),42);
-        QFile sourceEvidence(QFINDTESTDATA("../../tests/data/darkness-world/source-input-observations.json"));
-        QVERIFY(sourceEvidence.open(QIODevice::ReadOnly));
-        const auto sourceCases=QJsonDocument::fromJson(sourceEvidence.readAll()).object()["cases"].toArray();
-        QCOMPARE(sourceCases.size(),14);
-        for (const auto& c:sourceCases) cases.append(c);
+        struct Recording {const char* name;int cases,samples,clicks;};
+        const Recording recordings[]={{"blackness-observations.json",42,10,32},{"source-input-observations.json",14,7,98}};
+        const QSet<QString> clickCases{"spill-p0-b1","spill-p1-b1","objs","turfs","ghost","self0","alpha","target"};
+        const QRegularExpression event(R"(^CLICK (/obj/target|/turf/floor|/mob|/obj) [0-9]+,[0-9]+ icon-x=-?[0-9]+;icon-y=-?[0-9]+;left=1;button=left;screen-loc=-?[0-9]+:-?[0-9]+,-?[0-9]+:-?[0-9]+\z)");
+        const QRegularExpression integer("^-?[0-9]+\\z");
+        const QStringList numeric{"ambient","see","targetx","wide","backdrop","plane","black","layer","offset","wall",
+            "selfplane","eyex","eyey","backplane","backlayer","hudplane","masterplane","turfplane","selfoffset"};
+        const QStringList sights{"normal","blackness","self","through","objs","turfs","mobs","ghost","mobobj","turfobj","turfmob"};
+        const QStringList masters{"identity","alpha","zero","matrix","add","multiply","target","targetalpha"};
+        QJsonArray cases;QSet<QString> names;
+        int retainedSamples=0,retainedClicks=0;
+        for (const auto& recording:recordings) {
+            const QString path=QString(FUGUE_TEST_DATA_DIR)+"/darkness-world/"+recording.name;
+            QJsonDocument document;QString error;
+            QVERIFY2(fugue::testinput::readRecordedJson(path,document,error),qPrintable(error));
+            const auto data=document.object();
+            QVERIFY2(fugue::testinput::isIntegerTuple(data["map_size"],2,288,288),qPrintable(path+": expected a 288x288 MAP"));
+            const auto rows=data["cases"].toArray();QCOMPARE(rows.size(),recording.cases);
+            int clicksInRecording=0;
+            for (const auto& value:rows) {
+                const auto row=value.toObject();const auto name=row["name"].toString();const auto context=path+": "+name;
+                QVERIFY2(!name.isEmpty() && name==name.trimmed() && !names.contains(name),qPrintable(context+": missing or duplicate case"));
+                names.insert(name);
+                const auto config=row["config"].toString();QVERIFY2(!config.isEmpty(),qPrintable(context+": missing config"));
+                const QUrlQuery query(config);QSet<QString> keys;
+                for (const auto& item:query.queryItems()) {
+                    const auto& key=item.first;const auto& text=item.second;
+                    QVERIFY2(!keys.contains(key) && !text.isEmpty(),qPrintable(context+": duplicate or empty input "+key));keys.insert(key);
+                    if (key=="sight") {QVERIFY2(sights.contains(text),qPrintable(context+": invalid sight input"));}
+                    else if (key=="master") {QVERIFY2(masters.contains(text),qPrintable(context+": invalid master input"));}
+                    else if (key=="source" || key=="flooricon") {QVERIFY2(text=="none",qPrintable(context+": invalid "+key));}
+                    else if (key!="targetname") {
+                        bool valid=false;const int number=text.toInt(&valid);
+                        QVERIFY2(numeric.contains(key) && valid && integer.match(text).hasMatch(),qPrintable(context+": invalid numeric input "+key));
+                        if (key=="targetx" || key=="eyex" || key=="eyey")
+                            QVERIFY2(number>=1 && number<=9,qPrintable(context+": input outside the world: "+key));
+                    }
+                }
+                QVERIFY2(keys.contains("ambient"),qPrintable(context+": missing ambient input"));
+                const auto samples=row["samples"].toArray();QCOMPARE(samples.size(),recording.samples);
+                QSet<QPair<int,int>> samplePoints;
+                for (const auto& sample:samples) {
+                    QVERIFY2(fugue::testinput::isIntegerTuple(sample,5,0,287),qPrintable(context+": invalid pixel sample"));
+                    const auto s=sample.toArray();
+                    QVERIFY2(fugue::testinput::isIntegerTuple(QJsonArray{s[2],s[3],s[4]},3,0,255),qPrintable(context+": invalid sample RGB"));
+                    const auto point=qMakePair(s[0].toInt(),s[1].toInt());
+                    QVERIFY2(!samplePoints.contains(point),qPrintable(context+": duplicate pixel sample"));samplePoints.insert(point);
+                    ++retainedSamples;
+                }
+                QVERIFY2(row["clicks"].isArray(),qPrintable(context+": missing Click observations"));
+                const auto clicks=row["clicks"].toArray();
+                QCOMPARE(clicks.size(),recording.cases==14 ? 7 : clickCases.contains(name) ? 4 : 0);
+                QSet<QPair<int,int>> clickPoints;
+                for (const auto& click:clicks) {
+                    const auto observation=click.toObject();
+                    QVERIFY2(fugue::testinput::isIntegerTuple(observation["point"],2,0,287),qPrintable(context+": invalid Click point"));
+                    const auto p=observation["point"].toArray();const auto point=qMakePair(p[0].toInt(),p[1].toInt());
+                    QVERIFY2(!clickPoints.contains(point),qPrintable(context+": duplicate Click point"));clickPoints.insert(point);
+                    const auto events=observation["events"];
+                    QVERIFY2(events.isString() && (events.toString().isEmpty() || event.match(events.toString()).hasMatch()),
+                             qPrintable(context+": expected an explicit empty event or retained CLICK receipt"));
+                    ++clicksInRecording;
+                }
+                cases.append(row);
+            }
+            QCOMPARE(clicksInRecording,recording.clicks);retainedClicks+=clicksInRecording;
+        }
+        QCOMPARE(retainedSamples,518);QCOMPARE(retainedClicks,130);
         MapWidget map; if (openGL) map.setApi(QRhiWidget::Api::OpenGL);
         map.setWindowFlag(Qt::FramelessWindowHint); map.resize(288,288); map.setViewSize({9,9});
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
@@ -2697,6 +2831,7 @@ private slots:
             return f.pixelColor(int((x+.5)*f.width()/288),int((y+.5)*f.height()/288));
         };
         std::vector<MapPointer> clicks;
+        int checkedSamples=0,checkedClicks=0;
         map.setInputHandler("main.map",true,[&](const MapPointer& p) { if (p.kind==MapPointer::Click) clicks.push_back(p); });
         publish(); map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map));
         QVERIFY(!map.grabFramebuffer().isNull());
@@ -2712,6 +2847,7 @@ private slots:
                 QVERIFY2(qAbs(actual.red()-expected.red())<=1 && qAbs(actual.green()-expected.green())<=1 &&
                     qAbs(actual.blue()-expected.blue())<=1,qPrintable(name+QString(" @%1,%2 expected %3 actual %4")
                         .arg(s[0].toInt()).arg(s[1].toInt()).arg(expected.name()).arg(actual.name())));
+                ++checkedSamples;
             }
             for (const auto& sprite:sprites) if (sprite.kind==MapSprite::Blackness) {
                 QVERIFY(sprite.image.isNull()); QCOMPARE(sprite.atom,0u); QVERIFY(sprite.mouseTransparent);
@@ -2720,6 +2856,7 @@ private slots:
                 const auto observation=v.toObject(); const auto point=observation["point"].toArray();
                 const auto expected=observation["events"].toString(); const auto before=clicks.size();
                 QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{point[0].toInt(),point[1].toInt()});
+                ++checkedClicks;
                 if (expected.isEmpty()) { QVERIFY2(clicks.size()==before,qPrintable(name)); continue; }
                 QVERIFY2(clicks.size()==before+1,qPrintable(name));
                 const auto& hit=clicks.back(); QVERIFY(mapPointerCurrent(hit,w,1));
@@ -2729,6 +2866,7 @@ private slots:
                 else { QCOMPARE(hit.click.over.ref,50u); QVERIFY(hit.screen); }
             }
         }
+        QCOMPARE(checkedSamples,retainedSamples);QCOMPARE(checkedClicks,retainedClicks);
         // A pending capture cannot change the last rendered turf hit. Once the
         // hidden producer is presented, only independent world/HUD targets hit.
         w=test::blacknessWorld("ambient=1&targetx=6&plane=1&hudplane=10");
