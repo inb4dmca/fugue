@@ -16,9 +16,10 @@
 // frame for a pick), the dialog, what it printed, or the command bar after a space.
 #include <QtTest>
 #include "tests/recordedinput.h"
+#ifndef Q_MOC_RUN
+#include "tests/recordedverbs.h"
+#endif
 #include "tests/testmain.h"
-#include <fstream>
-#include <regex>
 #include "model/verbmenu.h"
 #include "model/world.h"
 #include "net/bytes.h"
@@ -26,18 +27,9 @@
 #include "proto/enc_c2s_0002_input.h"
 
 using namespace fugue;
-using proto::enc::VerbArg;
 
 namespace {
-std::vector<std::string> split(const std::string& s, char sep) {
-    std::vector<std::string> o;
-    for (size_t p = 0, q; p <= s.size(); p = q + 1) {
-        q = s.find(sep, p);
-        if (q == std::string::npos) q = s.size();
-        o.push_back(s.substr(p, q - p));
-    }
-    return o;
-}
+using Ds = testinput::RecordedVerb;
 
 struct Recorded {
     model::Session sess;
@@ -91,73 +83,9 @@ struct Recorded {
     }
 };
 
-// One line of dreamseeker-verbs.txt.
-struct Ds {
-    std::string line, pick, what;  // what: send / listbox / dialog / completes / refuses
-    uint16_t verb = 0;
-    uint8_t kind = 0;
-    std::string ref;  // self / client / a number
-    std::vector<VerbArg> args;
-    std::string title;               // listbox / dialog title, completion text
-    std::vector<std::string> names;  // listbox entries; the printed lines
-};
-
-std::vector<Ds> loadDs(const std::string& world = "verbrank-world") {
-    std::vector<Ds> out;
-    std::ifstream f(std::string(FUGUE_TEST_DATA_DIR) + "/" + world + "/dreamseeker-verbs.txt");
-    std::regex send(R"(^verb=(\d+) src=(\d+):(\w+)(?: args=([^\t#]*[^\t# ]))?)");
-    std::regex quoted("^(listbox|dialog|completes) \"((?:[^\"\\\\]|\\\\.)*)\"(?:: (\\S+))?");
-    std::string l;
-    std::smatch m;
-    while (std::getline(f, l)) {
-        if (l.empty() || l[0] == '#') continue;
-        size_t tab = l.find('\t');
-        Ds d;
-        std::string typed = l.substr(0, tab), body = l.substr(tab + 1);
-        size_t arrow = typed.find(" <- ");
-        d.line = arrow == std::string::npos ? typed : typed.substr(0, arrow);
-        if (arrow != std::string::npos) d.pick = typed.substr(arrow + 4);
-        if (std::regex_search(body, m, send)) {
-            d.what = "send";
-            d.verb = uint16_t(std::stoul(m[1]));
-            d.kind = uint8_t(std::stoul(m[2]));
-            d.ref = m[3];
-            if (m[4].matched) {
-                std::string a = m[4];
-                VerbArg v;
-                if (a == "null") {
-                    v.tag = 0;
-                    v.kind = 0;
-                    v.ref = 0xffff;
-                } else if (a.rfind("num:", 0) == 0) {
-                    v.tag = 1;
-                    v.num = std::stof(a.substr(4));
-                } else if (a.rfind("obj:", 0) == 0) {
-                    v.tag = 0;
-                    v.kind = 1;
-                    v.ref = uint32_t(std::stoul(a.substr(4)));
-                } else {
-                    v.tag = 2;
-                    v.str = a.substr(5);
-                }
-                d.args.push_back(v);
-            }
-        } else if (body.rfind("refuses ", 0) == 0) {
-            d.what = "refuses";
-            for (size_t p = 8, q; p <= body.size(); p = q + 3) {
-                q = body.find(" | ", p);
-                if (q == std::string::npos) q = body.size();
-                d.names.push_back(body.substr(p, q - p));
-            }
-        } else if (std::regex_search(body, m, quoted)) {
-            d.what = m[1];
-            d.title = std::regex_replace(std::string(m[2]), std::regex(R"(\\(.))"), "$1");
-            if (m[3].matched) d.names = split(m[3], '|');
-        } else
-            continue;
-        out.push_back(d);
-    }
-    return out;
+bool loadDs(std::vector<Ds>& out, QString& error, const std::string& world = "verbrank-world") {
+    return testinput::readRecordedVerbs(
+        QString(FUGUE_TEST_DATA_DIR) + '/' + QString::fromStdString(world) + "/dreamseeker-verbs.txt", out, error);
 }
 }  // namespace
 
@@ -167,7 +95,8 @@ class VerbRank : public QObject {
 
 private slots:
     void initTestCase() {
-        ds_ = loadDs();
+        QString error;
+        QVERIFY2(loadDs(ds_, error), qPrintable(error));
         QCOMPARE(int(ds_.size()), 82);
     }
 
@@ -234,7 +163,9 @@ private slots:
     // The same pairs numbered the other way round: wherever the line reads differently for the two verbs (a number for
     // one, text for the other), the lower id decides how it is read, so the other side wins now.
     void reversedIdsAsDreamSeeker() {
-        std::vector<Ds> ds = loadDs("verbrank-reversed-world");
+        std::vector<Ds> ds;
+        QString error;
+        QVERIFY2(loadDs(ds, error, "verbrank-reversed-world"), qPrintable(error));
         QCOMPARE(int(ds.size()), 17);
         sameAsDreamSeeker("verbrank-reversed-world", ds, 17, 0);
     }
@@ -243,7 +174,9 @@ private slots:
     // its number. Atoms of one name are one listbox row, so the first is taken without asking. Every refusing verb prints
     // its own word and usage.
     void verbIdOrderAndOneRowPerName() {
-        std::vector<Ds> ds = loadDs("verborder-world");
+        std::vector<Ds> ds;
+        QString error;
+        QVERIFY2(loadDs(ds, error, "verborder-world"), qPrintable(error));
         QCOMPARE(int(ds.size()), 8);
         sameAsDreamSeeker("verborder-world", ds, 7, 0, 1);
     }
@@ -254,7 +187,9 @@ private slots:
     // (Toss, Flip). A word naming several atoms, src or argument, takes the nearest (Tap pad, aim pad), and so does the
     // one `<Verb> word` row of a bare line (Tap); a verb's own implicit src is still its first atom (Hum).
     void nearestSrcAsDreamSeeker() {
-        std::vector<Ds> ds = loadDs("verbnear-world");
+        std::vector<Ds> ds;
+        QString error;
+        QVERIFY2(loadDs(ds, error, "verbnear-world"), qPrintable(error));
         QCOMPARE(int(ds.size()), 15);
         sameAsDreamSeeker("verbnear-world", ds, 15, 0);
     }
@@ -262,7 +197,9 @@ private slots:
     // west edge, beat yelp a and pad 1, 2 tiles east of usr's cell. DreamDaemon centres its own view() of this mob two
     // tiles EAST of its cell, so the scene keeps every src inside that view or the server would drop the command.
     void usrFootprintAsDreamSeeker() {
-        std::vector<Ds> ds = loadDs("verbwide-world");
+        std::vector<Ds> ds;
+        QString error;
+        QVERIFY2(loadDs(ds, error, "verbwide-world"), qPrintable(error));
         QCOMPARE(int(ds.size()), 2);
         sameAsDreamSeeker("verbwide-world", ds, 2, 0);
     }
@@ -274,20 +211,24 @@ private slots:
     // the cell moves nothing (Toll, Rasp). Mobs come first (Woof, Yap), and a full mob relink keeps the mob back-links
     // it had, so a mob that arrived late in a frame that also carried the Binds stays behind the higher id (Bark).
     void cellOrderAsDreamSeeker() {
-        std::vector<Ds> ds = loadDs("verbcell-world");
+        std::vector<Ds> ds;
+        QString error;
+        QVERIFY2(loadDs(ds, error, "verbcell-world"), qPrintable(error));
         QCOMPARE(int(ds.size()), 10);
         sameAsDreamSeeker("verbcell-world", ds, 10, 0);
-        ds = loadDs("verblate-world");
+        QVERIFY2(loadDs(ds, error, "verblate-world"), qPrintable(error));
         QCOMPARE(int(ds.size()), 3);
         sameAsDreamSeeker("verblate-world", ds, 3, 0);
-        ds = loadDs("verbgong-world");
+        QVERIFY2(loadDs(ds, error, "verbgong-world"), qPrintable(error));
         QCOMPARE(int(ds.size()), 3);
         sameAsDreamSeeker("verbgong-world", ds, 3, 0);
     }
     // At 51 records or more a cell is laid out along its chains by a second ordering, which on these ascending-id
     // piles leaves the earliest arrival first (Hoot, 52 on the cell); 49 keep the back-link order (Toot).
     void bigCellOrderAsDreamSeeker() {
-        std::vector<Ds> ds = loadDs("verbpile-world");
+        std::vector<Ds> ds;
+        QString error;
+        QVERIFY2(loadDs(ds, error, "verbpile-world"), qPrintable(error));
         QCOMPARE(int(ds.size()), 2);
         sameAsDreamSeeker("verbpile-world", ds, 2, 0);
     }

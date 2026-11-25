@@ -1,10 +1,13 @@
 // Stock nested CHILD evidence: tests/data/splitter-world/README.md.
 #include <QtTest>
 #include "tests/testmain.h"
+#include "tests/recordedinput.h"
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
+#include <QSize>
 #include <algorithm>
 #include <cmath>
 #include "skin/liveskin.h"
@@ -60,34 +63,61 @@ private slots:
         QFile file(QStringLiteral(FUGUE_TEST_DATA_DIR "/splitter-world/skin.dmf"));
         QVERIFY(file.open(QIODevice::ReadOnly));
         const auto source = file.readAll();
-        QFile evidence(QStringLiteral(FUGUE_TEST_DATA_DIR "/splitter-world/dreamseeker-observations.json"));
-        QVERIFY(evidence.open(QIODevice::ReadOnly));
-        const auto corpus = QJsonDocument::fromJson(evidence.readAll()).object();
+        const QString path = QStringLiteral(FUGUE_TEST_DATA_DIR "/splitter-world/dreamseeker-observations.json");
+        QJsonDocument document; QString error;
+        QVERIFY2(fugue::testinput::readRecordedJson(path, document, error), qPrintable(error));
+        const auto corpus = document.object();
+        const auto size = [](const QJsonValue& value, QSize& out) {
+            if (!value.isString()) return false;
+            const auto dimensions = value.toString().split('x');
+            if (dimensions.size() != 2) return false;
+            bool widthValid = false, heightValid = false;
+            const int width = dimensions[0].toInt(&widthValid), height = dimensions[1].toInt(&heightValid);
+            if (!widthValid || !heightValid || width < 0 || height < 0) return false;
+            out = QSize(width, height);
+            return true;
+        };
         int checked = 0;
         for (const auto& group : {QString("base"), QString("tall_can_resize_false")}) {
+            const auto rows = corpus.value(group).toArray();
+            QVERIFY2(rows.size() == 25, qPrintable(path + ": " + group + ": expected 25 retained phases"));
+            QSet<QString> phases;
+            int hidden = 0;
             auto skin = source;
             if (group != "base") skin.replace("676x30", "676x60");
             LiveSkin live;
             QCOMPARE(live.load(skin.toStdString()), std::string());
-            for (const auto& value : corpus.value(group).toArray()) {
+            for (const auto& value : rows) {
                 const auto row = value.toObject();
+                const QString phase = row.value("phase").toString(), context = path + ": " + group + '/' + phase + ": ";
+                QVERIFY2(!phase.isEmpty() && !phases.contains(phase), qPrintable(context + "missing or duplicate phase name"));
+                phases.insert(phase);
                 const auto split = row.value("nested.split").toObject();
-                if (split.value("show-splitter").toString() != "false") continue;
-                const auto extent = row.value("main").toObject().value("size").toString().split('x');
-                QCOMPARE(extent.size(), 2);
-                live.setClient(extent[0].toInt(), extent[1].toInt());
+                const auto shown = split.value("show-splitter").toString();
+                QVERIFY2(shown == "true" || shown == "false", qPrintable(context + "show-splitter must explicitly be true or false"));
+                if (shown == "true") continue;
+                ++hidden;
+                QSize extent, pane, menu;
+                QVERIFY2(size(row.value("main").toObject().value("size"), extent) && extent.width() > 0 && extent.height() > 0,
+                         qPrintable(context + "main.size must contain positive integer dimensions"));
+                QVERIFY2(size(row.value("row").toObject().value("size"), pane),
+                         qPrintable(context + "row.size must contain explicit nonnegative integer dimensions"));
+                QVERIFY2(size(row.value("row.menu").toObject().value("size"), menu),
+                         qPrintable(context + "row.menu.size must contain explicit nonnegative integer dimensions"));
+                bool valid = false;
+                const int percent = split.value("splitter").toString().toInt(&valid);
+                QVERIFY2(valid && percent >= 0 && percent <= 100, qPrintable(context + "splitter must be an explicit integer percentage"));
+                live.setClient(extent.width(), extent.height());
                 live.winset("nested.split", "splitter=" + split.value("splitter").toString().toStdString());
                 const auto snapshot = live.snapshot();
                 const auto* button = snapshot.tree.byName("row.menu");
                 QVERIFY(button);
-                const auto height = [&](const char* id) {
-                    return row.value(id).toObject().value("size").toString().section('x', 1).toInt();
-                };
-                QCOMPARE(button->box.dy(), height("row"));
-                QCOMPARE(button->full.dy(), height("row.menu"));
+                QCOMPARE(button->box.dy(), pane.height());
+                QCOMPARE(button->full.dy(), menu.height());
                 QCOMPARE(button->rect, button->full.intersect(button->box));
                 ++checked;
             }
+            QCOMPARE(hidden, 16);
         }
         QCOMPARE(checked, 32);
     }

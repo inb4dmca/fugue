@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include <QSet>
 #include "tests/testmain.h"
 #include <bit>
 #include "shell/entitymap.h"
@@ -279,20 +280,52 @@ private slots:
  // (tests/data/vismenu-world/stock.tsv part B, entry 1: the member itself). A verb ran on the member at its own place;
  // for the turf from another z stock ran nothing, and the target is then not on the map's z.
  void menuTargetsLikeStock() {
-    QFile file(QString(FUGUE_TEST_DATA_DIR)+"/vismenu-world/stock.tsv");
-    QVERIFY(file.open(QIODevice::ReadOnly));
-    bool partB=false; int rows=0;
-    auto cell=[](const QString& text) { const auto p=text.split(',');
-        return std::array<int,3>{p.value(0).toInt(),p.value(1).toInt(),p.value(2).toInt()}; };
+    const QString path=QString(FUGUE_TEST_DATA_DIR)+"/vismenu-world/stock.tsv";
+    QFile file(path);
+    QVERIFY2(file.open(QIODevice::ReadOnly),qPrintable(path+": "+file.errorString()));
+    bool partB=false; int rows=0,partRows=0,lineNumber=0;
+    QSet<QString> picks;
+    auto cell=[](const QString& text,std::array<int,3>& out) {
+        const auto parts=text.split(',');
+        if(parts.size()!=3) return false;
+        std::array<int,3> parsed{};
+        for(int i=0;i<3;++i) {
+            bool valid=false; parsed[size_t(i)]=parts[i].toInt(&valid);
+            if(!valid || parsed[size_t(i)]<0 || parsed[size_t(i)]>(i==2 ? 65535 : 20)) return false;
+        }
+        if(parsed!=std::array<int,3>{0,0,0} && (parsed[0]==0 || parsed[1]==0 || parsed[2]==0)) return false;
+        out=parsed;
+        return true;
+    };
     for (const auto& raw:file.readAll().split('\n')) {
+        ++lineNumber;
+        const QString context=path+QString(":%1: ").arg(lineNumber);
         const auto line=QString::fromUtf8(raw).trimmed();
         if (line.startsWith("# part ")) partB=line.startsWith("# part B");
+        if (!partB || line.isEmpty() || line.startsWith('#')) continue;
         const auto column=line.split('\t');
-        if (!partB || line.startsWith('#') || column.size()!=5 || column[2]!="1") continue;
+        QVERIFY2(column.size()==5,qPrintable(context+"expected five tab-separated menu-pick fields"));
+        for(const auto& field:column) QVERIFY2(!field.isEmpty(),qPrintable(context+"menu-pick fields must be explicit"));
+        QVERIFY2(column[2]=="1" || column[2]=="2",qPrintable(context+"entry must be 1 or 2"));
+        QVERIFY2(column[3]=="near" || column[3]=="anywhere",qPrintable(context+"expected the recorded near or anywhere verb"));
+        const QString pick=column[0]+'\t'+column[2]+'\t'+column[3];
+        QVERIFY2(!picks.contains(pick),qPrintable(context+"duplicate label/entry/verb pick"));
+        picks.insert(pick); ++partRows;
+        if (column[2]!="1") continue;
         ++rows;
         const auto member=column[1].split(' '), ran=column[4].split(' ');
+        QVERIFY2(member.size()==2 && (member[0]=="mob" || member[0]=="turf"),
+                 qPrintable(context+"member must be a mob or turf followed by its coordinates, or mob -"));
         const bool mob=member[0]=="mob", placed=member[1]!="-";
-        const auto at=cell(member[1]);
+        std::array<int,3> at{},where{};
+        QVERIFY2(placed || mob,qPrintable(context+"only a mob may be in nullspace"));
+        if(placed) QVERIFY2(cell(member[1],at) && at[2]>0,qPrintable(context+"member requires three positive cell coordinates"));
+        if(column[4]=="-") {
+            QVERIFY2(!mob,qPrintable(context+"the retained mob picks must name the mob and its coordinates"));
+        } else {
+            QVERIFY2(ran.size()==2 && ran[0]==column[0] && cell(ran[1],where),
+                     qPrintable(context+"ran_on must name this member and three coordinates; nullspace is explicitly 0,0,0"));
+        }
         auto w=world(); w.atoms.erase(43);
         const uint32_t key=5|model::kRegistryA;
         if (mob) {
@@ -316,7 +349,7 @@ private slots:
         QVERIFY2(named && named->appid,qPrintable(column[0])); QCOMPARE(*named->appid,2u);
         if (mob) {
             QCOMPARE(named->kind,shell::MapPointerTarget::Atom); QCOMPARE(named->atom,key);
-            const auto where=cell(ran.value(1)); const auto& m=w.atoms.at(named->atom);
+            const auto& m=w.atoms.at(named->atom);
             QCOMPARE(m.hasPos,where[2]!=0);
             if (m.hasPos) QCOMPARE((std::array<int,3>{m.x,m.y,m.z+1}),where);
         } else {
@@ -324,9 +357,10 @@ private slots:
             const std::array<int,3> own{named->cell[0]+1,named->cell[1]+1,named->cell[2]+1};
             QCOMPARE(own,at);
             if (ran[0]=="-") QVERIFY(named->cell[2]!=hit->z); // no verb reaches it by cell on the map's z
-            else { QCOMPARE(own,cell(ran.value(1))); QCOMPARE(int(named->cell[2]),hit->z); }
+            else { QCOMPARE(own,where); QCOMPARE(int(named->cell[2]),hit->z); }
         }
     }
+    QCOMPARE(partRows,7);
     QCOMPARE(rows,5);
  }
  void turfAndImageTailLifetimes() {

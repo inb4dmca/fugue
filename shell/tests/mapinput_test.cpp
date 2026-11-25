@@ -1,5 +1,6 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
+#include <QSet>
 #include "tests/testmain.h"
 #include "tests/recordedinput.h"
 #include "shell/mapinput.h"
@@ -342,8 +343,43 @@ private slots:
         QVERIFY(!duplicate.at({79,16}).planeMousePath);
     }
     void stockWorldPassMouse() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/plane-pass-world/observations.json");QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto rows=QJsonDocument::fromJson(file.readAll()).array();QCOMPARE(rows.size(),13);
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/plane-pass-world/observations.json";
+        QJsonDocument document; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
+        const auto rows = document.array();
+        QVERIFY2(rows.size() == 13, qPrintable(path + ": expected 13 retained plane-pass cases"));
+        QSet<QString> names, recordings;
+        for (const auto& value : rows) {
+            const auto row = value.toObject();
+            const QString name = row["case"].toString(), frames = row["frames"].toString();
+            const QString context = path + ": case " + name + ": ";
+            QVERIFY2(!name.isEmpty() && !names.contains(name), qPrintable(context + "missing or duplicate case name"));
+            QVERIFY2(!frames.isEmpty() && !recordings.contains(frames), qPrintable(context + "missing or duplicate frames file"));
+            names.insert(name); recordings.insert(frames);
+            const auto points = row["points"].toArray();
+            QVERIFY2(points.size() == 3, qPrintable(context + "expected three retained input points"));
+            QSet<QPoint> positions;
+            for (const auto& pointValue : points) {
+                const auto point = pointValue.toObject();
+                QVERIFY2(testinput::isIntegerTuple(point["point"], 2, 0, 223),
+                         qPrintable(context + "point must contain two integer coordinates in the 224-pixel map"));
+                const auto xy = point["point"].toArray();
+                const QPoint position(xy[0].toInt(), xy[1].toInt());
+                QVERIFY2(!positions.contains(position), qPrintable(context + "duplicate input point"));
+                positions.insert(position);
+                QVERIFY2(point["events"].isArray(), qPrintable(context + "events must be an explicit array, including no callbacks"));
+                QStringList kinds;
+                for (const auto& event : point["events"].toArray()) {
+                    const auto expected = event.toObject();
+                    const auto observationError = test::ReplayFixture::clickObservationError(expected);
+                    QVERIFY2(observationError.isEmpty(), qPrintable(context + observationError));
+                    kinds.append(expected["kind"].toString());
+                }
+                QVERIFY2(kinds.isEmpty() || kinds == QStringList({"Down", "Up", "Click"}) ||
+                         kinds == QStringList({"Enter", "Down", "Up", "Click"}),
+                         qPrintable(context + "expected the retained Enter/Down/Up/Click callback order, with optional Enter"));
+            }
+        }
         int callbacks=0,empty=0;
         for(const auto& value:rows) {
             const auto row=value.toObject();const auto name=row["case"].toString();

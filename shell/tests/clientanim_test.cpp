@@ -287,6 +287,8 @@ private slots:
             QCOMPARE(stockOffset,checkpoint["offset_x"].toInt()); QCOMPARE(stockTime,checkpoint["clock_pixels"].toInt());
             const QRect phaseBox(0,viewport.height()-32,32,32);
             QCOMPARE(bounds(stock,phaseColours[phase]),phaseBox);
+            QVERIFY2(testinput::isIntegerTuple(QJsonArray{checkpoint["tolerance_px"]},1,0,1),
+                     qPrintable(name+": tolerance_px must be an explicit integer pixel tolerance"));
             const int tolerance=checkpoint["tolerance_px"].toInt();
             QCOMPARE(tolerance,phase=="settled" ? 0 : 1);
 
