@@ -17,6 +17,9 @@
 #include <set>
 #include <utility>
 #include <rhi/qrhi.h>
+#ifdef Q_OS_MACOS
+#include <rhi/qrhi_platform.h>
+#endif
 
 // Explicit reference keeps the shader resource object in the static shell library.
 static void initMapResources() { Q_INIT_RESOURCE(mapshaders); }
@@ -29,13 +32,20 @@ QShader shader(const char* path) {
     return QShader::fromSerialized(f.readAll());
 }
 }  // namespace
+#ifdef Q_OS_MACOS
+bool metalAvailable() {
+    QRhiMetalInitParams params;
+    return QRhi::probe(QRhi::Metal, &params);
+}
+#endif
 MapWidget::MapWidget(QWidget* parent) : QRhiWidget(parent) {
-    // FUGUE_GPU_BACKEND (docs/USAGE.md) picks the map's graphics API. Qt's compositor backend environment alone
-    // does not override a QRhiWidget's selected API.
+    // FUGUE_GPU_BACKEND picks the map's graphics API; start-up has settled it and Qt's own variable on one backend
+    // (shell/gpubackend.h). Qt's variable alone does not move a QRhiWidget.
     const QByteArray backend = qgetenv("FUGUE_GPU_BACKEND").toLower();
     if (backend == "opengl") setApi(QRhiWidget::Api::OpenGL);
     else if (backend == "d3d11") setApi(QRhiWidget::Api::Direct3D11);
     else if (backend == "metal") setApi(QRhiWidget::Api::Metal);
+    else if (backend == "vulkan") setApi(QRhiWidget::Api::Vulkan);
     initMapResources();
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
@@ -698,7 +708,7 @@ void MapWidget::render(QRhiCommandBuffer* cb) {
                                   source_.y() / textureH,
                                   source_.width() / textureW,
                                   source_.height() / textureH,
-                                  rhi()->isYUpInFramebuffer() ? 1.0f : 0.0f,
+                                  rhi()->isYUpInFramebuffer() == rhi()->isYUpInNDC() ? 1.0f : 0.0f, // as SpriteRenderer
                                   0,
                                   0,
                                   0,
@@ -716,7 +726,7 @@ void MapWidget::render(QRhiCommandBuffer* cb) {
             0,
             1,
             1,
-            0,
+            rhi()->isYUpInNDC() ? 0.0f : 1.0f, // Vulkan's clip space points down
             0,
             0,
             0,

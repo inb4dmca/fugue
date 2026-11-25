@@ -1,7 +1,7 @@
 # Compile suites in their original dependency contexts, then link one runner.
 # CTest still starts a fresh process for each registered command.
 add_executable(fugue_tests ${PROJECT_SOURCE_DIR}/tests/runner.cpp)
-target_include_directories(fugue_tests PRIVATE ${PROJECT_BINARY_DIR})
+target_include_directories(fugue_tests PRIVATE ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR})
 target_link_libraries(fugue_tests PRIVATE Qt6::Core Qt6::Test)
 
 # Entries start as portable and fast: headless checks that take a few seconds each, the inner-loop selection

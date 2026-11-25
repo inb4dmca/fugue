@@ -10,7 +10,8 @@ inline bool backendIsOpenGL() { return qgetenv("FUGUE_GPU_BACKEND").toLower() ==
 inline QString backendMismatch() {
     const QByteArray asked = qgetenv("FUGUE_GPU_BACKEND").toLower();
     if (asked.isEmpty()) return {};
-    const QString expected = asked == "opengl" ? "OpenGL" : asked == "d3d11" ? "D3D11" : asked == "metal" ? "Metal" : QString();
+    const QString expected = asked == "opengl" ? "OpenGL" : asked == "d3d11" ? "D3D11" : asked == "metal" ? "Metal"
+        : asked == "vulkan" ? "Vulkan" : QString();
     if (expected.isEmpty()) return "FUGUE_GPU_BACKEND names an unknown backend: " + QString::fromLatin1(asked);
     MapWidget map; map.resize(64, 64); map.setViewSize({1, 1}); map.show();
     if (!QTest::qWaitForWindowExposed(&map)) return "a MapWidget was not shown";

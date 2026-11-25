@@ -17,6 +17,7 @@
 #include "shell/skinwindow.h"
 #ifndef Q_MOC_RUN
 #include "shell/tests/nativedesktopfixture.h"
+#include "shell/tests/backendcheck.h"
 #endif
 using namespace fugue::shell;
 
@@ -47,6 +48,7 @@ private slots:
         const auto platform=QGuiApplication::platformName();
         QVERIFY2(platform!="offscreen" && platform!="minimal",
                  "Desktop MapWidget checks require a foreground, unobstructed desktop with capture support");
+        const auto mismatch=test::backendMismatch(); QVERIFY2(mismatch.isEmpty(),qPrintable(mismatch));
     }
     void desktopCaptureRejectsObstruction() {
         MapWidget map; map.resize(320,240); map.setViewSize({1,1});
@@ -82,13 +84,10 @@ private slots:
         QTRY_COMPARE(freshColor(),QColor(Qt::green));
     }
     void disabledBrowserAboveMap() {
-        // WebEngine's QtQuick graphics API is process-global. Exercise OpenGL
-        // in a separate process with QSG_RHI_BACKEND=opengl, not a second row.
-        const bool openGL = qEnvironmentVariable("QSG_RHI_BACKEND") == "opengl";
+        // The browser's graphics API is the process's, as the map's is (shell/gpubackend.h): one backend per entry.
         QVector<MapPointer> events;
         SkinWindow window; window.resize(640,480); QVERIFY(window.loadSkin(skin).isEmpty());
         auto* map=dynamic_cast<MapWidget*>(window.controlWidget("main.map")); QVERIFY(map);
-        if(openGL) map->setApi(QRhiWidget::Api::OpenGL);
         window.setMapViewSize(2,2);
         auto metrics=std::make_shared<MapMetrics>(); auto mailbox=std::make_shared<MapMailbox>(metrics);
         map->setMailbox(mailbox);

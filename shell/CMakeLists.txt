@@ -177,10 +177,6 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/mapdesktop_test.cpp)
   fugue_test_suite(mapdesktop_test tests/mapdesktop_test.cpp)
   target_link_libraries(mapdesktop_test PRIVATE fugue_shell Qt6::Test Qt6::Network)
   fugue_shell_native_test(shell_map_desktop "map;native;desktop" fugue_tests mapdesktop -o -,txt)
-  if("opengl" IN_LIST _shell_native_backends)
-    # WebEngine's QtQuick graphics API is process-global: the browser above the map has to be on OpenGL too.
-    set_property(TEST shell_map_desktop_opengl APPEND PROPERTY ENVIRONMENT "QSG_RHI_BACKEND=opengl")
-  endif()
 endif()
 fugue_shell_test(shell          shell_test)       # shell input routing
 fugue_shell_test(shell_skincolor skincolor_test)  # winset colours -> widgets

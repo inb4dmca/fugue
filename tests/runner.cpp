@@ -3,6 +3,7 @@
 #include <QtCore/QObject>
 #include <QtCore/qtenvironmentvariables.h>
 #include <QtTest/qtestcase.h>
+#include "shell/gpubackend.h"
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
     // debugger instead of CTest's capture pipe (including failures and skips).
     qputenv("QT_FORCE_STDERR_LOGGING", "1");
 #endif
+    fugue::shell::settleGpuBackend(); // an entry names its backend; a run by hand gets the platform's
     // FUGUE_GPU_SOFTWARE=1 asks for a software adapter in every suite, as it does in the application (app/main.cpp).
     if (qEnvironmentVariableIntValue("FUGUE_GPU_SOFTWARE") == 1) qputenv("QSG_RHI_PREFER_SOFTWARE_RENDERER", "1");
     if (argc < 2 || std::strcmp(argv[1], "--list") == 0 || std::strcmp(argv[1], "--help") == 0) {

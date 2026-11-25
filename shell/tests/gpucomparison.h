@@ -3,6 +3,11 @@
 #include <rhi/qrhi.h>
 #include <rhi/qrhi_platform.h>
 #include <QOffscreenSurface>
+// Qt declares its Vulkan types only when the Vulkan headers are there at build time.
+#define FUGUE_TEST_VULKAN (QT_CONFIG(vulkan) && __has_include(<vulkan/vulkan.h>))
+#if FUGUE_TEST_VULKAN
+#include <QVulkanInstance>
+#endif
 #include <QDebug>
 #include <memory>
 
@@ -14,6 +19,9 @@ namespace fugue::shell::test {
 // Two independent renderer pools share a device; all channels compare exactly.
 struct GpuComparison {
     std::unique_ptr<QOffscreenSurface> fallback;
+#if FUGUE_TEST_VULKAN
+    QVulkanInstance vulkan; // outlives the device below
+#endif
     std::unique_ptr<QRhi> rhi;
     std::unique_ptr<QRhiTexture> texture;
     std::unique_ptr<QRhiRenderPassDescriptor> descriptor;
@@ -27,25 +35,32 @@ struct GpuComparison {
         ::initGpuResources();
         const QByteArray backend=qgetenv("FUGUE_GPU_BACKEND").toLower();
 #ifdef Q_OS_WIN
-        const bool gl=backend=="opengl";
-        if (!gl && !backend.isEmpty() && backend!="d3d11") return false;
+        const QRhi::Implementation wanted=backend=="opengl" ? QRhi::OpenGLES2 : backend=="vulkan" ? QRhi::Vulkan : QRhi::D3D11;
+        if (!backend.isEmpty() && backend!="opengl" && backend!="vulkan" && backend!="d3d11") return false;
 #else
-        const bool gl=true;
-        if (!backend.isEmpty() && backend!="opengl") return false;
+        const QRhi::Implementation wanted=backend=="vulkan" ? QRhi::Vulkan : QRhi::OpenGLES2;
+        if (!backend.isEmpty() && backend!="opengl" && backend!="vulkan") return false;
 #endif
         const bool software=qEnvironmentVariableIntValue("FUGUE_GPU_SOFTWARE")==1;
         Q_UNUSED(software);
-        if (gl) {
+        if (wanted==QRhi::OpenGLES2) {
             QRhiGles2InitParams params;
             fallback.reset(QRhiGles2InitParams::newFallbackSurface());params.fallbackSurface=fallback.get();
             rhi.reset(QRhi::create(QRhi::OpenGLES2,&params));
+        } else if (wanted==QRhi::Vulkan) {
+#if FUGUE_TEST_VULKAN
+            vulkan.setExtensions(QRhiVulkanInitParams::preferredInstanceExtensions());
+            if (!vulkan.create()) return false;
+            QRhiVulkanInitParams params; params.inst=&vulkan;
+            rhi.reset(QRhi::create(QRhi::Vulkan,&params,software ? QRhi::PreferSoftwareRenderer : QRhi::Flags{}));
+#endif
         } else {
 #ifdef Q_OS_WIN
             QRhiD3D11InitParams params;
             rhi.reset(QRhi::create(QRhi::D3D11,&params,software ? QRhi::PreferSoftwareRenderer : QRhi::Flags{}));
 #endif
         }
-        if (!rhi || gl!=(rhi->backend()==QRhi::OpenGLES2) ||
+        if (!rhi || rhi->backend()!=wanted ||
             !rhi->isTextureFormatSupported(QRhiTexture::RGBA16F,QRhiTexture::RenderTarget)) return false;
         qInfo()<<rhi->backendName()<<rhi->driverInfo().deviceName;
         texture.reset(rhi->newTexture(QRhiTexture::RGBA8,size,1,QRhiTexture::RenderTarget | QRhiTexture::UsedAsTransferSource));

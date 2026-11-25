@@ -4,9 +4,11 @@
 #include <QAction>
 #include <QLabel>
 #include <QMenu>
+#include <QRegularExpression>
 #include <QScopeGuard>
 #include <QStyleFactory>
 #include "shell/browsehost.h"
+#include "shell/gpubackend.h"
 #include "shell/mapwidget.h"
 #include "shell/skinwindow.h"
 #include "shell/inputrouter.h"
@@ -68,8 +70,38 @@ private slots:
         QCOMPARE(metal.api(),QRhiWidget::Api::Metal);
         qputenv("FUGUE_GPU_BACKEND","nonsense");MapWidget unknown;
         QCOMPARE(unknown.api(),ordinary.api());
+        qputenv("FUGUE_GPU_BACKEND","vulkan");MapWidget vulkan;
+        QCOMPARE(vulkan.api(),QRhiWidget::Api::Vulkan);
         // A widget's own selection still overrides the environment.
         forced.setApi(ordinary.api());QCOMPARE(forced.api(),ordinary.api());
+    }
+    // Start-up leaves our variable and Qt's naming one backend, whatever either held (shell/gpubackend.h).
+    void backendSettled() {
+        const auto ours=qgetenv("FUGUE_GPU_BACKEND"),qts=qgetenv("QSG_RHI_BACKEND");
+        const auto restore=qScopeGuard([&] {qputenv("FUGUE_GPU_BACKEND",ours);qputenv("QSG_RHI_BACKEND",qts);});
+#if defined(Q_OS_WIN)
+        const QByteArray usual="d3d11";
+#elif defined(Q_OS_MACOS)
+        const QByteArray usual="metal";
+#else
+        const QByteArray usual="opengl";
+#endif
+        auto settled=[](const char* asked,const char* qt,bool (*metal)()=nullptr) {
+            if(asked) qputenv("FUGUE_GPU_BACKEND",asked);else qunsetenv("FUGUE_GPU_BACKEND");
+            if(qt) qputenv("QSG_RHI_BACKEND",qt);else qunsetenv("QSG_RHI_BACKEND");
+            const auto result=settleGpuBackend(metal);
+            return result==qgetenv("FUGUE_GPU_BACKEND") && result==qgetenv("QSG_RHI_BACKEND") ? result : QByteArray("differ");
+        };
+        QCOMPARE(settled(nullptr,nullptr),usual);
+        QCOMPARE(settled(nullptr,"vulkan"),usual); // Qt's variable alone chooses nothing
+        QCOMPARE(settled("OpenGL","d3d11"),QByteArray("opengl"));
+        QCOMPARE(settled("vulkan",nullptr),QByteArray("vulkan"));
+        QTest::ignoreMessage(QtWarningMsg,QRegularExpression("FUGUE_GPU_BACKEND=nonsense"));
+        QCOMPARE(settled("nonsense","opengl"),usual);
+#ifdef Q_OS_MACOS
+        QCOMPARE(settled(nullptr,nullptr,[]{return false;}),QByteArray("opengl")); // a Mac without Metal
+        QCOMPARE(settled("metal",nullptr,[]{return false;}),QByteArray("metal")); // asked for by name: as given
+#endif
     }
     void displaySettingsRoute() {
         // The checked menu item is not a MAP property. An omitted MAP mode

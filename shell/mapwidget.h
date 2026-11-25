@@ -22,6 +22,10 @@ class QRhiTextureRenderTarget;
 class QRhiRenderPassDescriptor;
 
 namespace fugue::shell {
+#ifdef Q_OS_MACOS
+// Whether this Mac has a Metal device, asked as Qt asks before it settles on Metal (shell/gpubackend.h).
+bool metalAvailable();
+#endif
 class SpriteRenderer;
 class MapWidget : public QRhiWidget {
 public:
@@ -35,7 +39,8 @@ public:
     void setMetricsVisible(bool visible);
     bool metricsVisible() const;
     QSize viewSize() const { return viewSize_; }
-    // The graphics backend the widget is drawing with ("D3D11", "OpenGL", "Metal"); empty before its first frame.
+    // The graphics backend the widget is drawing with ("D3D11", "OpenGL", "Metal", "Vulkan"); empty before its
+    // first frame.
     QString createdBackend() const;
     void setPresentationSettings(MapPresentationSettings settings);
     MapPresentationSettings presentationSettings() const { return settings_; }

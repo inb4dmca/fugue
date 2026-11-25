@@ -40,6 +40,8 @@
 #include "pager/ui/instance.h"
 #include "pager/ui/pagerwindow.h"
 #include "shell/fugueicon.h"
+#include "shell/gpubackend.h"
+#include "shell/mapwidget.h"
 #include "shell/urlopener.h"
 
 int clientMain(int argc, char** argv);    // app/main.cpp
@@ -677,6 +679,12 @@ int pagerMain(int argc, char** argv, const std::vector<std::string>& args) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    // Before anything of Qt's reads the environment (shell/gpubackend.h).
+#ifdef Q_OS_MACOS
+    fugue::shell::settleGpuBackend(&fugue::shell::metalAvailable);
+#else
+    fugue::shell::settleGpuBackend();
+#endif
 #ifdef Q_OS_MACOS
     // BYOND's CTRL macros refer to the physical Control key, not Command.
     QCoreApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);

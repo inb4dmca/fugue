@@ -287,8 +287,9 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
         const float u1 = u0+float(clipped.width())/rect.width(), v1 = v0+float(clipped.height())/rect.height();
         const quint32 first = quint32(vertices.size());
         auto vertex = [&](float x,float y,float u,float v) {
-            // QRhi's render-to-texture orientation differs on GL, not on D3D/Vulkan.
-            if (d.rhi->isYUpInFramebuffer()) y = -y;
+            // These positions put the image's top at clip-space +1, which is the texture's first row on Direct3D
+            // and Metal. OpenGL's first row is the bottom one and Vulkan's clip space points down: both turn over.
+            if (d.rhi->isYUpInFramebuffer() == d.rhi->isYUpInNDC()) y = -y;
             vertices.push_back({x,y,u,v,sprite.tint[0],sprite.tint[1],sprite.tint[2],sprite.tint[3]});
         };
         if (sprite.affine) {
