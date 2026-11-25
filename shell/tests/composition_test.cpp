@@ -618,19 +618,31 @@ private slots:
         };
         QVERIFY(pick(old)->filteredPlane);QVERIFY(pick(old)->screen);
         QVERIFY(!pick(old,false)->screen); // no secondary-MAP extension
-        for(const QString key:{"unmarked","chain","opacity2","scaled","affine","image","text","relay","blend"}) {
+        // A filtered plane's own ink is clickable under other filter kinds and a matrix too (stock 516.1689,
+        // master-transform-world clicks).
+        for(const QString key:{"wave","turned","affine"}) {
+            auto changed=old;
+            for(auto& sprite:changed) if(sprite.kind==MapSprite::Screen && key=="affine")
+                sprite.affine=StaticAffine::make({1,0,0,0,1,0},{32,32}); // a part that carries a matrix of its own
+            for(auto& sprite:changed) if(sprite.kind==MapSprite::Master) {
+                auto effects=std::make_shared<PlaneEffects>(*sprite.planeEffects);
+                if(key=="wave") {PlaneFilter wave;wave.kind=PlaneFilter::Wave;wave.x=16;wave.size=3;effects->filters={wave};}
+                if(key=="turned") effects->matrix=std::array<double,6>{1,0,0,0,1,0};
+                sprite.planeEffects=effects;
+            }
+            QVERIFY2(pick(changed)->screen,qPrintable(key));
+        }
+        for(const QString key:{"chain","opacity2","scaled","image","text","relay","blend"}) {
             auto changed=old;
             for(auto& sprite:changed) {
-                if(sprite.kind==MapSprite::Master && (key=="unmarked" || key=="chain")) {
+                if(sprite.kind==MapSprite::Master && key=="chain") {
                     auto effects=std::make_shared<PlaneEffects>(*sprite.planeEffects);
-                    if(key=="unmarked") effects->treeSourceAlphaInput=false;
-                    else effects->filters.resize(9,effects->filters.front());
+                    effects->filters.resize(9,effects->filters.front());
                     sprite.planeEffects=effects;
                 }
                 if(sprite.kind!=MapSprite::Screen) continue;
                 if(key=="opacity2") sprite.mouseOpacity=2;
                 if(key=="scaled") sprite.size={64,64};
-                if(key=="affine") sprite.affine=StaticAffine::make({1,0,0,0,1,0},{32,32});
                 if(key=="image") sprite.imageIdentity=1;
                 if(key=="text") sprite.maptext=true;
                 if(key=="relay") sprite.renderSource="unverified";

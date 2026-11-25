@@ -719,7 +719,6 @@ EntityMap::Template EntityMap::TemplateBuilder::construct(const TemplateRequest&
                 // The tree's filters run before its matrix, like a lone master's (master-transform-world).
                 auto unturned = *effects; unturned.matrix.reset();
                 if (!effects->filters.empty() && !unturned.boundedTreeFilters()) effects->ignoreFilters();
-                effects->treeSourceAlphaInput = effects->boundedTreeFilters();
                 part.planeEffects = std::move(effects);
             }
             if (ap.master && !masterTree && (!ap.underlays.empty() || !ap.overlays.empty())) {

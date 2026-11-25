@@ -263,7 +263,7 @@ private slots:
     void backendAdmissionBoundsAndOmissions() {
         auto m = master(1); auto effects = std::make_shared<PlaneEffects>();
         PlaneFilter outline; outline.kind = PlaneFilter::Outline; outline.size = 2;
-        effects->filters = {outline}; effects->treeSourceAlphaInput = true; m.planeEffects = effects;
+        effects->filters = {outline}; m.planeEffects = effects;
         const auto full = CompositionPlan::build({ink(1),m},viewport,{true});
         QVERIFY(full->supported); QVERIFY(!full->hiddenTree.count(1));
         QCOMPARE(pick(full)->click.over.ref,42u);

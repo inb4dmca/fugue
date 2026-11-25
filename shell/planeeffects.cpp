@@ -24,7 +24,6 @@ bool PlaneEffects::boundedTreeFilters() const {
 void PlaneEffects::ignoreFilters() {
     ignoredFilters += filters.size();
     filters.clear();
-    treeSourceAlphaInput = false;
 }
 bool PlaneEffects::requiresSimpleSources() const {
     auto surface = *this; surface.matrix.reset();
@@ -98,7 +97,7 @@ bool PlaneEffects::sourceCoverage(QSize viewport) const {
     if (filters.empty()) return true;
     // This is capture coverage, not direct master-tree gesture admission.
     // Worker reverse-chain provenance failures increment ignoredFilters, even
-    // for childless masters; the direct treeSourceAlphaInput flag is unrelated.
+    // for childless masters.
     return boundedTreeFilters() ||
         std::all_of(filters.begin(), filters.end(), [](const PlaneFilter& f) {
             return f.kind == PlaneFilter::Blur && f.size == 0;

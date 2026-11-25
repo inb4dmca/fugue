@@ -817,6 +817,7 @@ private slots:
             }
         }
         const float c = 0.70710677f;
+        int overlayClicks = 0;
         for (const auto& value : cases) {
             const auto row = value.toObject(); const auto name = row["case"].toString();
             QCOMPARE(row["fugueDiffOver8"].toInt(), 0);
@@ -834,10 +835,26 @@ private slots:
                 R"(,"hasPlane":true,"plane":1,"screenLoc":"1,1")" + (solo ? "" : R"(,"overlays":[11])")));
             w.appearances[11] = w.appearances[1]; w.appearances[11].fields.iconState = "green";
             setFields(w.appearances[11], affinefixture::fields(child, R"(,"hasPlane":true,"plane":1,"pixelX":64,"pixelY":32)"));
-            const auto sprites = scene.prepare(w, terrain.prepare(w, {}, 0, false), reader(), 0, nullptr, true);
+            const auto frame = terrain.prepare(w, {}, 0, false);
+            const auto sprites = scene.prepare(w, frame, reader(), 0, nullptr, true);
             const auto masterSprite = std::find_if(sprites.begin(), sprites.end(), [](const auto& s) { return s.kind == shell::MapSprite::Master; });
             const auto overlay = std::find_if(sprites.begin(), sprites.end(), [](const auto& s) {
                 return s.kind == shell::MapSprite::Screen && s.image.pixelColor(16, 16) == QColor(Qt::green); });
+            // The overlay is clicked where it is drawn, as the master, with its own icon coordinates (the same
+            // fixture's clicks: master-turn, master-scale, master-turn-child-scale).
+            if (!group && !solo && overlay != sprites.end() && masterSprite != sprites.end() && masterSprite->planeEffects &&
+                masterSprite->planeEffects->matrix && !name.contains("child-turn")) {
+                const auto plane = shell::StaticAffine::make(*masterSprite->planeEffects->matrix, frame.source.size());
+                QVERIFY(plane);
+                const QPointF drawn = plane->forward.map(QPointF(overlay->rect().center() - frame.source.topLeft()) + QPointF(.5, .5));
+                if (QRectF(QPointF(), frame.source.size()).contains(drawn)) {
+                    const auto hit = shell::mapPointerAt(drawn, frame.source.size(), frame.source.size() / 32, frame.source,
+                                                         frame.geometry, "map", true, sprites);
+                    QVERIFY2(hit && hit->screen, qPrintable(name));
+                    QVERIFY2(std::abs(hit->click.iconX - 16) <= 2 && std::abs(hit->click.iconY - 16) <= 2, qPrintable(name));
+                    ++overlayClicks;
+                }
+            }
             if (group) { // grabs matched before and after this change (KEEP_TOGETHER keeps its own master path)
                 QVERIFY(row["blue"].isNull());
                 continue;
@@ -858,6 +875,7 @@ private slots:
                          qPrintable(QString("%1: %2x%3").arg(name).arg(fx).arg(fy)));
             } else QVERIFY(overlay->affine && l.m12() != 0);
         }
+        QVERIFY(overlayClicks >= 2);
     }
     void hudMasterMaterialAnimation() {
         auto w=world(); shell::TurfMap terrain; shell::EntityMap scene; shell::EntityMap::Stats stats;

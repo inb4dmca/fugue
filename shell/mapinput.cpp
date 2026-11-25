@@ -17,6 +17,12 @@ bool planeInputPart(const MapSprite& s) {
         s.kind != MapSprite::Image && s.kind != MapSprite::Vis &&
         (s.size.isEmpty() || s.size == s.image.size());
 }
+// A turned master's own overlays carry its matrix about their own centre as well as the plane's: the pointer goes back
+// through the plane's, then the part's (stock 516.1689, master-transform-world clicks on master-turn, master-scale).
+bool turnedPlanePart(const MapSprite& s) {
+    return s.affine && !s.rootAffine && s.kind == MapSprite::Screen && !s.imageIdentity && !s.visHit && !s.maptext &&
+        s.mouseOpacity == 1 && s.blend <= 1 && s.renderSource.isEmpty() && s.renderTarget.isEmpty();
+}
 // Stock popup screenshots establish original rectangles (including alpha holes).
 // Independent Enter/Drag/Drop receipts establish original ink for those endpoints.
 // Neither contract admits generated ink, attachments, transforms or relay chains.
@@ -28,7 +34,7 @@ bool filteredInputPart(const MapSprite& s) {
 // change which original pixels own input. Ordinary transformed entity parts,
 // such as lying mobs, keep their inverse-mapped source-alpha test.
 bool outlinedInputPart(const MapSprite& s) {
-    return filteredInputPart(s) ||
+    return filteredInputPart(s) || turnedPlanePart(s) ||
         (s.affine && s.kind == MapSprite::Entity && !s.imageIdentity && !s.visHit && !s.maptext && s.mouseOpacity == 1 &&
          s.blend <= 1 && s.renderSource.isEmpty() && s.renderTarget.isEmpty());
 }
@@ -298,7 +304,7 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
             if (!relay) continue;
             hit = *relay;
         } else {
-            if ((transforms.count(it->plane) && (!pointer.renderedSource.contains(pixel) || !planeInputPart(*it))) ||
+            if ((transforms.count(it->plane) && (!pointer.renderedSource.contains(pixel) || (!planeInputPart(*it) && !turnedPlanePart(*it)))) ||
                 !binding.localVisible || !mouseCandidate(*it, pixel, hidden) || plan.maskedOut(*it, scenePixel, pixel)) continue;
             namePlaneSprite(hit, *it, scenePixel, pointer.renderedSource, transforms);
             hit.filteredPlane = outlines.count(it->plane) != 0;
@@ -388,7 +394,7 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
             // Only the recorded ordinary 32px source-alpha members are admitted.
             // No filtered relays, attachment masks, opacity-2 or halo geometry.
             if (outlines.count(it->plane) && !outlinedInputPart(*it)) continue;
-            if (transforms.count(it->plane) && (!source.contains(samplePixel) || !planeInputPart(*it))) continue;
+            if (transforms.count(it->plane) && (!source.contains(samplePixel) || (!planeInputPart(*it) && !turnedPlanePart(*it)))) continue;
             if (!it->renderSource.isEmpty()) {
                 if (!it->renderTarget.isEmpty() || hidden.count(it->plane) || transforms.count(it->plane)) continue;
                 if (!it->planeSourceDependency.isEmpty() && (binding.localDependency || binding.planeDependency < 0)) continue;

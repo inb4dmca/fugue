@@ -2140,7 +2140,6 @@ private slots:
             auto effects=std::make_shared<PlaneEffects>(decodePlaneEffects(fugue::model::appearanceOf(
                 QJsonDocument(row["effects"].toObject()).toJson(QJsonDocument::Compact).toStdString())));
             QCOMPARE(effects->ignoredFilters,size_t(0));QVERIFY(effects->boundedTreeFilters());
-            effects->treeSourceAlphaInput=true;
             MapSprites sprites;
             for(int i=0;i<2;++i) {
                 MapSprite s;s.image=QImage(32,32,QImage::Format_RGBA8888);s.image.fill(Qt::transparent);

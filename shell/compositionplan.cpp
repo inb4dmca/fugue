@@ -896,8 +896,6 @@ void CompositionPlan::planInput() {
     for (const auto& [plane,index] : masters) {
         const auto& s = sprites[index];
         const auto* effects = s.planeEffects.get();
-        const bool tree = effects && effects->treeSourceAlphaInput && effects->boundedTreeFilters();
-        if (tree) outlines.insert(plane);
         if (effects && effects->matrix && effects->valid(source.size()))
             transforms.emplace(plane,*StaticAffine::make(*effects->matrix,source.size()));
         const bool suppressed = masterDisposition.at(plane) == MasterDisposition::Refused ||
@@ -907,8 +905,12 @@ void CompositionPlan::planInput() {
         // Colour and alpha-mask filters leave the plane's ink clickable; a mask hides what it masks out.
         const bool inert = effects && std::all_of(effects->filters.begin(), effects->filters.end(), [](const PlaneFilter& f) {
             return f.kind == PlaneFilter::Color || f.kind == PlaneFilter::AlphaMask; });
-        if (suppressed || (effects && !effects->filters.empty() && !inert)) hidden.insert(plane);
-        if (suppressed || (effects && !effects->filters.empty() && !tree && !inert)) hiddenTree.insert(plane);
+        const bool filtered = effects && !effects->filters.empty() && !inert;
+        // A filter of any kind leaves the plane's own ink clickable where it stood and adds none, under a matrix
+        // too, which the pointer is mapped back through (stock 516.1689, master-transform-world clicks).
+        if (filtered) outlines.insert(plane);
+        if (suppressed || filtered) hidden.insert(plane);
+        if (suppressed) hiddenTree.insert(plane);
         if (effects && !suppressed)
             if (auto masks = inputMasks(*effects, source); !masks.empty()) planeMasks[plane] = std::move(masks);
         if (s.masterFallback && s.mouseOpacity == 2 && !hiddenTree.count(plane) && !fallbackRefused.count(plane) &&

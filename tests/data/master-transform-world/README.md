@@ -51,12 +51,30 @@ right). So does a master tree, the first set's master with its overlay: `master-
 (`stockprobe.py pair`) and match within 8 levels, as do the fifteen `fx-*` grabs of the other kinds, which are kept in
 `filters/` as well.
 
-Fugue now does all of this for every filter kind, with or without a tree. A plane with both a matrix and filters is
-not clickable.
+Fugue now does all of this for every filter kind, with or without a tree.
+
+## Clicks (`clicks.json`)
+
+Every atom logs `Click()` with its name and icon-x/y; `stockprobe.py click` clicks the same MAP pixels in stock and in
+Fugue. `clicks.json` keeps what stock answered.
+
+- **A filter adds nothing to click and takes nothing away.** The box is clicked where it stood before the filter,
+  under an outline, blur, drop shadow, wave, ripple or bloom; the outline, the blur's spread, the shadow, the glow
+  and wave-displaced ink fall through to the floor. An alpha mask does hide what it masks out (`fx-mask`).
+- **A matrix maps the pointer back.** The box is clicked where the turned plane draws it, with its own icon
+  coordinates (`fx-scalex2` at 165,111 reads x=11; `fx-turn90` at 106,138 reads x=11 y=10), and no longer where it
+  stood. With filters as well it is the same (`fx-scalex2-outline1`, `fx-turn90-shadow6`, `fx-turn90-wave`).
+- **A master tree's overlay is clicked as the master**, where it is drawn, through the plane's matrix and then its own
+  (`master-scale` at 20,170 reads x=10 y=22; `master-turn` at 41,73 reads x=24 y=9), with or without an outline.
+
+Fugue matches every click in `clicks.json` except one: `master-scale-child-turn` at 47,175 reads x=15 where stock reads
+16 (an overlay turned 45 degrees under a scaled master). `composition_test::outlinedTreeInputBoundaries` and
+`entitymap_test::masterTreeTransformsLikeStock` hold the rules.
 
 ## Not covered
 
-Clicks on a transformed master tree (the plane's inverse matrix is used for input as before, not checked here). Nested
+Nested
 masters with a matrix (still refused), animated master matrices, and non-32 px worlds. For filters with a matrix:
 turns that are not quarter turns, a master with a render target, an alpha mask from a render target, animated
-filters, PIXEL_SCALE on the master, and clicks.
+filters and PIXEL_SCALE on the master. For clicks: right-click menus, mouse-opacity 2, and images or vis_contents on a
+turned plane.

@@ -9,8 +9,12 @@ world
     view = 3
     fps = 10
     mob = /mob/observer
+/atom/Click(location, control, params)
+    var/list/p = params2list(params)
+    world.log << "CLICK [name] x=[p["icon-x"]] y=[p["icon-y"]] loc=[location]"
 /turf
     icon = 'floor.png'
+    name = "floor"
 /obj/part
     icon = 'box.png'
     plane = 1

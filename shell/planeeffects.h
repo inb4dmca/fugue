@@ -30,9 +30,6 @@ struct PlaneEffects {
     // of turning this into a whole-plane refusal.
     bool supported = true;
     size_t ignoredFilters = 0;
-    // Set only by whole-tree worker admission, never by wire decoding. The
-    // stock-bounded chain keeps original source-alpha Click ownership; generated ink is inert.
-    bool treeSourceAlphaInput = false;
     std::vector<PlaneFilter> filters;
     std::optional<std::array<double,6>> matrix;
     bool operator==(const PlaneEffects&) const = default;
