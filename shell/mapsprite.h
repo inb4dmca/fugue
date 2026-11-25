@@ -96,6 +96,8 @@ struct MapSprite {
     std::optional<StaticAffine> rootAffine;
     QSize rootSize;
     bool smooth = false; // stock-verified half-size straight-RGBA sampling
+    // Master: PIXEL_SCALE, so its matrix samples the plane unsmoothed; false keeps the bilinear default.
+    bool nearest = false;
     int mouseOpacity = 1; // root/target mode; child modes never override ownership
     bool footprint = false; // iconless menu rectangle, never drawn or clicked
     QPoint sortCell; // root cell adjusted west/south by negative root pixel offsets
@@ -122,7 +124,7 @@ struct MapSprite {
                localGroup == b.localGroup && captureOrigin == b.captureOrigin && relayMouseBottom == b.relayMouseBottom && passMouse == b.passMouse &&
                blend == b.blend && color == b.color && inkInteractive == b.inkInteractive && renderSource == b.renderSource &&
                renderTarget == b.renderTarget && planeSourceDependency == b.planeSourceDependency && size == b.size && affine == b.affine &&
-               rootAffine == b.rootAffine && rootSize == b.rootSize && smooth == b.smooth && mouseOpacity == b.mouseOpacity &&
+               rootAffine == b.rootAffine && rootSize == b.rootSize && smooth == b.smooth && nearest == b.nearest && mouseOpacity == b.mouseOpacity &&
                (appearanceGroup == b.appearanceGroup || (appearanceGroup && b.appearanceGroup && *appearanceGroup == *b.appearanceGroup)) &&
                groupOccurrence == b.groupOccurrence &&
                groupOrigin == b.groupOrigin && groupLayer == b.groupLayer &&

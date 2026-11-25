@@ -72,6 +72,7 @@ private:
         ColorMatrix color = identityColor;
         int blend = 0;
         bool master = false;
+        bool nearest = false; // MapSprite::nearest
         QString renderSource, renderTarget;
         QSize size;
         std::optional<StaticAffine> affine;

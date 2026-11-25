@@ -50,6 +50,7 @@ world
     if(findtext(kind, "scalex2")) M.transform = matrix(2, 0, 0, 0, 1, 0)
     if(findtext(kind, "turn90")) M.transform = turned(90)
     if(findtext(kind, "half")) M.transform = matrix(0.5, 0, 0, 0, 0.5, 0)
+    if(findtext(kind, "pxs")) M.appearance_flags |= PIXEL_SCALE
     if(findtext(kind, "outline1")) M.filters += filter(type = "outline", size = 1, color = "#00ff00")
     if(findtext(kind, "outline4")) M.filters += filter(type = "outline", size = 4, color = "#00ff00")
     if(findtext(kind, "blur2")) M.filters += filter(type = "blur", size = 2)

@@ -708,6 +708,7 @@ EntityMap::Template EntityMap::TemplateBuilder::construct(const TemplateRequest&
             part.color = material;
             part.blend = blend;
             part.master = ap.master;
+            part.nearest = ap.master && ap.pixelScale;
             const bool overlayRelay = !root && !ap.master && !ap.renderSource.isEmpty() && !localCapture;
             part.planeEffects =
                 ap.master || (sourceTree && root) || overlayRelay ? withMasks(ap.planeEffects, next.complete) : nullptr;
@@ -1594,6 +1595,7 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                     }
                     sprite.rootAffine = shape.rootAffine; sprite.rootSize = shape.rootSize;
                     sprite.smooth = part.smooth; // a turf's too (stock 516.1689)
+                    sprite.nearest = part.nearest;
                     instance.sprites.push_back(std::move(sprite));
                 }
             } else {

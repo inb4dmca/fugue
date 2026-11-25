@@ -149,13 +149,14 @@ private slots:
                              .arg(off).arg(first.x()).arg(first.y()).arg(saved)));
     }
     // tests/data/master-transform-world/filters: the map stock DreamSeeker 516.1689 drew for a plane master with a
-    // matrix, a filter of each kind or both over a red 16 px box at (5,4) and, for "edge", a blue tile at (7,4).
+    // matrix, a filter of each kind or both over a red 16 px box at (5,4) and, for "edge", a blue tile at (7,4);
+    // "pxs" adds PIXEL_SCALE to the master.
     // Rebuilt here from sprites; no channel of any pixel may be more than 8 levels from stock's.
     void masterTransformFilters_data() {
         QTest::addColumn<QString>("name");
         const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-transform-world/filters");
         const auto files=directory.entryList({"fx-*.png"},QDir::Files,QDir::Name);
-        QVERIFY2(files.size()==28,qPrintable(directory.path()+": expected 28 stock grabs"));
+        QVERIFY2(files.size()==30,qPrintable(directory.path()+": expected 30 stock grabs"));
         for (const auto& file:files) QTest::newRow(qPrintable(file.chopped(4))) << file.chopped(4);
     }
     void masterTransformFilters() {
@@ -193,7 +194,9 @@ private slots:
         if (!name.endsWith("plain") && !name.endsWith("scalex2") && !name.endsWith("turn90") && !name.endsWith("half-edge"))
             effects->filters={f};
         QVERIFY(effects->valid(source.size()));
-        auto master=test::master(1); master.planeEffects=effects; scene.push_back(master);
+        auto master=test::master(1); master.planeEffects=effects;
+        master.nearest=name.contains("pxs"); // PIXEL_SCALE on the master
+        scene.push_back(master);
         GpuComparison gpu;
 #ifdef Q_OS_WIN
         const bool gl = false;

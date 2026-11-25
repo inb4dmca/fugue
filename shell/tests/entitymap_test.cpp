@@ -1093,6 +1093,27 @@ private slots:
         QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + remaining.values().join(", ")));
         QVERIFY2(onOverlay >= 120 && offOverlay >= 10, qPrintable(QString("%1 on, %2 off").arg(onOverlay).arg(offOverlay)));
     }
+    // PIXEL_SCALE on a turned master reaches its sprite, alone or over a tree, so the planner samples the plane
+    // unsmoothed (stock 516.1689, master-transform-world fx-pxs-scalex2); without it the master stays bilinear.
+    void masterPixelScaleReachesSprite() {
+        for (const bool pixelScale : {false, true}) for (const bool tree : {false, true}) {
+            auto w = world(); shell::TurfMap terrain; shell::EntityMap scene;
+            w.hudOrder = {100}; w.hudAppid[100] = 10; w.hudIdentity[100] = {2,7,11};
+            // PLANE_MASTER, and PIXEL_SCALE: packed DM bits 7 and 9 (0x200000 << k)
+            const uint32_t flags = 0x10000000u | (pixelScale ? 0x40000000u : 0u);
+            setFields(w.appearances[10], affinefixture::fields({2,0,0,0,1,0}, ",\"appearanceFlags\":" + std::to_string(flags) +
+                R"(,"hasPlane":true,"plane":1,"screenLoc":"1,1")" + (tree ? R"(,"overlays":[11])" : "")));
+            w.appearances[11] = w.appearances[1];
+            setFields(w.appearances[11], R"({"hasPlane":true,"plane":1,"pixelX":64,"pixelY":32})");
+            const auto frame = terrain.prepare(w, {}, 0, false);
+            const auto sprites = scene.prepare(w, frame, reader(), 0, nullptr, true);
+            const auto master = std::find_if(sprites.begin(), sprites.end(), [](const auto& s) { return s.kind == shell::MapSprite::Master; });
+            const auto context = QString("pixelScale=%1 tree=%2").arg(pixelScale).arg(tree);
+            QVERIFY2(master != sprites.end() && master->planeEffects && master->planeEffects->supported &&
+                     master->planeEffects->matrix, qPrintable(context));
+            QVERIFY2(master->nearest == pixelScale, qPrintable(context));
+        }
+    }
     void hudMasterMaterialAnimation() {
         auto w=world(); shell::TurfMap terrain; shell::EntityMap scene; shell::EntityMap::Stats stats;
         w.hudOrder={100}; w.hudAppid[100]=11; w.hudIdentity[100]={2,7,11};

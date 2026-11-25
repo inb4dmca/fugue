@@ -43,6 +43,8 @@ and compares every pixel with the grab (at most 8 levels per channel).
   the outline's right part lies outside the view and is not seen (`fx-edge-outline4`); scaled by a half it is drawn,
   2 px wide, right of the halved tile (`fx-half-edge-outline4`).
 - **A scaled plane is sampled bilinearly**: the box under `fx-scalex2` has half-covered columns at 159 and 192.
+- **Unless the master has PIXEL_SCALE** (`pxs` in the case name), which samples it nearest-neighbour: the box under
+  `fx-pxs-scalex2` is 160..191 with hard edges, and with an outline of 1 (`fx-pxs-scalex2-outline1`) 158..193.
 
 The other filter kinds behave the same under `scalex2` and `turn90`: wave (`fx-*wave`), ripple, bloom, a colour
 matrix (`swap`, red and green exchanged) and an alpha mask from an icon (`mask`, the left half of a tile, moved 32 px
@@ -84,5 +86,6 @@ the `master-*` cases without an outline, through the real hit test) hold the rul
 Nested
 masters with a matrix (still refused), animated master matrices, and non-32 px worlds. For filters with a matrix:
 turns that are not quarter turns, a master with a render target, an alpha mask from a render target, animated
-filters and PIXEL_SCALE on the master. For clicks: right-click menus, mouse-opacity 2, and images or vis_contents on a
+filters, and PIXEL_SCALE on a master that shrinks its plane (under `half` stock keeps other rows and columns than
+Fugue's nearest sampling). For clicks: right-click menus, mouse-opacity 2, and images or vis_contents on a
 turned plane.

@@ -651,7 +651,9 @@ void CompositionPlan::plan() {
             if (materialPending) result = addPass({{generated(composite), result}},passes[result].bounds,targetCapture);
             composite.tint = {1,1,1,1}; composite.color = identityColor;
             composite.affine = StaticAffine::make(*effects->matrix, source.size());
-            composite.smooth = true; // stock samples the turned plane bilinearly (master-transform-world fx-scalex2)
+            // Stock 516.1689 samples the turned plane bilinearly, or nearest under the master's PIXEL_SCALE
+            // (master-transform-world fx-scalex2, fx-pxs-scalex2).
+            composite.smooth = !master.nearest;
             // The pivot is the view's centre however far the filters grew the surface, and what they drew past
             // the view turns with the rest (stock 516.1689, master-transform-world turn90-shadow6,
             // half-edge-outline4).
