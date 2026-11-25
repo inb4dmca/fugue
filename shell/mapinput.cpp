@@ -63,6 +63,19 @@ std::optional<QPointF> turnedPartPoint(const MapSprite& s, QPoint pixel, QRect s
     if (!s.affine || !transforms.count(s.plane)) return {};
     return planePoint(pixel, s.plane, source, transforms, false);
 }
+// Where a part with a matrix of its own is under the pointer, in its untransformed icon; outside the icon is nothing.
+// partPixel is after the sprite's group inverse; samplePixel is that after the plane's inverse, rounded down.
+std::optional<QPoint> turnedIconPixel(const MapSprite& s, QPoint partPixel, QPoint samplePixel, QRect source,
+                                      const std::map<int, StaticAffine>& transforms) {
+    // Stock ordinary root trees and half-size images test the inverse integer corner, including visible edge pixels
+    // whose corner maps to transparent source alpha.
+    const auto exact = turnedPartPoint(s, partPixel, source, transforms);
+    // The ink is tested in the cell the click will name: the same boundary nudge as nameSprite().
+    const QPointF p = s.affine->inverse.map((exact ? *exact - s.position : QPointF(samplePixel - s.position)) +
+        (s.smooth || s.rootAffine ? QPointF() : QPointF(.5,.5))) + (exact ? QPointF(1e-6,1e-6) : QPointF());
+    if (p.x() < 0 || p.y() < 0 || p.x() >= s.image.width() || p.y() >= s.image.height()) return {};
+    return QPoint(int(std::floor(p.x())), int(std::floor(p.y())));
+}
 // The alpha of one part of a render target at a scene pixel: its own pixel there, times its own alpha.
 double partAlpha(const MapSprite& s, QPoint pixel) {
     if (s.image.isNull() || s.maptext || !s.rect().contains(pixel)) return 0;
@@ -351,7 +364,12 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
         const auto& binding = plan.bindings[size_t(i)];
         if (binding.refused) continue;
         const auto scenePixel = groupPixel(pointer.scenePixel, binding);
-        const auto pixel = planePixel(scenePixel, it->plane, pointer.renderedSource, transforms, true);
+        // The menu takes the pointer back through a plane's matrix as a left click does: the pixel whose corner the
+        // inverse lands in, and for a part with a matrix of its own the unrounded point; such a part is listed where
+        // its turned icon is, not over the whole of its bounds (stock 516.1689, plane-click-world turn90, tree45,
+        // tree45-scalex2 right clicks). An alpha mask hides nothing from the menu, from an icon or a render target
+        // (iconalpha, turn90-rtalpha).
+        const auto pixel = planePixel(scenePixel, it->plane, pointer.renderedSource, transforms, false);
         auto hit = pointer;
         if (outlines.count(it->plane) && !outlinedInputPart(*it)) continue;
         if (!it->planeSourceDependency.isEmpty()) continue; // plane-relay menus not established
@@ -362,7 +380,9 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
             hit = *relay;
         } else {
             if ((transforms.count(it->plane) && (!pointer.renderedSource.contains(pixel) || (!planeInputPart(*it) && !turnedPlanePart(*it)))) ||
-                !binding.localVisible || !mouseCandidate(*it, pixel, hidden) || plan.maskedOut(*it, scenePixel, pixel)) continue;
+                !binding.localVisible || !mouseCandidate(*it, pixel, hidden) ||
+                (it->affine && !it->image.isNull() &&
+                 !turnedIconPixel(*it, scenePixel, pixel, pointer.renderedSource, transforms))) continue;
             namePlaneSprite(hit, *it, scenePixel, pointer.renderedSource, transforms);
             hit.filteredPlane = outlines.count(it->plane) != 0;
         }
@@ -473,16 +493,9 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
             QPoint sample(local.x() * it->image.width() / it->rect().width(),
                           local.y() * it->image.height() / it->rect().height());
             if (it->affine) {  // opacity 2 is the turned icon rectangle, not its bounds
-                // Preserve childless/image coverage. Stock ordinary root trees
-                // and half-size images test the inverse integer corner, including
-                // visible edge pixels whose corner maps to transparent source alpha.
-                const auto exact = turnedPartPoint(*it,partPixel,source,transforms);
-                // The ink is tested in the cell the click will name: the same boundary nudge as nameSprite().
-                const QPointF sourcePixel = it->affine->inverse.map((exact ? *exact - it->position : QPointF(local)) +
-                    (it->smooth || it->rootAffine ? QPointF() : QPointF(.5,.5))) + (exact ? QPointF(1e-6,1e-6) : QPointF());
-                if (sourcePixel.x() < 0 || sourcePixel.y() < 0 ||
-                    sourcePixel.x() >= it->image.width() || sourcePixel.y() >= it->image.height()) continue;
-                sample = {int(std::floor(sourcePixel.x())), int(std::floor(sourcePixel.y()))};
+                const auto icon = turnedIconPixel(*it,partPixel,samplePixel,source,transforms);
+                if (!icon) continue;
+                sample = *icon;
             }
             if (it->mouseOpacity < 2 && it->image.pixelColor(sample).alpha() == 0) continue;
             if (!it->planeSourceDependency.isEmpty()) {
