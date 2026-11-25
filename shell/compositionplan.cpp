@@ -765,6 +765,8 @@ void CompositionPlan::plan() {
                 }
             }
         } else {
+            // The plane's picture moves with the relay's screen_loc (stock 516.1689, plane-relay-world loc23, locpx).
+            const QPoint offset = relayOffset(quad, source);
             quad.position = source.topLeft(); quad.size = source.size();
             const auto* effects = quad.planeEffects.get();
             if (planeTargetCounts[quad.renderSource] != 1 || quad.blend > 4 ||
@@ -814,6 +816,7 @@ void CompositionPlan::plan() {
                 quad.affine = effects->relayAffine(source.size(),!processedPlaneTargets[quad.renderSource]);
                 quad.smooth = true;
             }
+            quad.position += offset;
         }
         item.sprite = generated(std::move(quad));
     };
@@ -888,7 +891,7 @@ bool CompositionPlan::maskedOut(const MapSprite& sprite, QPoint groupPixel, QPoi
 void CompositionPlan::planInput() {
     // Coverage/coordinates deliberately do not come from composited alpha or
     // visual reachability: scalar-zero masters can still own original ink.
-    std::set<QString> consumed;
+    std::set<QString> consumed, masked;
     std::set<int> fallbackRefused;
     for (const auto& s : sprites) {
         if (s.kind == MapSprite::Screen && !s.renderSource.isEmpty()) consumed.insert(s.renderSource);
@@ -901,16 +904,18 @@ void CompositionPlan::planInput() {
     for (const auto& [plane,index] : masters)
         if (const auto* effects = sprites[index].planeEffects.get())
             for (const auto& f : effects->filters)
-                if (f.kind == PlaneFilter::AlphaMask && !f.source.isEmpty()) consumed.insert(f.source);
+                if (f.kind == PlaneFilter::AlphaMask && !f.source.isEmpty()) masked.insert(f.source);
     for (const auto& [plane,index] : masters) {
         const auto& s = sprites[index];
         const auto* effects = s.planeEffects.get();
         if (effects && effects->matrix && effects->valid(source.size()))
             transforms.emplace(plane,*StaticAffine::make(*effects->matrix,source.size()));
-        const bool suppressed = masterDisposition.at(plane) == MasterDisposition::Refused ||
-            s.mouseTransparent || s.mouseOpacity == 0 ||
-            (effects && !effects->valid(source.size())) ||
-            (s.renderTarget.startsWith('*') && consumed.count(s.renderTarget));
+        const bool unclickable = masterDisposition.at(plane) == MasterDisposition::Refused ||
+            s.mouseTransparent || s.mouseOpacity == 0 || (effects && !effects->valid(source.size()));
+        // A hidden plane that nothing draws stays clickable where it stands (stock 516.1689, plane-relay-world norelay).
+        const bool target = s.renderTarget.startsWith('*');
+        const bool suppressed = unclickable || (target && (consumed.count(s.renderTarget) || masked.count(s.renderTarget)));
+        if (!unclickable && target && consumed.count(s.renderTarget) && !masked.count(s.renderTarget)) captured.insert(plane);
         // Colour and alpha-mask filters leave the plane's ink clickable; a mask hides what it masks out.
         const bool inert = effects && std::all_of(effects->filters.begin(), effects->filters.end(), [](const PlaneFilter& f) {
             return f.kind == PlaneFilter::Color || f.kind == PlaneFilter::AlphaMask; });

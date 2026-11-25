@@ -45,8 +45,9 @@ struct PlaneEffects {
     // Original contributor ink survives a direct plane capture's admitted stock
     // filters. Ignored records and source geometry are not coverage proofs.
     bool sourceCoverage(QSize viewport) const;
-    // Only neutral-source visuals add capture displacement. Processed-source
-    // visuals and all input use the unshifted viewport basis.
+    // A relay's matrix over a plane's picture, in view pixels. Only neutral-source visuals add stock's displacement;
+    // processed-source visuals and all input use the matrix about the view's centre (stock 516.1689,
+    // plane-relay-world: rhalf and rt_45 are clicked where an unmoved picture would be).
     std::optional<StaticAffine> relayAffine(QSize viewport, bool displacedCapture) const;
 };
 // Worker-only decoding. Unknown/malformed filter records are skipped; an

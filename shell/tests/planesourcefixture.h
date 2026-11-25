@@ -164,10 +164,10 @@ struct PlaneSourceFixture {
             rows.append(row);
         }
         if (matrix) {
-            if (admittedRows!=24 || admittedPixels!=346 || admittedClicks!=180)
-                return fail("rows","Expected 24 admitted matrix rows with 346 pixel observations and 180 Click receipts");
-            if (unsupported!=QSet<QString>{"m-rotate","m-rotate-group","m-reverse-rotate-group"})
-                return fail("rows.admitted","Only the three retained unresolved quarter-turn rows may be excluded");
+            if (admittedRows!=27 || admittedPixels!=403 || admittedClicks!=216)
+                return fail("rows","Expected 27 admitted matrix rows with 403 pixel observations and 216 Click receipts");
+            if (!unsupported.isEmpty())
+                return fail("rows.admitted","Every matrix row is admitted, the quarter turns included");
             for (const char* name:{"m-scale-blur-group","m-blur-group","m-outline-group"})
                 if (!names.contains(name)) return fail("rows","Missing matrix checkpoint: "+QString(name));
         } else {

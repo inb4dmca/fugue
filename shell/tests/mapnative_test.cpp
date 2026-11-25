@@ -1989,6 +1989,7 @@ private slots:
             sprites.push_back(master);
             if(row["target"].toBool()) {
                 MapSprite relay;relay.kind=MapSprite::Screen;relay.plane=3;relay.renderSource="*shadow";
+                relay.iconBottom={0,224}; // at 1,1: the plane's picture is not moved
                 sprites.push_back(relay);
             }
             auto raster=floor;auto domain=floor.rect();auto coordinates=geometry;
@@ -2116,6 +2117,7 @@ private slots:
         capture.color[0] = .5f;
         red.plane = 10;
         MapSprite source; source.kind = MapSprite::Screen; source.plane = -1; source.renderSource = "*later";
+        source.iconBottom = {0,32}; // at 1,1: the plane's picture is not moved
         QCOMPARE(center(frame({red,capture})), QColor(Qt::black));
         c = center(frame({source,red,capture}));
         QVERIFY(qAbs(c.red()-128) <= 1); QCOMPARE(c.green(),0); QCOMPARE(c.blue(),0);

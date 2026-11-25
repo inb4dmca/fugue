@@ -28,8 +28,7 @@ struct PlaneSources {
             planes[plane]=next;
             Surface s; s.master=index;
             s.input = material(m) && m.haveKey && (m.hudIdentity || m.targetIdentity) &&
-                m.renderSource.isEmpty() && (!m.planeEffects ||
-                m.planeEffects->sourceCoverage(viewport.size()));
+                m.renderSource.isEmpty() && (!m.planeEffects || coverage(*m.planeEffects, viewport.size()));
             surfaces.push_back(std::move(s));
         }
         for (qsizetype i=0;i<sprites.size();++i) {
@@ -50,6 +49,12 @@ struct PlaneSources {
                 !s.imageIdentity && !s.visHit && !s.localGroup && !s.planeEffects &&
                 s.renderSource.isEmpty() && s.renderTarget.isEmpty() && s.planeSourceDependency.isEmpty();
         }
+    }
+    // A master's matrix moves its plane's original ink without adding or removing any: the picker takes the pointer
+    // back through it before asking ink() (stock 516.1689, plane-relay-world mturn90, nopass-mturn90).
+    static bool coverage(const PlaneEffects& effects, QSize viewport) {
+        auto unturned = effects; unturned.matrix.reset();
+        return unturned.sourceCoverage(viewport) && (!effects.matrix || StaticAffine::make(*effects.matrix, viewport));
     }
     static bool material(const MapSprite& s) {
         return !s.affine && !s.rootAffine && !s.maptext && s.blend>=0 && s.blend<=1 &&

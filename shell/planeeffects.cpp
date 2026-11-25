@@ -84,13 +84,7 @@ bool PlaneEffects::relayFilters() const {
     if (!supported || ignoredFilters || !surface.valid({32,32})) return false;
     for (const auto& f : filters)
         if (f.kind != PlaneFilter::Blur && f.kind != PlaneFilter::Shadow && !boundedOutline(f)) return false;
-    if (!matrix) return true;
-    const auto& m = *matrix;
-    // Positive axis geometry has an established capture placement basis.
-    // Quarter-turn visuals disagree with this rule; do not invent a pivot.
-    return m[0] > 0 && m[4] > 0 && m[1] == 0 && m[3] == 0 &&
-        m[2] == std::floor(m[2]) && m[5] == std::floor(m[5]) &&
-        StaticAffine::make(m,{32,32}).has_value();
+    return !matrix || StaticAffine::make(*matrix,{32,32}).has_value();
 }
 bool PlaneEffects::sourceCoverage(QSize viewport) const {
     if (matrix || ignoredFilters || !valid(viewport)) return false;
@@ -107,11 +101,22 @@ std::optional<StaticAffine> PlaneEffects::relayAffine(QSize viewport, bool displ
     if (!matrix || !relayFilters()) return {};
     auto affine = StaticAffine::make(*matrix,viewport);
     if (!affine || !displacedCapture) return affine;
-    // A neutral source master retains the positive capture-origin displacement.
-    // Material/filter-processed sources use the ordinary viewport basis (visual
-    // callers pass false). Input always uses that unshifted inverse.
-    const auto shift = QPointF(std::max(0.0,affine->forward.dx()), std::max(0.0,affine->forward.dy()));
-    affine->forward *= QTransform::fromTranslate(shift.x(),shift.y());
+    // Stock 516.1689 moves a neutral plane's picture, before the matrix (about the view's centre) applies, by u per
+    // axis (Y down): half of what the view taken back through the matrix's linear part outgrows the view by, plus the
+    // matrix's own move taken back the same way, rounded up to a whole pixel, and nothing where that is negative. So a
+    // half scale lands in the view's bottom right quarter, a turn of 45 degrees lies 66 px lower than one about the
+    // centre, and a positive move counts twice where a negative one counts once (plane-relay-world rhalf, rt_*, rm_*:
+    // every grab within a pixel). A processed plane's picture is not moved (malpha-*).
+    const auto& m = *matrix;
+    const QTransform linear(m[0], -m[3], -m[1], m[4], 0, 0);
+    const QTransform back = linear.inverted();
+    const QRectF reach = back.mapRect(QRectF(QPointF(), viewport));
+    const QPointF centre(viewport.width() / 2.0, viewport.height() / 2.0), move(m[2], -m[5]);
+    const QPointF moved = back.map(move);
+    auto shift = [](double outgrown, double back) { return std::max(0.0, std::ceil(outgrown / 2 + back - 1e-6)); };
+    const QPointF u(shift(reach.width() - viewport.width(), moved.x()), shift(reach.height() - viewport.height(), moved.y()));
+    affine->forward = QTransform::fromTranslate(u.x() - centre.x(), u.y() - centre.y()) * linear *
+        QTransform::fromTranslate(centre.x() + move.x(), centre.y() + move.y());
     affine->inverse = affine->forward.inverted();
     affine->bounds = affine->forward.mapRect(QRectF(QPointF(),viewport)).toAlignedRect();
     if (std::max({std::abs(affine->bounds.left()),std::abs(affine->bounds.right()),

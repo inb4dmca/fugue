@@ -10,6 +10,7 @@
 #include <optional>
 #include <set>
 #include <map>
+#include <iterator>
 
 namespace fugue::shell {
 namespace {
@@ -221,23 +222,45 @@ std::optional<MapPointer> relayAt(const MapPointer& pointer, const MapSprite& co
     hit.relayHit = std::move(evidence);
     return hit;
 }
+// Where a pointer over a relay of a plane's surface is in the plane's own picture: back by the relay's offset from 1,1,
+// then through the relay's matrix about the view's centre, to the pixel whose corner it lands in, as for a master's
+// matrix. Input never takes the displacement stock draws a neutral plane with (stock 516.1689, plane-relay-world:
+// rturn90 at 114,139 names part y=18; nopass-loc23 names the relay with the picture's own icon-x/y).
+std::optional<QPoint> relayPixel(const MapSprite& relay, const CompositionPlan::Binding& binding, QPoint pixel, QRect source) {
+    QPoint local = pixel - CompositionPlan::relayOffset(relay, source);
+    if (relay.planeEffects && relay.planeEffects->matrix) {
+        if (!binding.mouseAffine) return {};
+        const auto p = binding.mouseAffine->inverse.map(QPointF(local - source.topLeft()));
+        local = QPoint(int(std::floor(p.x())), int(std::floor(p.y()))) + source.topLeft();
+    }
+    if (!source.contains(local)) return {};
+    return local;
+}
 std::optional<MapPointer> planeRelayHit(const MapPointer& pointer, const MapSprite& consumer,
                                       const MapSprite& ink, const MapSprite& master, QPoint pixel,
-                                      const CompositionPlan::Binding& binding) {
+                                      const CompositionPlan::Binding& binding, std::optional<QPoint> picture = {}) {
     if (consumer.kind != MapSprite::Screen || consumer.passMouse || consumer.mouseTransparent ||
         consumer.mouseOpacity != 1 || consumer.maptext || consumer.tint[3] <= 0 || consumer.blend > 4 ||
         (consumer.planeEffects && !consumer.planeEffects->relayFilters())) return {};
     auto hit=pointer;
     hit.source.reset(); hit.relayHit.reset();
     nameSprite(hit,consumer,pixel);
+    const QRect source = pointer.renderedSource;
+    if (picture) {  // a relay of a plane names the picture's pixel, from its bottom left
+        hit.click.iconX = picture->x() - source.left() + 1;
+        hit.click.iconY = source.bottom() + 1 - picture->y();
+    }
     if (consumer.planeEffects && consumer.planeEffects->matrix) {
         const auto& affine = binding.mouseAffine;
         if (!affine) return {};
-        const auto p=affine->inverse.map(QPointF(pixel-pointer.renderedSource.topLeft()));
-        hit.click.iconX=int(std::floor(p.x()))+1;
-        hit.click.iconY=pointer.renderedSource.height()-int(std::floor(p.y()));
+        if (!picture) {
+            const auto p=affine->inverse.map(QPointF(pixel-source.topLeft()));
+            hit.click.iconX=int(std::floor(p.x()))+1;
+            hit.click.iconY=source.height()-int(std::floor(p.y()));
+        }
         hit.click.hasVis=affine->visualCoordinates;
-        const auto bounds=affine->bounds.translated(pointer.renderedSource.topLeft());
+        const auto bounds=affine->bounds.translated(source.topLeft()+
+                                                    (picture ? CompositionPlan::relayOffset(consumer,source) : QPoint()));
         hit.click.visX=pixel.x()-bounds.x()+1;
         hit.click.visY=bounds.bottom()+1-pixel.y();
     }
@@ -273,8 +296,11 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
         return !s.planeEffects || (s.planeEffects->supported && !s.planeEffects->ignoredFilters &&
             s.planeEffects->filters.empty() && !s.planeEffects->matrix);
     };
+    // The relay may stand anywhere and carry a matrix of its own; the master may carry one too. The pointer goes back
+    // through the relay's, then the master's (stock 516.1689, plane-relay-world loc23, rturn90, rscalex2, mturn90).
     auto neutral = [&](const MapSprite& s) {
-        return material(s) && s.tint == std::array<float,4>{1,1,1,1} && s.color == identityColor && unfiltered(s);
+        return material(s) && s.tint == std::array<float,4>{1,1,1,1} && s.color == identityColor &&
+            (!s.planeEffects || (s.planeEffects->supported && !s.planeEffects->ignoredFilters && s.planeEffects->filters.empty()));
     };
     auto endpoint = [&](const MapSprite& s) {
         auto p = pointer;
@@ -283,14 +309,15 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
         nameSprite(p,s,pixel); p.screen = true; p.click.loc = proto::enc::nullRef();
         return p;
     };
-    auto walk = [&](auto&& self, qsizetype index) -> std::optional<MapPointer> {
+    auto walk = [&](auto&& self, qsizetype index, QPoint at) -> std::optional<MapPointer> {
         if (!work || path->hops.size() >= 8) return {};
         --work;
         const auto& relay = plan.sprites[index]; const auto& binding = plan.bindings[size_t(index)];
         if (binding.refused || binding.localName || binding.planeSource < 0 ||
             relay.kind != MapSprite::Screen || !relay.passMouse || relay.mouseTransparent || relay.mouseOpacity != 1 ||
-            !relay.haveKey || !relay.hudIdentity || !neutral(relay) || !relay.renderTarget.isEmpty() ||
-            relay.iconBottom != QPoint(plan.source.left(),plan.source.bottom()+1)) return {};
+            !relay.haveKey || !relay.hudIdentity || !neutral(relay) || !relay.renderTarget.isEmpty()) return {};
+        const auto local = relayPixel(relay, binding, at, plan.source);
+        if (!local) return {};
         const int source = binding.planeSource;
         if (!visiting.insert(source).second) return {};
         const auto& surface = plan.planeSources.surfaces[source];
@@ -298,11 +325,12 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
         // A transparent master does NOT suppress source-owned hits through a
         // mouse-opaque relay. Its own fallback rectangle is irrelevant here.
         if (!material(master) || !master.haveKey || !master.hudIdentity || !master.renderSource.isEmpty() ||
-            (master.planeEffects && !master.planeEffects->sourceCoverage(plan.source.size())) ||
+            (master.planeEffects && !PlaneSources::coverage(*master.planeEffects, plan.source.size())) ||
             plan.masterDisposition.at(master.plane) == CompositionPlan::MasterDisposition::Refused) {
             visiting.erase(source);
             return {};
         }
+        const QPoint sample = planePixel(*local, master.plane, plan.source, plan.transforms, false);
         path->hops.push_back({endpoint(master),endpoint(relay),relay.renderSource,master.plane,
                              master.appearanceId,relay.appearanceId});
         for (auto it = surface.parts.rbegin(); it != surface.parts.rend(); ++it) {
@@ -311,10 +339,10 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
             const auto& s = plan.sprites[*it];
             if (plan.bindings[size_t(*it)].refused || s.mouseTransparent || s.mouseOpacity == 0 || s.footprint) continue;
             if (!s.renderSource.isEmpty()) {
-                if (auto hit = self(self,*it)) return hit;
+                if (auto hit = self(self,*it,sample)) return hit;
                 continue;
             }
-            if (!s.rect().contains(pixel)) continue;
+            if (!s.rect().contains(sample)) continue;
             const bool hud = s.kind == MapSprite::Screen && s.screenInteractive;
             const bool world = s.kind == MapSprite::Turf ||
                 (s.kind == MapSprite::Entity && s.haveKey && s.targetIdentity);
@@ -322,32 +350,30 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
                 (s.kind != MapSprite::Turf && s.atom == master.atom) || s.image.isNull() || s.mouseOpacity > 2 ||
                 !s.renderTarget.isEmpty() || !s.planeSourceDependency.isEmpty() ||
                 (!s.size.isEmpty() && s.size != s.image.size())) continue;
-            if (s.mouseOpacity == 1 && s.image.pixelColor(pixel-s.position).alpha() == 0) continue;
-            auto hit = pointer; nameSprite(hit,s,pixel);
+            if (s.mouseOpacity == 1 && s.image.pixelColor(sample-s.position).alpha() == 0) continue;
+            auto hit = pointer; nameSprite(hit,s,sample);
             path->leafAppearance = s.appearanceId; hit.planeMousePath = path;
             return hit;
         }
         path->hops.pop_back(); visiting.erase(source);
         return {};
     };
-    return walk(walk,consumerIndex);
+    return walk(walk,consumerIndex,pixel);
 }
+// A relay without PASS_MOUSE is clicked itself where the plane's picture has ink, its matrix and its master's taken
+// back (stock 516.1689, plane-relay-world nopass-loc23, nopass-rturn90, nopass-mturn90).
 std::optional<MapPointer> planeRelayAt(const MapPointer& pointer, const MapSprite& consumer,
                                      QPoint pixel, const CompositionPlan& plan,
                                      const CompositionPlan::Binding& binding, uint64_t& work) {
-    if (binding.planeSource < 0 || !pointer.renderedSource.contains(pixel)) return {};
+    if (binding.planeSource < 0) return {};
     const auto* surface = &plan.planeSources.surfaces[binding.planeSource];
-    QPoint sample=pixel;
-    if (consumer.planeEffects && consumer.planeEffects->matrix) {
-        const auto& affine=binding.mouseAffine;
-        if (!affine) return {};
-        const auto p=affine->inverse.map(QPointF(pixel-pointer.renderedSource.topLeft()));
-        sample=QPoint(int(std::floor(p.x())),int(std::floor(p.y())))+pointer.renderedSource.topLeft();
-        if (!pointer.renderedSource.contains(sample)) return {};
-    }
+    const auto local = relayPixel(consumer, binding, pixel, pointer.renderedSource);
+    if (!local) return {};
+    const auto& master = plan.sprites[surface->master];
+    const QPoint sample = planePixel(*local, master.plane, plan.source, plan.transforms, false);
     const auto ink=PlaneSources::ink(*surface,plan.sprites,sample,work);
     if (ink<0) return {};
-    return planeRelayHit(pointer,consumer,plan.sprites[ink],plan.sprites[surface->master],pixel,binding);
+    return planeRelayHit(pointer,consumer,plan.sprites[ink],master,pixel,binding,local);
 }
 }
 QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
@@ -358,41 +384,69 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
     const auto& outlines = plan.outlines;
     const auto& transforms = plan.transforms;
     const auto& targets = plan.local;
+    const QRect source = pointer.renderedSource;
+    // A plane hidden because a relay draws it is still listed where its atoms stand (stock 516.1689, plane-relay-world
+    // loc23 and nopass-loc23 at 139,109), as well as through a PASS_MOUSE relay where the relay draws them (loc23 at
+    // 171,45, rturn90, mturn90-loc23). A relay without PASS_MOUSE is listed itself wherever its picture's rectangle is,
+    // and lists nothing through it (nopass-loc23 at 171,45 and 100,150).
+    std::set<int> menuHidden;
+    std::set_difference(hidden.begin(), hidden.end(), plan.captured.begin(), plan.captured.end(),
+                        std::inserter(menuHidden, menuHidden.end()));
+    const std::set<int> none;
     std::set<std::tuple<int,uint32_t,int,int>> seen;
-    for (qsizetype i = plan.sprites.size(); i-- > 0;) {
+    // at: the scene pixel, or the point in a plane's picture a PASS_MOUSE relay of it takes the pointer to (through).
+    auto consider = [&](auto&& self, qsizetype i, QPoint at, int depth, bool through) -> void {
+        if (result.size() == 128) return;
         const auto* it = &plan.sprites[i];
         const auto& binding = plan.bindings[size_t(i)];
-        if (binding.refused) continue;
-        const auto scenePixel = groupPixel(pointer.scenePixel, binding);
+        if (binding.refused) return;
+        const auto& hiddenHere = through ? none : menuHidden;
+        const auto scenePixel = groupPixel(at, binding);
         // The menu takes the pointer back through a plane's matrix as a left click does: the pixel whose corner the
         // inverse lands in, and for a part with a matrix of its own the unrounded point; such a part is listed where
         // its turned icon is, not over the whole of its bounds (stock 516.1689, plane-click-world turn90, tree45,
         // tree45-scalex2 right clicks). An alpha mask hides nothing from the menu, from an icon or a render target
         // (iconalpha, turn90-rtalpha).
-        const auto pixel = planePixel(scenePixel, it->plane, pointer.renderedSource, transforms, false);
+        const auto pixel = planePixel(scenePixel, it->plane, source, transforms, false);
         auto hit = pointer;
-        if (outlines.count(it->plane) && !outlinedInputPart(*it)) continue;
-        if (!it->planeSourceDependency.isEmpty()) continue; // plane-relay menus not established
+        if (outlines.count(it->plane) && !outlinedInputPart(*it)) return;
+        // A KEEP_TOGETHER relay is the root of its own appearance: it is listed like any relay. Menus through an
+        // overlay's relay are not established.
+        if (!it->planeSourceDependency.isEmpty() && it->renderSource != it->planeSourceDependency) return;
         if (!it->renderSource.isEmpty()) {
-            if (!it->renderTarget.isEmpty() || hidden.count(it->plane) || transforms.count(it->plane)) continue;
-            const auto relay = relayAt(pointer,*it,pixel,targets,binding.localSource,true);
-            if (!relay) continue;
-            hit = *relay;
+            if (!it->renderTarget.isEmpty() || hiddenHere.count(it->plane) || transforms.count(it->plane)) return;
+            if (!binding.localName && binding.planeSource >= 0) {
+                if (it->kind != MapSprite::Screen || depth >= 8) return;
+                const auto local = relayPixel(*it, binding, pixel, source);
+                if (!local) return;
+                if (it->passMouse) {
+                    const auto& surface = plan.planeSources.surfaces[size_t(binding.planeSource)];
+                    for (auto part = surface.parts.rbegin(); part != surface.parts.rend(); ++part)
+                        self(self, *part, *local, depth + 1, true);
+                    return;
+                }
+                if (it->mouseTransparent || it->mouseOpacity != 1) return;
+                nameSprite(hit, *it, pixel);
+            } else {
+                const auto relay = relayAt(pointer,*it,pixel,targets,binding.localSource,true);
+                if (!relay) return;
+                hit = *relay;
+            }
         } else {
-            if ((transforms.count(it->plane) && (!pointer.renderedSource.contains(pixel) || (!planeInputPart(*it) && !turnedPlanePart(*it)))) ||
-                !binding.localVisible || !mouseCandidate(*it, pixel, hidden) ||
+            if ((transforms.count(it->plane) && (!source.contains(pixel) || (!planeInputPart(*it) && !turnedPlanePart(*it)))) ||
+                !binding.localVisible || !mouseCandidate(*it, pixel, hiddenHere) ||
                 (it->affine && !it->image.isNull() &&
-                 !turnedIconPixel(*it, scenePixel, pixel, pointer.renderedSource, transforms))) continue;
-            namePlaneSprite(hit, *it, scenePixel, pointer.renderedSource, transforms);
+                 !turnedIconPixel(*it, scenePixel, pixel, source, transforms))) return;
+            namePlaneSprite(hit, *it, scenePixel, source, transforms);
             hit.filteredPlane = outlines.count(it->plane) != 0;
         }
         hit.source.reset(); // a menu entry is not a gesture endpoint pair
         hit.kind = MapPointer::Click;
         const auto& ref = hit.click.over;
-        if (!seen.emplace(ref.kind,ref.ref,ref.x,ref.y).second) continue;
+        if (!seen.emplace(ref.kind,ref.ref,ref.x,ref.y).second) return;
         result.push_back(std::move(hit));
-        if (result.size() == 128) break;
-    }
+    };
+    for (qsizetype i = plan.sprites.size(); i-- > 0 && result.size() < 128;) consider(consider, i, pointer.scenePixel, 0, false);
     return result;
 }
 std::optional<MapPointer> mapPointerAt(QPointF p, QSizeF size, QSize view, QRect source,
@@ -501,7 +555,8 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
             if (!it->planeSourceDependency.isEmpty()) {
                 if (binding.planeDependency < 0 || binding.localDependency) continue;
                 const auto* surface=&plan.planeSources.surfaces[binding.planeDependency];
-                if (!surface->input || outlines.count(it->plane) || transforms.count(it->plane)) continue;
+                if (!surface->input || outlines.count(it->plane) || transforms.count(it->plane) ||
+                    transforms.count(sprites[surface->master].plane)) continue;
                 const auto hit=planeRelayHit(out,*it,*it,sprites[surface->master],pixel,binding);
                 if (!hit) continue;
                 out=*hit;
