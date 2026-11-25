@@ -15,6 +15,11 @@ struct RecordedFrame {
     Bytes body;
 };
 
+struct TimedRecordedFrame {
+    int64_t elapsedMs;
+    RecordedFrame frame;
+};
+
 // Historical dumps count either body bytes or body bytes plus one in len=.
 // A file must use one convention throughout. This reader preserves order and
 // empty bodies; checkpoints and replay clocks belong to the calling scenario.
@@ -54,6 +59,49 @@ inline bool readRecordedFrames(const QString& path, std::vector<RecordedFrame>& 
         if (lengthExtra >= 0 && extra != lengthExtra) return fail("Mixed len conventions in one recording");
         lengthExtra = extra;
         frames.push_back({match.captured(1).toUShort(nullptr, 16), std::move(*body)});
+    }
+    if (frames.empty()) {
+        if (!lineNumber) lineNumber = 1;
+        return fail("Recording contains no frames");
+    }
+    out = std::move(frames);
+    return true;
+}
+
+// Elapsed milliseconds, a four-digit hex type (optionally 0x-prefixed), then
+// an optional hex body. Equal timestamps retain wire order. Like untimed dumps,
+// blank lines and whole-line comments/headers carry no frames.
+inline bool readTimedRecordedFrames(const QString& path, std::vector<TimedRecordedFrame>& out, QString& error) {
+    out.clear();
+    error.clear();
+    qsizetype lineNumber = 0;
+    auto fail = [&](const QString& reason) {
+        error = QString("%1:%2: %3").arg(path).arg(lineNumber).arg(reason);
+        return false;
+    };
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return fail("Cannot read recording: " + file.errorString());
+
+    static const QRegularExpression record(R"(^([0-9]+)[ \t]+(?:0x)?([0-9a-fA-F]{4})(?:[ \t]+(\S+))?$)");
+    std::vector<TimedRecordedFrame> frames;
+    while (!file.atEnd()) {
+        ++lineNumber;
+        const auto line = QString::fromUtf8(file.readLine()).trimmed();
+        if (file.error() != QFileDevice::NoError) return fail("Cannot read recording: " + file.errorString());
+        if (line.isEmpty() || line.startsWith('#') || line.startsWith("===")) continue;
+        const auto match = record.match(line);
+        if (!match.hasMatch())
+            return fail("Expected nonnegative elapsed milliseconds, a four-digit hex type, and an optional hex body");
+
+        bool validTime = false;
+        const auto elapsedMs = match.captured(1).toLongLong(&validTime);
+        if (!validTime) return fail("Elapsed milliseconds are out of range");
+        if (!frames.empty() && elapsedMs < frames.back().elapsedMs)
+            return fail("Elapsed milliseconds must not decrease");
+        const auto hex = match.captured(3).toLatin1();
+        auto body = hexDecode(std::string_view(hex.constData(), size_t(hex.size())));
+        if (!body) return fail("Body must contain an even number of hexadecimal digits");
+        frames.push_back({elapsedMs, {match.captured(2).toUShort(nullptr, 16), std::move(*body)}});
     }
     if (frames.empty()) {
         if (!lineNumber) lineNumber = 1;

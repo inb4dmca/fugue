@@ -2,6 +2,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QtTest>
+#include <limits>
 #include "tests/recordedinput.h"
 #include "tests/testmain.h"
 
@@ -170,6 +171,100 @@ private slots:
         std::vector<RecordedFrame> frames{{0xffff, {0xff}}};
         QString error;
         QVERIFY(!readRecordedFrames(path, frames, error));
+        QVERIFY(frames.empty());
+        QVERIFY2(error.startsWith(path + ":0: Cannot read recording:"), qPrintable(error));
+    }
+    void retainsTimedFramesAndEqualTimestampOrder_data() {
+        QTest::addColumn<QByteArray>("contents");
+        QTest::addColumn<qint64>("lastTime");
+        QTest::newRow("retained-bare-types")
+            << QByteArray("0 AbCd aBcd\n0 0018\n42 0034 09\n") << qint64(42);
+        QTest::newRow("prefixed-types")
+            << QByteArray("0 0xAbCd aBcd\n0 0x0018\n42 0x0034 09\n") << qint64(42);
+        QTest::newRow("comments-crlf-whitespace")
+            << QByteArray("=== retained recording ===\r\n\t# milliseconds type hex\r\n \r\n"
+                          " 0\tAbCd\tABcd \r\n0 0018\t\r\n# between equal-time frames and later input\r\n 42 0034 09 ")
+            << qint64(42);
+        QTest::newRow("maximum-milliseconds")
+            << QByteArray("0 AbCd abcd\n0 0018\n9223372036854775807 0034 09\n")
+            << std::numeric_limits<qint64>::max();
+    }
+    void retainsTimedFramesAndEqualTimestampOrder() {
+        QFETCH(QByteArray, contents);
+        QFETCH(qint64, lastTime);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = dir.filePath(QString::fromUtf8("timed-\xc3\xa8.txt"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write(contents), qint64(contents.size()));
+        file.close();
+
+        std::vector<TimedRecordedFrame> frames{{99, {0xffff, {0xff}}}};
+        QString error = "previous error";
+        QVERIFY2(readTimedRecordedFrames(path, frames, error), qPrintable(error));
+        QVERIFY(error.isEmpty());
+        QCOMPARE(frames.size(), size_t(3));
+        QCOMPARE(frames[0].elapsedMs, int64_t(0));
+        QCOMPARE(frames[0].frame.type, uint16_t(0xabcd));
+        QVERIFY(frames[0].frame.body == Bytes({0xab, 0xcd}));
+        QCOMPARE(frames[1].elapsedMs, int64_t(0));
+        QCOMPARE(frames[1].frame.type, uint16_t(0x0018));
+        QVERIFY(frames[1].frame.body.empty());
+        QCOMPARE(frames[2].elapsedMs, int64_t(lastTime));
+        QCOMPARE(frames[2].frame.type, uint16_t(0x0034));
+        QVERIFY(frames[2].frame.body == Bytes({0x09}));
+    }
+    void rejectsMalformedTimedRecordings_data() {
+        QTest::addColumn<QByteArray>("contents");
+        QTest::addColumn<int>("line");
+        QTest::addColumn<QString>("reason");
+        const QByteArray first = "10 0027 abcd\n";
+        QTest::newRow("odd-hex") << first + "11 0008 a\n" << 2 << QString("hexadecimal digits");
+        QTest::newRow("invalid-hex") << first + "11 0008 gg\n" << 2 << QString("hexadecimal digits");
+        QTest::newRow("invalid-type") << first + "11 00gg aa\n" << 2 << QString("four-digit hex type");
+        QTest::newRow("short-type") << first + "11 008 aa\n" << 2 << QString("four-digit hex type");
+        QTest::newRow("wide-type") << first + "11 10000 aa\n" << 2 << QString("four-digit hex type");
+        QTest::newRow("missing-type") << first + "11\n" << 2 << QString("four-digit hex type");
+        QTest::newRow("negative-time") << first + "-1 0008 aa\n" << 2 << QString("nonnegative elapsed milliseconds");
+        QTest::newRow("decreasing-time") << first + "9 0008 aa\n" << 2 << QString("must not decrease");
+        QTest::newRow("fractional-time") << first + "10.5 0008 aa\n" << 2 << QString("nonnegative elapsed milliseconds");
+        QTest::newRow("signed-time") << first + "+11 0008 aa\n" << 2 << QString("nonnegative elapsed milliseconds");
+        QTest::newRow("exponent-time") << first + "1e2 0008 aa\n" << 2 << QString("nonnegative elapsed milliseconds");
+        QTest::newRow("overflow-time") << first + "9223372036854775808 0008 aa\n" << 2 << QString("out of range");
+        QTest::newRow("extra-body-token") << first + "11 0008 aa bb\n" << 2 << QString("optional hex body");
+        QTest::newRow("inline-comment") << first + "11 0008 aa # note\n" << 2 << QString("optional hex body");
+        QTest::newRow("physical-line-diagnostic")
+            << first + "# retained comment\n\nnot a frame\n" << 4 << QString("nonnegative elapsed milliseconds");
+        QTest::newRow("empty") << QByteArray() << 1 << QString("no frames");
+        QTest::newRow("comments-only") << QByteArray("=== recording ===\n# no input\n") << 2 << QString("no frames");
+    }
+    void rejectsMalformedTimedRecordings() {
+        QFETCH(QByteArray, contents);
+        QFETCH(int, line);
+        QFETCH(QString, reason);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = dir.filePath("timed.txt");
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        QCOMPARE(file.write(contents), qint64(contents.size()));
+        file.close();
+
+        std::vector<TimedRecordedFrame> frames{{99, {0xffff, {0xff}}}};
+        QString error;
+        QVERIFY(!readTimedRecordedFrames(path, frames, error));
+        QVERIFY(frames.empty()); // neither old output nor the valid prefix survives
+        QVERIFY2(error.startsWith(path + ':' + QString::number(line) + ':'), qPrintable(error));
+        QVERIFY2(error.contains(reason), qPrintable(error));
+    }
+    void missingTimedFileIsNotAnEmptyRecording() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto path = dir.filePath("missing.txt");
+        std::vector<TimedRecordedFrame> frames{{99, {0xffff, {0xff}}}};
+        QString error;
+        QVERIFY(!readTimedRecordedFrames(path, frames, error));
         QVERIFY(frames.empty());
         QVERIFY2(error.startsWith(path + ":0: Cannot read recording:"), qPrintable(error));
     }
