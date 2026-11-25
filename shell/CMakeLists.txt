@@ -15,7 +15,6 @@ target_include_directories(fugue_shell PUBLIC ${PROJECT_SOURCE_DIR})
 target_link_libraries(fugue_shell PUBLIC fugue_skin fugue_render fugue_proto fugue_model fugue_net fugue_canon Qt6::Widgets Qt6::WebEngineWidgets Qt6::WebChannel Qt6::Network)
 
 find_package(ZLIB REQUIRED) # bounded DMI PNG metadata decompression
-target_link_libraries(fugue_shell PUBLIC fugue_assets)
 target_link_libraries(fugue_shell PRIVATE Qt6::GuiPrivate ZLIB::ZLIB)
 qt_add_shaders(fugue_shell mapshaders
   PREFIX "/map"

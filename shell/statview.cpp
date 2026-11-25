@@ -5,8 +5,7 @@ StatView buildStatView(const model::World& w, StatThumbnails& thumbnails, AtomTr
     if (diagnostic) { diagnostic->info = {}; diagnostic->info.tab = w.stat.selected; }
     StatView v;
     model::VerbPanel panel = model::verbPanel(w);   // share the panel between the tab strip and selected rows
-    // stat() outside any statpanel() goes to a panel with no name, which stock labels "Stats" (stock 516.1689,
-    // upstream's tests/data/staticons-world).
+    // stat() outside any statpanel() goes to a panel with no name, which stock labels "Stats" (stock 516.1689).
     for (const std::string& t : model::statTabs(w, panel)) v.tabs << (t.empty() ? QStringLiteral("Stats") : QString::fromStdString(t));
     v.selected = w.stat.selected;
     v.wireTab = QByteArray::fromStdString(model::statTabWireName(w, w.stat.selected));

@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <string>
 
-#include "assets/image.h"
+#include "render/image.h"
 
 namespace fugue::assets {
 

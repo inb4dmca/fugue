@@ -33,7 +33,7 @@ MapWidget::MapWidget(QWidget* parent) : QRhiWidget(parent) {
     // Explicit diagnostic override for live application probes. Qt's compositor
     // backend environment alone does not override a QRhiWidget's selected API.
     if (qEnvironmentVariableIntValue("FUGUE_MAP_OPENGL") == 1) setApi(QRhiWidget::Api::OpenGL);
-    // Upstream's switch for its GPU renderer, kept for the one renderer there is now.
+    // FUGUE_GPU_BACKEND (docs/USAGE.md) picks the map's graphics API.
     const QByteArray backend = qgetenv("FUGUE_GPU_BACKEND").toLower();
     if (backend == "opengl") setApi(QRhiWidget::Api::OpenGL);
     else if (backend == "d3d11") setApi(QRhiWidget::Api::Direct3D11);
@@ -373,8 +373,8 @@ std::optional<MapPointer> MapWidget::gesturePointer(QMouseEvent* e, Qt::MouseBut
         if (!control.isEmpty()) {
             p.click.control = control.toStdString();
             // Another map is a map, not just a control: what is under the pointer there is the target, and its empty
-            // area is named by the map's full id as the location (stock 516.1689, upstream's tests/data/dragout-world:
-            // a drag released on a second map's empty area reaches MouseUp and MouseDrop with that map as over_control).
+            // area is named by the map's full id as the location (stock 516.1689: a drag released on a second map's
+            // empty area reaches MouseUp and MouseDrop with that map as over_control).
             if (auto* other = dynamic_cast<MapWidget*>(w); other && other != this) {
                 if (auto hit = other->pointerAt(other->mapFromGlobal(p.global), p.global, e->modifiers(), button);
                     hit && !hit->renderedScene.isEmpty())
@@ -399,7 +399,7 @@ void MapWidget::moveGestures(QMouseEvent* e) {
             continue;
         }
         // Straight from the map to outside every window, the step still names the last cell dragged over, with the
-        // press's pixel in it (stock 516.1689, upstream's tests/data/dragout-world: "screen-loc=9:16,12:16").
+        // press's pixel in it (stock 516.1689: "screen-loc=9:16,12:16").
         if (p->outside && p->click.control.empty() && !press.last.outside &&
             press.last.click.control == press.source->click.control) {
             p->click.screenX = press.last.click.screenX;
@@ -521,8 +521,7 @@ void MapWidget::wheelEvent(QWheelEvent* e) {
     wheelRemainder_ -= QPointF(x, y);
     p->kind = MapPointer::Wheel;
     while (x || y) {
-        // One report per notch, with Windows' own delta of 120 (stock 516.1689, upstream's tests/data/mousewheel-world:
-        // MouseWheel gets delta_y 120).
+        // One report per notch, with Windows' own delta of 120 (stock 516.1689: MouseWheel gets delta_y 120).
         const int stepX = x ? (x > 0 ? 1 : -1) : 0, stepY = y ? (y > 0 ? 1 : -1) : 0;
         p->dx = 120.0f * stepX;
         p->dy = 120.0f * stepY;

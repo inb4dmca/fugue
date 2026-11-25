@@ -1843,7 +1843,7 @@ private slots:
         QCOMPARE(outside.tint[3], 128.f / 255); QCOMPARE(outside.layer, std::nextafter(5.f, 0.f));
     }
     // A one-pixel particle at (0.5, 0.5) of a 96 px set lands at the icon's centre column and one row above its centre
-    // row: stock 516.1689 and Fugue both draw upstream's particles-world dot1 (tile 12,4 of a 15x15 view) at 368,367.
+    // row: stock 516.1689 and Fugue both draw such a dot on tile 12,4 of a 15x15 view at 368,367.
     void particleDotsLandWhereStockDrawsThem() {
         auto w = world();
         auto& set = w.particles[42];

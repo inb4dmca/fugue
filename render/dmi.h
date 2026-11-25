@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "assets/image.h"
+#include "render/image.h"
 
 namespace fugue::assets {
 

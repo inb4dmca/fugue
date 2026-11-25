@@ -1,8 +1,8 @@
 // Bounded legacy-v4 DMI, GIF and JPEG decoding.
 // PNG/DMI metadata parsing and playback remain in shell/dmiicon.cpp.
-#include "assets/dmi.h"
-#include "assets/gif.h"
-#include "assets/jpeg.h"
+#include "render/dmi.h"
+#include "render/gif.h"
+#include "render/jpeg.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -287,7 +287,7 @@ ParseResult parseIcon(const uint8_t* d, size_t n, uint64_t maxPixels) {
         return ok;
     }
     if (n >= 3 && d[0] == 0xff && d[1] == 0xd8 && d[2] == 0xff) {
-        // A JPEG is a plain one-frame opaque icon, decoded as libjpeg does (assets/jpeg.h). It is sniffed by magic, so a
+        // A JPEG is a plain one-frame opaque icon, decoded as libjpeg does (render/jpeg.h). It is sniffed by magic, so a
         // JPEG under a .gif name is one too.
         RgbaImage img;
         std::string why;

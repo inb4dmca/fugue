@@ -2,7 +2,7 @@
 #pragma once
 #include "shell/dmiicon.h"
 #include <functional>
-#include "assets/ddmi.h"
+#include "render/ddmi.h"
 #include <vector>
 
 namespace fugue::shell {

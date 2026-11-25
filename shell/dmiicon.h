@@ -1,6 +1,6 @@
 #pragma once
 #include <QImage>
-#include "assets/dmi.h"
+#include "render/dmi.h"
 #include <QString>
 #include <map>
 #include <memory>

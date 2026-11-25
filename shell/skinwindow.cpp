@@ -836,7 +836,7 @@ void SkinWindow::setSkinIcon(const QString& name, const QByteArray& bytes) {
 void SkinWindow::updateTitle() {
     QString t = skinTitle_;
     // "Dream Seeker" is the default skin's title, in a world's own copy of that skin too: stock shows the world's name
-    // (stock 516.1689, upstream's tests/data/staticons-world).
+    // (stock 516.1689).
     if (t == "Dream Seeker") t.clear();
     if (t.isEmpty()) t = worldName_;
     setWindowTitle(t.isEmpty() ? QString("Fugue") : t);

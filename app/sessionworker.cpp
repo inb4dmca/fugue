@@ -532,7 +532,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
     shell::MapTextCache textMeasure;
     s.setTextMeasure(
         [&](const std::string& text, const std::string& style, uint16_t width) -> std::pair<uint16_t, uint16_t> {
-            // Every request is answered, as upstream does: a refusal resumes the world's proc with null.
+            // Every request is answered: a refusal resumes the world's proc with null.
             const auto settings = live->defaultMapTextSettings();
             bool valid = true;
             const double points = settings.size.empty() ? 0 : QString::fromStdString(settings.size).toDouble(&valid);

@@ -45,11 +45,11 @@ inline const char* kDefaultSkin = R"DMF(macro "macro"
 		name = "F1"
 		command = ".options"
 		is-disabled = false
-	elem
+	elem 
 		name = "F2"
 		command = ".screenshot auto"
 		is-disabled = false
-	elem
+	elem 
 		name = "SHIFT+F2"
 		command = ".screenshot"
 		is-disabled = false
@@ -65,7 +65,7 @@ menu "menu"
 		group = ""
 		is-disabled = false
 		saved-params = "is-checked"
-	elem
+	elem 
 		name = "&Quick screenshot\tF2"
 		command = ".screenshot auto"
 		category = "&File"
@@ -74,7 +74,7 @@ menu "menu"
 		group = ""
 		is-disabled = false
 		saved-params = "is-checked"
-	elem
+	elem 
 		name = "&Save screenshot as...\tShift+F2"
 		command = ".screenshot"
 		category = "&File"

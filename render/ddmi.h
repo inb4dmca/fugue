@@ -34,7 +34,7 @@
 #include <string>
 #include <vector>
 
-#include "assets/dmi.h"
+#include "render/dmi.h"
 
 namespace fugue::assets {
 

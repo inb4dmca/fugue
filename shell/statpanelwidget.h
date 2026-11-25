@@ -11,8 +11,8 @@
 #pragma once
 #include <QColor>
 #include <QFont>
-#include <QList>
 #include <QImage>
+#include <QList>
 #include <QMetaType>
 #include <QString>
 #include <QStringList>

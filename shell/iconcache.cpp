@@ -4,7 +4,7 @@
 
 namespace fugue::shell {
 namespace {
-// An undrawable icon makes its atom invisible: say so once per resource, as upstream does.
+// An undrawable icon makes its atom invisible: say so once per resource.
 // FUGUE_DUMP_REFUSED=<dir> also writes the refused bytes there (they are only at hand when the source is read).
 void reportRefused(uint32_t id, const char* why, const QByteArray* bytes = nullptr) {
     std::fprintf(stderr, "[icon] UNDRAWABLE res %08x: %s\n", id, why);

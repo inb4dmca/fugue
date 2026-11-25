@@ -1,4 +1,4 @@
-#include "assets/jpeg.h"
+#include "render/jpeg.h"
 
 #include <csetjmp>
 #include <cstdio>

@@ -1,11 +1,11 @@
 // DDMI recipes: parse and evaluate. See ddmi.h.
-#include "assets/ddmi.h"
+#include "render/ddmi.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
-#include "assets/image.h"
+#include "render/image.h"
 
 namespace fugue::assets {
 

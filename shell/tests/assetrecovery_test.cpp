@@ -13,7 +13,7 @@
 #include "model/world.h"
 #include "shell/iconcache.h"
 #include "shell/tests/iconfixture.h"
-#include "assets/gif.h"
+#include "render/gif.h"
 using namespace fugue;
 using namespace fugue::shell;
 namespace {

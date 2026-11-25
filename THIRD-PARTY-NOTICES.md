@@ -63,8 +63,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 * Owner: BYOND (Dantom Co.). Licence: BYOND's own terms; **not** covered by the Unlicense.
 * File: `app/defaultskin.h`.
 * What: the skin a world without its own `.dmf` runs under is BYOND's built-in default, `byond.dmf` from BYOND
-  516.1684, included with whitespace and line endings normalised. It is BYOND's file and is reproduced here only so
-  that skinless worlds look as they do in DreamSeeker. Copyright belongs to its owners.
+  516.1684, included verbatim (line endings normalised). It is BYOND's file and is reproduced here only so that
+  skinless worlds look as they do in DreamSeeker. Copyright belongs to its owners.
 
 ## Linked at build time (not included in the tree)
 

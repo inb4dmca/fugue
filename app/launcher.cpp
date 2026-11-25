@@ -139,14 +139,12 @@ PagerOpts parsePagerArgs(const std::vector<std::string>& a) {
                 o.install = true;
             else if (n == "h" || n == "help")
                 o.help = true;
-#ifndef FUGUE_RELEASE
-            else if (n == "auto-join")
+            else if (!kRelease && n == "auto-join")
                 o.autoJoin = need();  // dev-only test hook
-            else if (n == "quit-after")
+            else if (!kRelease && n == "quit-after")
                 o.quitAfter = std::atof(need().c_str());  // dev-only test hook
-            else if (n == "hub-addr")
+            else if (!kRelease && n == "hub-addr")
                 o.hubAddr = need();  // dev-only: sign in against a fake hub
-#endif
             else
                 o.bad = "unknown flag: " + s;
             continue;

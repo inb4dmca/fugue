@@ -1,5 +1,5 @@
 // Spec: GIF89a (see gif.h).
-#include "assets/gif.h"
+#include "render/gif.h"
 
 #include <algorithm>
 #include <array>

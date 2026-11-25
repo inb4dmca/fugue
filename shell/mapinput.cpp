@@ -591,8 +591,7 @@ bool mapPointerCurrent(const MapPointer& p, const model::World& w, uint64_t sess
         // 516.1688, tests/data/click-world mob-member, turf-member).
         const bool mob = (p.visHit->target & model::kRegistryA) != 0;
         const auto& hitCell = p.visHit->cell;
-        // Hover reaches a member like a click does (stock 516.1689, upstream's tests/data/zmouse-world: MouseEntered on
-        // a turf shown from another z).
+        // Hover reaches a member like a click does (stock 516.1689: MouseEntered on a turf shown from another z).
         if (p.visHit->path.empty() || p.visHit->path.size() >= 16) return false;
         if (p.visHit->turf ? c.over.kind != proto::enc::RefTurf || c.over.x != hitCell[0] || c.over.y != hitCell[1] :
             c.over.kind != (mob ? proto::enc::RefMob : proto::enc::RefObj) ||
@@ -745,7 +744,7 @@ Bytes MapHover::update(const MapPointer& p, bool current, bool entered, bool mov
 }
 Bytes mapPointerBody(const MapPointer& pointer) {
     // A turf shown from another z (a vis_contents member) is named by its id, since a cell names the turf on the map's
-    // own z (stock 516.1689, upstream's tests/data/zmouse-world: the click reaches the z 2 turf).
+    // own z (stock 516.1689: a click on a z 2 turf shown that way reaches the z 2 turf).
     auto wire = [](MapPointer q) {
         if (q.visHit && q.visHit->turf && q.visHit->cell[2] != q.z && q.click.over.kind == proto::enc::RefTurf) {
             q.click.over = {};
@@ -758,8 +757,8 @@ Bytes mapPointerBody(const MapPointer& pointer) {
     auto c = p.click;
     if (p.kind == MapPointer::Leave) return proto::enc::encodeHoverLeave();
     // A second map is named by its short id when it is hovered or pressed (as the pointer carries it), and by its full
-    // id in a release, a click, a double click and a drag step (stock 516.1689, upstream's
-    // tests/data/secmapmouse-world: DOWN "map2", UP and CLICK "main.map2").
+    // id in a release, a click, a double click and a drag step (stock 516.1689: DOWN "map2", UP and CLICK
+    // "main.map2").
     const bool secondary = !p.outside && !c.locStr.empty();
     if (secondary && (p.kind == MapPointer::Up || p.kind == MapPointer::Click || p.kind == MapPointer::DoubleClick ||
                       p.kind == MapPointer::Drag))
@@ -774,8 +773,8 @@ Bytes mapPointerBody(const MapPointer& pointer) {
         d.overLocBlank = c.over.kind == proto::enc::RefNull && c.locStr.empty();
         if (secondary) {
             // Over a second map: a turf named by its cell is its own location. A drop's over_location is otherwise the
-            // source's short id on the source's own map, a turf named by id itself, and else null (the same world,
-            // and upstream's render/mousechain.cpp). A drop's screen-loc carries the source map's short id.
+            // source's short id on the source's own map, a turf named by id itself, and else null (stock 516.1689).
+            // A drop's screen-loc carries the source map's short id.
             if (c.over.kind == proto::enc::RefTurf) {
                 d.overLoc = c.over;
                 d.overLocStr.clear();
@@ -793,7 +792,7 @@ Bytes mapPointerBody(const MapPointer& pointer) {
             c.iconY = src.iconY;
         }
         // Another map's empty area (MapWidget::gesturePointer sets its id as the location): the drag step names the map
-        // as over_location, the drop only as over_control (stock 516.1689, upstream's tests/data/dragout-world).
+        // as over_location, the drop only as over_control (stock 516.1689).
         const bool otherMap = p.outside && c.over.kind == proto::enc::RefNull && !c.locStr.empty();
         if (otherMap && d.drop) {  // released there, the source itself is what the drop is over, at its own location
             d.over = src.over; d.overLoc = src.loc; d.overLocStr = src.locStr;
@@ -850,7 +849,7 @@ Bytes mapPointerBody(const MapPointer& pointer) {
     default: c.sub = proto::enc::kMouseClick; break;
     }
     // Released over another map's empty area: MouseUp goes to the pressed atom, with that map as its location (stock
-    // 516.1689, upstream's tests/data/dragout-world: "UP the thing main.map2 main.map2 ...screen-loc=main.map2:9:16,9:16").
+    // 516.1689: "UP the thing main.map2 main.map2 ...screen-loc=main.map2:9:16,9:16").
     if (p.kind == MapPointer::Up && p.outside && p.source && c.over.kind == proto::enc::RefNull && !c.locStr.empty() &&
         p.source->click.over.kind != proto::enc::RefNull) {
         c.over = wire(*p.source).click.over;
