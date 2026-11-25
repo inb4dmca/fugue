@@ -3,8 +3,10 @@
 #include <QtTest>
 #include "tests/testmain.h"
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include "skin/skinfeed.h"
 
 using namespace fugue::skin;
@@ -22,35 +24,57 @@ std::string skinText() {
 
 class WingetControls : public QObject {
     Q_OBJECT
+    bool dataReady_ = false;
 private slots:
     void stockAnswers_data() {
+        dataReady_ = false;
         QTest::addColumn<QString>("control");
         QTest::addColumn<QString>("params");
         QTest::addColumn<QString>("answer");
         QFile f(fixture("dreamseeker-answers.jsonl"));
-        QVERIFY(f.open(QIODevice::ReadOnly));
-        int count = 0;
+        QVERIFY2(f.open(QIODevice::ReadOnly), qPrintable(f.fileName()+": "+f.errorString()));
+        QJsonArray rows;
+        QSet<QPair<QString,QString>> queries;
+        int lineNumber = 0;
         while (!f.atEnd()) {
+            ++lineNumber;
             const QByteArray line = f.readLine().trimmed();
+            const auto context = f.fileName()+':'+QString::number(lineNumber);
+            QVERIFY2(f.error()==QFileDevice::NoError, qPrintable(context+": "+f.errorString()));
             if (line.isEmpty()) continue;
-            const QJsonDocument doc = QJsonDocument::fromJson(line);
-            QVERIFY(doc.isObject());
+            QJsonParseError error;
+            const QJsonDocument doc = QJsonDocument::fromJson(line,&error);
+            QVERIFY2(doc.isObject(), qPrintable(context+": expected a JSON object: "+error.errorString()));
             const QJsonObject row = doc.object();
+            // Empty strings are retained observations, including unknown controls
+            // and properties; absent fields must not acquire the same meaning.
+            for (const char* field : {"control","params","answer"})
+                QVERIFY2(row[field].isString(), qPrintable(context+": missing string field "+field));
+            const auto query = qMakePair(row["control"].toString(),row["params"].toString());
+            QVERIFY2(!queries.contains(query), qPrintable(context+": duplicate retained query"));
+            queries.insert(query);
+            rows.append(row);
+        }
+        QCOMPARE(rows.size(),120);
+        for (const auto& value : rows) {
+            const auto row = value.toObject();
             const QString control = row.value("control").toString();
             const QString params = row.value("params").toString();
             const QByteArray name = (control + " / " + params).toUtf8();
             QTest::newRow(name.constData()) << control << params << row.value("answer").toString();
-            ++count;
         }
-        QCOMPARE(count, 120);
+        dataReady_ = true;
     }
     void stockAnswers() {
+        // QtTest still enters the body after a failed _data() validation.
+        QVERIFY2(dataReady_,"No validated stock winget answers");
         QFETCH(QString, control);
         QFETCH(QString, params);
         QFETCH(QString, answer);
         auto live = std::make_shared<LiveSkin>();
-        QVERIFY(!skinText().empty());
-        QCOMPARE(live->load(skinText()), std::string());
+        const auto source = skinText();
+        QVERIFY2(!source.empty(),qPrintable(fixture("skin.dmf")+": missing or empty skin"));
+        QCOMPARE(live->load(source), std::string());
         live->setClient(640, 480);
         SkinFeed feed(live);
         WingetQuery q{control.toStdString(), params.toStdString(), 42};
@@ -68,6 +92,8 @@ private slots:
         QCOMPARE(QString::fromStdString(feed.answer(q)), answer);
     }
     void deferredUntilLayout() {
+        const auto source = skinText();
+        QVERIFY2(!source.empty(),qPrintable(fixture("skin.dmf")+": missing or empty skin"));
         auto live = std::make_shared<LiveSkin>();
         SkinFeed feed(live);
         const WingetQuery q{"alpha;beta", "size", 7};
@@ -80,7 +106,7 @@ private slots:
         feed.submitWinget(q, 0, reply);
         QCOMPARE(feed.held(), size_t(1));
         QCOMPARE(replies, 0);
-        QCOMPARE(live->load(skinText()), std::string());
+        QCOMPARE(live->load(source), std::string());
         feed.pump(1, reply);
         QCOMPARE(replies, 0);
         live->setClient(640, 480);

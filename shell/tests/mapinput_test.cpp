@@ -1,6 +1,7 @@
 #include "tests/appearancejson.h"
 #include <QtTest>
 #include "tests/testmain.h"
+#include "tests/recordedinput.h"
 #include "shell/mapinput.h"
 #include "shell/mapvisibility.h"
 #include "shell/mappresentation.h"
@@ -250,11 +251,19 @@ private slots:
         }
     }
     void stockWideMousePackets() {
-        QFile file(QString(FUGUE_TEST_DATA_DIR)+"/hud-relay-world/wide-mouse.json");QVERIFY(file.open(QIODevice::ReadOnly));
-        const auto rows=QJsonDocument::fromJson(file.readAll()).object()["bodies"].toObject();QCOMPARE(rows.size(),8);
+        const QString path=QString(FUGUE_TEST_DATA_DIR)+"/hud-relay-world/wide-mouse.json";
+        QJsonDocument document;QString error;
+        QVERIFY2(testinput::readRecordedJson(path,document,error),qPrintable(error));
+        const auto rows=document.object()["bodies"].toObject();
+        QCOMPARE(rows.keys(),(QStringList{"03","04","05","06","08","drag","drop","wheel"}));
+        std::map<QString,Bytes> expected;
+        for (auto it=rows.begin();it!=rows.end();++it) {
+            auto body=hexDecode(it.value().toString().toStdString());
+            QVERIFY2(it.value().isString() && body && !body->empty(),qPrintable(path+": invalid hexadecimal body for "+it.key()));
+            expected[it.key()]=std::move(*body);
+        }
         auto check=[&](const Bytes& narrow,const QString& name) {
-            const auto expected=QByteArray::fromHex(rows[name].toString().toLatin1());
-            QCOMPARE(proto::enc::mouseWireBody(narrow,true),Bytes(expected.begin(),expected.end()));
+            QCOMPARE(proto::enc::mouseWireBody(narrow,true),expected.at(name));
             QCOMPARE(proto::enc::mouseWireBody(narrow,false),narrow); // negotiated mode, not ID magnitude
         };
         MapPointer p;p.click.over=proto::enc::objRef(0);p.click.control="main.map";

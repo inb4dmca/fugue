@@ -7,7 +7,8 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QTextStream>
+#include <QRegularExpression>
+#include <QSet>
 #include <cmath>
 #include "model/world.h"
 #include "shell/iconcache.h"
@@ -22,23 +23,14 @@ QByteArray load(const QString& path) {
     return file.readAll();
 }
 struct Case { QString name; uint32_t id; int x, y; };
-QList<Case> cases() {
-    const auto bytes = load("ddmiops-world/cases.tsv");
-    QTextStream stream(bytes);
-    QList<Case> out;
-    while (!stream.atEnd()) {
-        QString name, id; int x = 0, y = 0;
-        stream >> name >> id >> x >> y;
-        if (!name.isEmpty()) out.push_back({name,id.toUInt(nullptr,16),x,y});
-    }
-    return out;
-}
 }
 class AssetRecoveryTest : public QObject {
     Q_OBJECT
     model::Session session_;
     IconCache cache_;
     std::map<uint32_t,QByteArray> resources_;
+    QList<Case> cases_;
+    const QSet<QString> animated_{"d_insanim","e_insdelay","e_insframe3","f_walkboth","f_walkmv","f_walkstill","f_wholemov"};
     void begin() {
         cache_.begin(session_.world().resources, [this](uint32_t id,QByteArray& out) {
             const auto it = resources_.find(id);
@@ -88,6 +80,36 @@ class AssetRecoveryTest : public QObject {
 private slots:
     void initTestCase() {
         const auto dir=QString(FUGUE_TEST_DATA_DIR)+"/ddmiops-world";
+        QFile inventory(dir+"/cases.tsv");
+        QVERIFY2(inventory.open(QIODevice::ReadOnly),qPrintable(inventory.fileName()+": "+inventory.errorString()));
+        const QRegularExpression record(R"(^([^\s]+)\t([0-9a-fA-F]{8})\t([1-9][0-9]*)\t([1-9][0-9]*)$)");
+        QList<Case> cases;
+        QSet<QString> names;
+        int lineNumber=0;
+        while (!inventory.atEnd()) {
+            ++lineNumber;
+            const auto context=inventory.fileName()+':'+QString::number(lineNumber)+": ";
+            auto line=QString::fromUtf8(inventory.readLine());
+            QVERIFY2(inventory.error()==QFileDevice::NoError,qPrintable(context+inventory.errorString()));
+            if (line.endsWith('\n')) line.chop(1);
+            if (line.endsWith('\r')) line.chop(1);
+            if (line.isEmpty()) continue;
+            const auto match=record.match(line);
+            QVERIFY2(match.hasMatch(),qPrintable(context+"Expected four tab-separated fields: name, eight-digit hex ID, positive x and y"));
+            const auto name=match.captured(1);
+            QVERIFY2(!names.contains(name),qPrintable(context+"Duplicate recipe name: "+name));
+            bool validId=false,validX=false,validY=false;
+            const auto id=match.captured(2).toUInt(&validId,16);
+            const int x=match.captured(3).toInt(&validX),y=match.captured(4).toInt(&validY);
+            QVERIFY2(validId && validX && validY,qPrintable(context+"Recipe ID or coordinates are out of range"));
+            names.insert(name);
+            cases.push_back({name,id,x,y});
+        }
+        QVERIFY2(cases.size()==118,qPrintable(inventory.fileName()+": expected 118 retained recipes"));
+        for (const auto& name:animated_)
+            QVERIFY2(names.contains(name),qPrintable(inventory.fileName()+": missing animated recipe "+name));
+        cases_=std::move(cases);
+
         std::vector<testinput::RecordedFrame> frames;
         QString error;
         QJsonDocument manifestDocument;
@@ -108,9 +130,11 @@ private slots:
     }
     void dreamDaemonRecipes_data() {
         QTest::addColumn<QString>("name"); QTest::addColumn<uint32_t>("id");
-        for (const auto& c : cases()) QTest::newRow(qPrintable(c.name)) << c.name << c.id;
+        QVERIFY2(!cases_.isEmpty(),"Retained recipe inventory was not loaded");
+        for (const auto& c : cases_) QTest::newRow(qPrintable(c.name)) << c.name << c.id;
     }
     void dreamDaemonRecipes() {
+        QVERIFY2(!cases_.isEmpty(),"Retained recipe inventory was not loaded");
         QFETCH(QString,name); QFETCH(uint32_t,id);
         const auto result = finish(id);
         QVERIFY2(result.ready,IconCache::statusName(result.status));
@@ -126,10 +150,11 @@ private slots:
         // Asset-only counterpart of the old map test: no scene assembler restored.
         const auto stock = QImage::fromData(load("ddmiops-world/dreamseeker.png"));
         QVERIFY(!stock.isNull());
-        const QSet<QString> animated{"d_insanim","e_insdelay","e_insframe3","f_walkboth","f_walkmv","f_walkstill","f_wholemov"};
         int compared = 0;
-        for (const auto& c : cases()) {
-            if (animated.contains(c.name)) continue;
+        for (const auto& c : cases_) {
+            if (animated_.contains(c.name)) continue;
+            QVERIFY2(c.x < stock.width()/32 && c.y < stock.height()/32,
+                     qPrintable(c.name+": retained 64x64 sample is outside the stock image"));
             QVERIFY(finish(c.id).ready);
             const auto& icon = cache_.icon(c.id);
             const auto frame = icon.frame(c.name == "c_insert" ? "ins" : c.name == "d_insfull" ? "x" : "",2);
@@ -167,14 +192,14 @@ private slots:
         QCOMPARE(icon.cell,QSize(1,1)); QVERIFY(icon.state("")); QCOMPARE(icon.state("")->frames,1);
         QCOMPARE(icon.sheet.pixelColor(0,0),QColor(Qt::red));
         QCOMPARE(icon.state("")->flickFrameAt(100000000,0),-1);
-        for (const auto& c : cases()) if (c.name == "e_insmoving") {
-            QVERIFY(finish(c.id).ready);
-            const auto& generated = cache_.icon(c.id);
-            QVERIFY(generated.metadata); QCOMPARE(generated.metadata->size(),size_t(1));
-            const auto& state=generated.metadata->front();
-            QVERIFY(state.movement); QCOMPARE(state.frames,int64_t(1)); QCOMPARE(state.delays,std::vector<double>{2.});
-            QVERIFY(!generated.states.count("m")); // movement state retained, not an ordinary state
-        }
+        const auto moving=std::find_if(cases_.begin(),cases_.end(),[](const auto& c){return c.name=="e_insmoving";});
+        QVERIFY2(moving!=cases_.end(),"Retained recipe inventory is missing e_insmoving");
+        QVERIFY(finish(moving->id).ready);
+        const auto& generated = cache_.icon(moving->id);
+        QVERIFY(generated.metadata); QCOMPARE(generated.metadata->size(),size_t(1));
+        const auto& state=generated.metadata->front();
+        QVERIFY(state.movement); QCOMPARE(state.frames,int64_t(1)); QCOMPARE(state.delays,std::vector<double>{2.});
+        QVERIFY(!generated.states.count("m")); // movement state retained, not an ordinary state
     }
     void gifPlaybackAndGrayscale() {
         const auto icon = DmiIcon::decode(load("gifanim/a.gif")); const auto* s=icon.state(""); QVERIFY(s);
