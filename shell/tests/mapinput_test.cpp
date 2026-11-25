@@ -325,10 +325,16 @@ private slots:
         QCOMPARE(f.at({79,16}).click.over.kind,uint8_t(proto::enc::RefTurf));
         const auto retained=mapPointerAt({79,16},{224,160},{7,5},f.frame.source,f.frame.geometry,"main.map",true,old);
         QVERIFY(retained && retained->planeMousePath);QCOMPARE(retained->click.over.ref,1u);
-        for(int variant=0;variant<6;++variant) {
+        {   // A relay standing one pixel further right moves what it draws and what it passes clicks to with it (stock
+            // 516.1689, tests/data/plane-relay-world loc23, locpx).
+            test::HudRelayFixture moved("chain");
+            for(auto& s:moved.sprites) if(s.atom==3) s.iconBottom.rx()+=1;
+            const auto through=moved.at({80,16});
+            QVERIFY(through.planeMousePath); QCOMPARE(through.click.over.ref,1u); QCOMPARE(through.click.iconX,4);
+        }
+        for(int variant=1;variant<6;++variant) {
             test::HudRelayFixture refused("chain");
             for(auto& s:refused.sprites) if(s.atom==3) {
-                if(variant==0) s.iconBottom.rx()+=1; // translated plane relay
                 if(variant==1) {auto fx=std::make_shared<PlaneEffects>();fx->filters.push_back({});s.planeEffects=fx;}
                 if(variant==2) s.tint[3]=.5f;
                 if(variant==3) s.passMouse=false; // mixed ownership chain is not admitted
@@ -468,6 +474,62 @@ private slots:
         QVERIFY2(over == (QSet<QString>{"floor", "part", "holder", "child", "master", "leaner"}), qPrintable(QStringList(over.values()).join(", ")));
         QVERIFY2(clicks >= 60 && menus >= 30, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
     }
+    // tests/data/plane-relay-world (stock 516.1689): plane 1's master has the render target "*p1" and a screen object
+    // draws it through render_source, standing elsewhere, with a matrix of its own, without PASS_MOUSE, or over a
+    // master with a matrix (see its README). replay/<case>.txt is what DreamDaemon sent for the case; clicks.json what
+    // stock named for left clicks (with icon-x/y) and listed in right-click menus where the relay draws each atom, where
+    // the atom stands and on empty floor.
+    void planeRelaysLikeStock() {
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/plane-relay-world/clicks.json";
+        QJsonDocument document; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
+        QSet<QString> remaining{"plain", "nopass", "visible", "visible-loc23", "loc23", "nopass-loc23", "locpx", "loccenter",
+                                "rturn90", "nopass-rturn90", "rt_45", "rhalf", "rscalex2", "rflip", "rmove", "rgrowmove",
+                                "rturnmove", "malpha-rhalf", "malpha-rt_45", "mturn90", "nopass-mturn90", "mturn90-loc23",
+                                "norelay"};
+        QSet<QString> over;
+        int clicks = 0, menus = 0;
+        for (const auto& value : document.object()["cases"].toArray()) {
+            const auto row = value.toObject(); const auto name = row["case"].toString();
+            QVERIFY2(remaining.remove(name), qPrintable(path + ": unknown or duplicate case " + name));
+            test::ReplayFixture f;
+            QVERIFY2(f.load(name + ".txt", "plane-relay-world/replay"), qPrintable(name + ": " + f.error));
+            QCOMPARE(f.frame.source.size(), QSize(224, 224));
+            auto pick = [&](const QJsonValue& at, QString& context) -> std::optional<MapPointer> {
+                context = QString("%1 at %2,%3").arg(name).arg(at[0].toInt()).arg(at[1].toInt());
+                if (!testinput::isIntegerTuple(at, 2, 0, 223)) return {};
+                return mapPointerAt(QPointF(at[0].toInt(), at[1].toInt()), {224, 224}, {7, 7}, f.frame.source,
+                                    f.frame.geometry, "map", true, f.sprites);
+            };
+            for (const auto& entry : row["clicks"].toArray()) {
+                const auto click = entry.toObject(); QString context;
+                const auto hit = pick(click["at"], context);
+                QVERIFY2(hit, qPrintable(context));
+                const auto named = QString::fromStdString(f.targetName(*hit));
+                QVERIFY2(named == click["over"].toString() && hit->click.iconX == click["iconX"].toInt() &&
+                         hit->click.iconY == click["iconY"].toInt(),
+                         qPrintable(QString("%1: stock %2 x=%3 y=%4, got %5 x=%6 y=%7").arg(context, click["over"].toString())
+                                    .arg(click["iconX"].toInt()).arg(click["iconY"].toInt()).arg(named)
+                                    .arg(hit->click.iconX).arg(hit->click.iconY)));
+                QVERIFY2(mapPointerCurrent(*hit, f.session.world(), 0), qPrintable(context + ": not current"));
+                over.insert(named); ++clicks;
+            }
+            for (const auto& entry : row["menus"].toArray()) {
+                const auto menu = entry.toObject(); QString context;
+                const auto hit = pick(menu["at"], context);
+                QVERIFY2(hit, qPrintable(context));
+                QStringList stock, listed;
+                for (const auto& atom : menu["entries"].toArray()) stock.push_back(atom.toString());
+                for (const auto& candidate : mapPointerStack(*hit)) listed.push_back(QString::fromStdString(f.targetName(candidate)));
+                QVERIFY2(!stock.empty() && listed == stock,
+                         qPrintable(QString("%1: stock menu %2, got %3").arg(context, stock.join(", "), listed.join(", "))));
+                ++menus;
+            }
+        }
+        QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + QStringList(remaining.values()).join(", ")));
+        QVERIFY2(over == (QSet<QString>{"floor", "part", "other", "button", "relay"}), qPrintable(QStringList(over.values()).join(", ")));
+        QVERIFY2(clicks >= 150 && menus >= 150, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
+    }
     void worldPassMouseLifetimeAndBounds() {
         test::PlaneSourceFixture f;
         f.relay({{"appearanceFlags",double(0x80000204u)}});
@@ -505,14 +567,23 @@ private slots:
             QVERIFY(!mapPointerCurrent(event,f.world,17));
         }
         const auto original=f.sprites;
+        {   // The master's matrix is taken back (stock 516.1689, tests/data/plane-relay-world mturn90): moved one pixel
+            // right, the source is found one pixel further right.
+            f.sprites=original;
+            for(auto& s:f.sprites) if(s.atom==200) {
+                auto fx=std::make_shared<PlaneEffects>(); fx->matrix=std::array<double,6>{1,0,1,0,1,0}; s.planeEffects=fx;
+            }
+            const auto moved=f.at({70,37});
+            QVERIFY(moved.planeMousePath); QCOMPARE(moved.click.over.ref,100u); QCOMPARE(moved.click.iconX,hit.click.iconX);
+        }
         for(int variant=0;variant<9;++variant) {
+            if(variant==2) continue;
             f.sprites=original;
             for(auto& s:f.sprites) {
-                if(s.atom==200 && variant<=2) {
+                if(s.atom==200 && variant<=1) {
                     auto fx=std::make_shared<PlaneEffects>();
                     if(variant==0) fx->ignoredFilters=1;
                     if(variant==1) fx->supported=false;
-                    if(variant==2) fx->matrix=std::array<double,6>{1,0,1,0,1,0};
                     s.planeEffects=fx;
                 }
                 if(s.atom==100) {
@@ -577,7 +648,6 @@ private slots:
         for (auto kind:{MapPointer::Hover,MapPointer::Drag,MapPointer::Drop,MapPointer::DoubleClick}) {
             auto gesture=hit; gesture.kind=kind; QVERIFY(!mapPointerCurrent(gesture,f.world,17));
         }
-        QVERIFY(mapPointerStack(hit).empty()); // no invented plane-relay rectangle menu
         ++f.world.hudIdentity[200].membership; QVERIFY(!mapPointerCurrent(hit,f.world,17)); --f.world.hudIdentity[200].membership;
         ++f.world.hudIdentity[201].membership; QVERIFY(!mapPointerCurrent(hit,f.world,17)); --f.world.hudIdentity[201].membership;
         ++f.world.atoms[100].renderIdentity; QVERIFY(!mapPointerCurrent(hit,f.world,17)); --f.world.atoms[100].renderIdentity;
