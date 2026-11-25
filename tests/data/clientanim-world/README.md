@@ -57,6 +57,11 @@ capture should retain its version, setup, measured output and timing uncertainty
 before replacing any historical expectation. GPU or native checks can then use
 that evidence where the behaviour crosses those boundaries.
 
+The separate [direct-set observation](../clientanim-directset-world/README.md)
+now retains fresh stock pixels for three checkpoints of that isolated behavior.
+The same QtTest suite consumes them in `stockDirectSet`; they do not replace or
+establish provenance for this older recording's other expectations.
+
 Build, then select the suite with
 `ctest --test-dir build -R '^shell_clientanim$' --output-on-failure` (add
 `-C Release` for a Windows multi-config build). Platform setup is in

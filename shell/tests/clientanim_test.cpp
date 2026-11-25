@@ -2,7 +2,9 @@
 // Each frame arrives at its preceding "@N" tick; the named checks below own their sample times and expected offsets.
 // Those numeric offsets are historical source-encoded expectations, not retained stock output. The fractional
 // direct-set checks separately test recorded wire facts and Fugue's sampling/arrival-clock invariants. See the fixture README.
+// stockDirectSet additionally consumes an independent DreamSeeker 516.1689 observation of the direct-set case.
 #include <QtTest>
+#include <QCryptographicHash>
 #include "tests/testmain.h"
 #include "model/world.h"
 #include "shell/tests/replayfixture.h"
@@ -196,6 +198,121 @@ private slots:
         QCOMPARE(offset(192), QPoint(30, 0));
         QCOMPARE(offset(198), QPoint(14, 0));
         QCOMPARE(offset(200), QPoint(0, 0));
+    }
+
+    void stockDirectSet() {
+        const QString fixture="clientanim-directset-world/stock";
+        const QString directory=QString(FUGUE_TEST_DATA_DIR)+'/'+fixture+'/';
+        QFile observationsFile(directory+"observations.json");
+        QVERIFY2(observationsFile.open(QIODevice::ReadOnly),qPrintable(observationsFile.fileName()));
+        QJsonParseError parseError;
+        const auto observations=QJsonDocument::fromJson(observationsFile.readAll(),&parseError).object();
+        QCOMPARE(parseError.error,QJsonParseError::NoError);
+        QFile captureFile(directory+"capture.json");
+        QVERIFY2(captureFile.open(QIODevice::ReadOnly),qPrintable(captureFile.fileName()));
+        const auto capture=QJsonDocument::fromJson(captureFile.readAll(),&parseError).object();
+        QCOMPARE(parseError.error,QJsonParseError::NoError);
+        QVERIFY(capture["complete"].toBool());
+        QVERIFY(!observations["stock_version"].toString().isEmpty());
+        QCOMPARE(observations["stock_version"].toString(),capture["dreamdaemon_version"].toString());
+        const auto setup=observations["replay"].toObject();
+        const auto origin=setup["origin_ns"].toInteger(), tickNs=setup["tick_ns"].toInteger();
+        const int pixelsPerTick=setup["clock_pixels_per_tick"].toInt();
+        QVERIFY(origin>0 && tickNs>0 && pixelsPerTick>0);
+        const auto size=setup["viewport"].toArray(), player=setup["player_origin"].toArray();
+        const QSize viewport(size[0].toInt(),size[1].toInt());
+        const QPoint playerOrigin(player[0].toInt(),player[1].toInt());
+        QCOMPARE(viewport,QSize(352,352)); QCOMPARE(playerOrigin,QPoint(160,160));
+        const auto crop=observations["measurement"].toObject()["crop"].toArray();
+        const QRect source(crop[0].toInt(),crop[1].toInt(),crop[2].toInt(),crop[3].toInt());
+        QCOMPARE(source.size(),viewport);
+
+        std::vector<Frame> frames;
+        QMap<QString,int> actions;
+        shell::test::ReplayFixture recording;
+        int tick=0;
+        bool ordered=true;
+        QVERIFY2(recording.readFrames("frames.txt",fixture,[&](uint16_t type,const Bytes& body) {
+            if(type==S2C::Text) {
+                const auto text=QByteArray(reinterpret_cast<const char*>(body.data()),qsizetype(body.size()))
+                    .split('\0').front().trimmed();
+                if(text.startsWith('@')) {
+                    bool valid=false; const int next=text.mid(1).toInt(&valid);
+                    ordered=ordered && valid && next>=tick; tick=next;
+                } else if(text.startsWith("CAPTURE ")) {
+                    const QString name=QString::fromUtf8(text.mid(8));
+                    ordered=ordered && !actions.contains(name); actions[name]=tick;
+                }
+            }
+            frames.push_back({type,body,tick});
+        }),qPrintable(recording.error));
+        QVERIFY(ordered);
+        QCOMPARE(int(frames.size()),setup["frames"].toInt());
+        QCOMPARE(actions.keys(),(QStringList{"assigned","end","settled","start"}));
+        const int start=actions["start"];
+        QCOMPARE(actions["assigned"]-start,5); QCOMPARE(actions["settled"]-start,20); QCOMPARE(actions["end"]-start,30);
+
+        // Both the retained PNG and replay are measured by colour; only stock supplies the expectations.
+        const auto bounds=[](const QImage& image,uint32_t colour) {
+            QRect result;
+            for(int y=0;y<image.height();++y) for(int x=0;x<image.width();++x)
+                if((image.pixel(x,y)&0xffffff)==colour) result|=QRect(x,y,1,1);
+            return result;
+        };
+        const QMap<QString,uint32_t> phaseColours{{"running",0xdcb414},{"assigned",0xb414dc},{"settled",0x14dc50}};
+        QStringList names;
+        for(const auto& value:observations["checkpoints"].toArray()) {
+            const auto checkpoint=value.toObject(); const auto name=checkpoint["name"].toString(); names.push_back(name);
+            const auto imageName=checkpoint["image"].toString(), phase=checkpoint["phase"].toString();
+            QVERIFY(phaseColours.contains(phase));
+            QFile imageFile(directory+imageName);
+            QVERIFY2(imageFile.open(QIODevice::ReadOnly),qPrintable(imageFile.fileName()));
+            const auto bytes=imageFile.readAll();
+            QCOMPARE(QCryptographicHash::hash(bytes,QCryptographicHash::Sha256).toHex(),checkpoint["sha256"].toString().toLatin1());
+            const auto raw=QImage::fromData(bytes);
+            int captures=0;
+            for(const auto& entry:capture["frames"].toArray()) {
+                const auto record=entry.toObject();
+                if(record["subject"]!="stock" || record["image"]!=imageName) continue;
+                const auto physical=record["geometry"].toObject()["client_size_physical"].toArray();
+                QCOMPARE(raw.size(),QSize(physical[0].toInt(),physical[1].toInt())); ++captures;
+            }
+            QCOMPARE(captures,1); QVERIFY(raw.rect().contains(source));
+            const auto stock=raw.copy(source);
+            const auto stockPlayer=bounds(stock,kPlayer), stockClock=bounds(stock,0xffffff);
+            QCOMPARE(stockPlayer.size(),QSize(32,32)); QCOMPARE(stockPlayer.y(),playerOrigin.y());
+            QCOMPARE(stockClock.size(),QSize(2,6)); QCOMPARE(stockClock.y(),0);
+            const int stockOffset=playerOrigin.x()-stockPlayer.x();
+            const int stockTime=stockClock.x()-stockPlayer.x()+playerOrigin.x();
+            QCOMPARE(stockOffset,checkpoint["offset_x"].toInt()); QCOMPARE(stockTime,checkpoint["clock_pixels"].toInt());
+            const QRect phaseBox(0,viewport.height()-32,32,32);
+            QCOMPARE(bounds(stock,phaseColours[phase]),phaseBox);
+            const int tolerance=checkpoint["tolerance_px"].toInt();
+            QCOMPARE(tolerance,phase=="settled" ? 0 : 1);
+
+            // A clock pixel spans 10 ms. Sample its midpoint, keeping wire arrivals on their recorded ticks.
+            const double sample=start+(stockTime+0.5)/pixelsPerTick;
+            QCOMPARE(phase,sample<actions["assigned"] ? QString("running") :
+                sample<actions["settled"] ? QString("assigned") : QString("settled"));
+            shell::test::ReplayFixture replay;
+            for(const auto& frame:frames) {
+                if(frame.tick>int(sample)) break;
+                replay.ingest(frame.typ,frame.body,origin+frame.tick*tickNs);
+            }
+            QVERIFY2(replay.loadResources(fixture),qPrintable(replay.error));
+            replay.refresh(origin+int64_t(sample*double(tickNs)));
+            const auto rendered=AnimationFixture::raster(replay.frame,replay.sprites);
+            QCOMPARE(rendered.size(),viewport);
+            const auto actualPlayer=bounds(rendered,kPlayer), actualClock=bounds(rendered,0xffffff);
+            QCOMPARE(actualPlayer.size(),stockPlayer.size()); QCOMPARE(actualPlayer.y(),stockPlayer.y());
+            const int actualOffset=playerOrigin.x()-actualPlayer.x();
+            QVERIFY2(std::abs(actualOffset-stockOffset)<=tolerance,qPrintable(name+": player offset differs from stock"));
+            QCOMPARE(actualClock.size(),stockClock.size()); QCOMPARE(actualClock.y(),stockClock.y());
+            const int actualTime=actualClock.x()-actualPlayer.x()+playerOrigin.x();
+            QVERIFY2(std::abs(actualTime-stockTime)<=1,qPrintable(name+": replay clock differs from stock"));
+            QCOMPARE(bounds(rendered,phaseColours[phase]),phaseBox);
+        }
+        QCOMPARE(names,(QStringList{"before-assignment","after-assignment","settled"}));
     }
 };
 

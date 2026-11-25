@@ -8,6 +8,7 @@ update: the tests themselves replay what this writes and need none of it.
   stockprobe.py pair <name>               grabs both maps: <out>/<name>-stock.png, -client.png and -diff.png
   stockprobe.py click <name> ACTION...    does the same things in both windows (client-area pixels) and prints what
                                           the world logged for each, action by action
+  stockprobe.py capture <name>           timed raw window images, capture bounds, geometry, wire and logs in --out/name
 
 An ACTION is one of
   X,Y                    a left click
@@ -25,10 +26,11 @@ PrintWindow and clicked with posted messages. Only the processes started here ar
 Stock draws by the display scale its process started on (default-size maptext differs between 100 % and 150 %), so
 replay/recorded.tsv keeps the scale of every recording; DreamSeeker's map also stays blank while the display is idle.
 """
-import argparse, ctypes, datetime, json, os, re, shutil, subprocess, sys, tempfile, time
+import argparse, ctypes, datetime, hashlib, json, math, os, re, shutil, subprocess, sys, tempfile, time, uuid
 from ctypes import wintypes
 from pathlib import Path
 from PIL import Image, ImageChops
+from capture import capture_sequence, write_record
 
 HERE = Path(__file__).resolve().parent
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -37,17 +39,36 @@ ap.add_argument('--params', default='', help='world.params for pair and click, e
 ap.add_argument('--client', default=os.environ.get('FUGUE_CLIENT', ''), help='fugue-qt executable (or FUGUE_CLIENT)')
 ap.add_argument('--byond', default=os.environ.get('BYOND_BIN', 'C:/Program Files (x86)/BYOND/bin'), help='BYOND bin directory')
 ap.add_argument('--work', default='', help='scratch directory (default: a temporary one)')
-ap.add_argument('--out', default='.', help='where pair writes its images')
+ap.add_argument('--out', default='.', help='where pair/capture writes its observations')
 ap.add_argument('--port', type=int, default=18790)
 ap.add_argument('--settle', type=float, default=6, help='seconds between the last login and the grab')
 ap.add_argument('--map', default='576x384', help='size of the map at the top left of both windows')
-ap.add_argument('command', choices=['record', 'pair', 'click'])
+ap.add_argument('--duration', type=float, default=5, help='capture duration in seconds')
+ap.add_argument('--interval', type=float, default=.05, help='requested seconds between capture samples')
+ap.add_argument('--trigger-file', default='', help='capture: create this fresh relative work file with a unique token')
+ap.add_argument('command', choices=['record', 'pair', 'click', 'capture'])
 ap.add_argument('args', nargs='+')
 a = ap.parse_args()
 if sys.platform != 'win32': sys.exit('stockprobe needs Windows: DreamSeeker runs nowhere else')
 if not a.client or not Path(a.client).exists(): sys.exit('--client (or FUGUE_CLIENT): the fugue-qt executable to run')
-world = Path(a.world).resolve(); byond = Path(a.byond); mapsize = tuple(int(v) for v in a.map.split('x'))
+a.client = str(Path(a.client).resolve())
+world = Path(a.world).resolve(); byond = Path(a.byond).resolve(); mapsize = tuple(int(v) for v in a.map.split('x'))
 work = Path(a.work).resolve() if a.work else Path(tempfile.mkdtemp(prefix='stockprobe-'))
+if work == world or work in world.parents: sys.exit('--work must not contain the source fixture')
+if a.command == 'capture':
+    if work.exists() and any(work.iterdir()): sys.exit('capture requires a new or empty --work directory')
+    if len(a.args) != 1 or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', a.args[0]):
+        sys.exit('capture requires one plain directory name')
+    if not all(math.isfinite(v) and v > 0 for v in (a.duration, a.interval)):
+        sys.exit('--duration and --interval must be finite positive seconds')
+    capture_out = Path(a.out).resolve() / a.args[0]
+    if capture_out.exists(): sys.exit('capture output already exists: ' + str(capture_out))
+    if capture_out == work or work in capture_out.parents or capture_out in work.parents:
+        sys.exit('capture output and runtime work directories must not contain each other')
+    trigger_path = (work / a.trigger_file).resolve() if a.trigger_file else None
+    if trigger_path and (Path(a.trigger_file).is_absolute() or work not in trigger_path.parents):
+        sys.exit('--trigger-file must stay inside the runtime work directory')
+    if trigger_path and trigger_path.exists(): sys.exit('trigger file already exists: ' + str(trigger_path))
 
 user32 = ctypes.windll.user32; gdi32 = ctypes.windll.gdi32
 user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))   # sizes in real pixels
@@ -57,6 +78,8 @@ for f, res in ((user32.GetDC, wintypes.HDC), (gdi32.CreateCompatibleDC, wintypes
 user32.GetDC.argtypes = [wintypes.HWND]; user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
 gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
 user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.c_void_p]; user32.IsWindowVisible.argtypes = [wintypes.HWND]
+user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.c_void_p]
+user32.GetDpiForWindow.argtypes = [wintypes.HWND]
 user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.c_void_p]
 user32.MapWindowPoints.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_void_p, wintypes.UINT]
 gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
@@ -87,16 +110,37 @@ def main_window(pid):
     return max(found)[1]
 
 
-def grab(pid):
+def grab(pid, with_geometry=False):
     """The window's client area, drawn by the window itself (works behind other windows)."""
-    hwnd = main_window(pid); r = wintypes.RECT(); user32.GetClientRect(hwnd, ctypes.byref(r)); w, h = r.right, r.bottom
-    screen = user32.GetDC(None); dc = gdi32.CreateCompatibleDC(screen); bmp = gdi32.CreateCompatibleBitmap(screen, w, h)
-    old = gdi32.SelectObject(dc, bmp); user32.PrintWindow(hwnd, dc, 3)   # PW_CLIENTONLY | PW_RENDERFULLCONTENT
-    gdi32.SelectObject(dc, old)
-    header = (ctypes.c_uint32 * 10)(40, w, ctypes.c_uint32(-h).value, 1 | 32 << 16, 0, 0, 0, 0, 0, 0)   # top-down 32-bit
-    pixels = ctypes.create_string_buffer(w * h * 4); gdi32.GetDIBits(dc, bmp, 0, h, pixels, header, 0)
-    gdi32.DeleteObject(bmp); gdi32.DeleteDC(dc); user32.ReleaseDC(None, screen)
-    return Image.frombuffer('RGBA', (w, h), pixels.raw, 'raw', 'BGRA', 0, 1).convert('RGB')
+    hwnd = main_window(pid); r = wintypes.RECT()
+    if not user32.GetClientRect(hwnd, ctypes.byref(r)): raise RuntimeError('GetClientRect failed')
+    w, h = r.right, r.bottom
+    if w <= 0 or h <= 0: raise RuntimeError('window has no client pixels')
+    bounds = wintypes.RECT()
+    if not user32.GetWindowRect(hwnd, ctypes.byref(bounds)): raise RuntimeError('GetWindowRect failed')
+    origin = wintypes.POINT(0, 0); user32.MapWindowPoints(hwnd, None, ctypes.byref(origin), 1)
+    geometry = {'window_bounds_physical': [bounds.left, bounds.top, bounds.right, bounds.bottom],
+                'client_origin_physical': [origin.x, origin.y], 'client_size_physical': [w, h],
+                'dpi': user32.GetDpiForWindow(hwnd)}
+    screen = user32.GetDC(None); dc = bmp = old = None
+    try:
+        if not screen: raise RuntimeError('GetDC failed')
+        dc = gdi32.CreateCompatibleDC(screen); bmp = gdi32.CreateCompatibleBitmap(screen, w, h)
+        if not dc or not bmp: raise RuntimeError('capture bitmap allocation failed')
+        old = gdi32.SelectObject(dc, bmp)
+        if not old or old == ctypes.c_void_p(-1).value: raise RuntimeError('SelectObject failed')
+        if not user32.PrintWindow(hwnd, dc, 3): raise RuntimeError('PrintWindow failed')
+        gdi32.SelectObject(dc, old); old = None
+        header = (ctypes.c_uint32 * 10)(40, w, ctypes.c_uint32(-h).value, 1 | 32 << 16, 0, 0, 0, 0, 0, 0)
+        pixels = ctypes.create_string_buffer(w * h * 4)
+        if gdi32.GetDIBits(dc, bmp, 0, h, pixels, header, 0) != h: raise RuntimeError('GetDIBits returned incomplete pixels')
+        image = Image.frombuffer('RGBA', (w, h), pixels.raw, 'raw', 'BGRA', 0, 1).convert('RGB')
+        return (image, geometry) if with_geometry else image
+    finally:
+        if old: gdi32.SelectObject(dc, old)
+        if bmp: gdi32.DeleteObject(bmp)
+        if dc: gdi32.DeleteDC(dc)
+        if screen: user32.ReleaseDC(None, screen)
 
 
 MOVE, LDOWN, LUP, RDOWN, RUP = 0x200, 0x201, 0x202, 0x204, 0x205
@@ -161,19 +205,25 @@ def text(path): return path.read_text(errors='replace') if path.exists() else ''
 class Run:
     """DreamDaemon with the world, stock DreamSeeker and this client, both logged in."""
     def __init__(self, params, record=None):
-        self.log = work / 'events.log'; self.log.unlink(missing_ok=True); self.procs = []
-        out = open(work / 'dd.out', 'w')
-        self.start([str(byond / 'dd.exe'), 'world.dmb', str(a.port), '-trusted', '-invisible', '-params', params], stdout=out)
-        self.wait(lambda: 'World opened' in text(work / 'dd.out'), 'DreamDaemon did not open the world: ' + text(work / 'dd.out'))
-        self.stock = self.start([str(byond / 'dreamseeker.exe'), f'byond://127.0.0.1:{a.port}'])
-        env = dict(os.environ, QT_ENABLE_HIGHDPI_SCALING='0')   # one map pixel per screen pixel, like stock's
-        self.record = Path(record) if record else None
-        if record: env['FUGUE_RECORD_DIR'] = str(record)
-        self.client = self.start([a.client, 'client', '--connect', f'127.0.0.1:{a.port}', '--state-dir', str(work / 'state')],
-                                 env=env, stdout=open(work / 'client.log', 'w'))
-        self.wait(lambda: text(self.log).count('READY') >= 2, 'the world did not log READY for both clients (events.log)')
-        time.sleep(a.settle)
-        version = re.search(r'Version ([\d.]+)', text(work / 'dd.out')); self.byond = version.group(1) if version else '?'
+        self.log = work / 'events.log'; self.log.unlink(missing_ok=True); self.procs = []; self.outputs = []
+        try:
+            self.outputs.append(open(work / 'dd.out', 'w'))
+            self.start([str(byond / 'dd.exe'), 'world.dmb', str(a.port), '-trusted', '-invisible', '-params', params],
+                       stdout=self.outputs[-1])
+            self.wait(lambda: 'World opened' in text(work / 'dd.out'), 'DreamDaemon did not open the world: ' + text(work / 'dd.out'))
+            self.stock = self.start([str(byond / 'dreamseeker.exe'), f'byond://127.0.0.1:{a.port}'])
+            env = dict(os.environ, QT_ENABLE_HIGHDPI_SCALING='0')   # request unscaled client maps; capture records actual DPI
+            self.record = Path(record) if record else None
+            if record: env['FUGUE_RECORD_DIR'] = str(record)
+            self.outputs.append(open(work / 'client.log', 'w'))
+            self.client = self.start([a.client, 'client', '--connect', f'127.0.0.1:{a.port}', '--state-dir', str(work / 'state')],
+                                     env=env, stdout=self.outputs[-1])
+            self.wait(lambda: text(self.log).count('READY') >= 2, 'the world did not log READY for both clients (events.log)')
+            time.sleep(a.settle)
+            version = re.search(r'Version ([\d.]+)', text(work / 'dd.out')); self.byond = version.group(1) if version else '?'
+        except BaseException:
+            self.stop()
+            raise
     def start(self, command, **more):
         self.procs.append(subprocess.Popen(command, cwd=work, stderr=subprocess.STDOUT, **more)); return self.procs[-1].pid
     def wait(self, done, failure):
@@ -228,8 +278,10 @@ class Run:
         if menu: self.choose(pid, menu, '')
         return said
     def stop(self):
-        for p in reversed(self.procs): p.kill()
+        for p in reversed(self.procs):
+            if p.poll() is None: p.kill()
         for p in self.procs: p.wait()
+        for output in self.outputs: output.close()
     def __enter__(self): return self
     def __exit__(self, *_): self.stop()
 
@@ -240,18 +292,61 @@ def differing(x, y):
     return mask.histogram()[255], mask
 
 
+def fingerprint(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def file_version(path):
+    version = ctypes.windll.version
+    version.GetFileVersionInfoSizeW.argtypes = [wintypes.LPCWSTR, ctypes.c_void_p]
+    version.GetFileVersionInfoW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p]
+    version.VerQueryValueW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR, ctypes.c_void_p, ctypes.c_void_p]
+    size = version.GetFileVersionInfoSizeW(str(path), None)
+    if not size: return None
+    data = ctypes.create_string_buffer(size)
+    if not version.GetFileVersionInfoW(str(path), 0, size, data): return None
+    value = ctypes.c_void_p(); length = wintypes.UINT()
+    if not version.VerQueryValueW(data, '\\', ctypes.byref(value), ctypes.byref(length)) or length.value < 52: return None
+    fields = ctypes.cast(value, ctypes.POINTER(wintypes.DWORD))
+    if fields[0] != 0xFEEF04BD: return None
+    return '.'.join(str(v) for v in (fields[2] >> 16, fields[2] & 65535, fields[3] >> 16, fields[3] & 65535))
+
+
+def remove_runtime(path):
+    path = Path(path).resolve()
+    if work not in path.parents: raise ValueError('cleanup must stay within the runtime work directory')
+    shutil.rmtree(path, ignore_errors=True)
+
+
+if a.command == 'capture':
+    capture_out.mkdir(parents=True)
+    capture_record = {'complete': False, 'world': str(world), 'params': a.params,
+                      'requested_map_crop_physical': [0, 0, *mapsize], 'settle_seconds': a.settle,
+                      'state_policy': 'stock existing global configuration; fresh Fugue state directory',
+                      'readiness': 'two server READY lines, then settle; not a presentation acknowledgement',
+                      'capture_method': 'PrintWindow client area; not a desktop-compositor observation'}
+    write_record(capture_out, capture_record)
+
 own = world / 'prepare.py'   # a world with none is prepared by the one next to this file, which says what that gives it
-subprocess.run([sys.executable, str(own), str(work)] if own.exists() else [sys.executable, str(HERE / 'prepare.py'), str(world), str(work)],
-               check=True, stdout=subprocess.DEVNULL)
-built = subprocess.run([str(byond / 'dm.exe'), 'world.dme'], cwd=work, capture_output=True, text=True)
-if not (work / 'world.dmb').exists() or ' 0 errors' not in built.stdout: sys.exit('the world did not compile:\n' + built.stdout)
+try:
+    subprocess.run([sys.executable, str(own), str(work)] if own.exists() else [sys.executable, str(HERE / 'prepare.py'), str(world), str(work)],
+                   check=True, stdout=subprocess.DEVNULL)
+    built = subprocess.run([str(byond / 'dm.exe'), 'world.dme'], cwd=work, capture_output=True, text=True, timeout=60)
+    if a.command == 'capture': (capture_out / 'compile.log').write_text(built.stdout + built.stderr, encoding='utf-8')
+    if not (work / 'world.dmb').exists() or ' 0 errors' not in built.stdout:
+        raise RuntimeError('the world did not compile:\n' + built.stdout)
+except BaseException as error:
+    if a.command == 'capture':
+        capture_record['error'] = f'{type(error).__name__}: {error}'
+        write_record(capture_out, capture_record)
+    raise
 dpi = user32.GetDpiForSystem()
 
 if a.command == 'record':
     replay = world / 'replay'; (replay / 'res').mkdir(parents=True, exist_ok=True); notes = replay / 'recorded.tsv'
     rows = dict(line.split('\t', 1) for line in text(notes).splitlines() if '\t' in line and not line.startswith('#'))
     for st in a.args:
-        frames = work / f'frames-{st}'; shutil.rmtree(frames, ignore_errors=True)
+        frames = work / f'frames-{st}'; remove_runtime(frames)
         with Run(f'set={st}', frames) as run:
             stock, client = run.maps(); off, _ = differing(stock, client); version = run.byond
         stock.save(replay / f'{st}.png', optimize=True)
@@ -268,12 +363,47 @@ elif a.command == 'pair':
     Image.composite(Image.new('RGB', stock.size, (255, 0, 255)), stock.point(lambda v: v // 3), mask).save(out / f'{name}-diff.png')
     box = mask.getbbox()
     print(f'{name}: {off} pixels differ by more than 8 levels' + (f', within {box}' if box else '') + f' (display at {dpi} dpi)')
+elif a.command == 'capture':
+    try:
+        source = capture_out / 'world'; source.mkdir()
+        prepared = sorted(p for p in work.rglob('*') if p.is_file() and p.suffix in ('.dm', '.dme', '.dmf', '.dmb', '.rsc'))
+        capture_record['world_sha256'] = {p.relative_to(work).as_posix(): fingerprint(p) for p in prepared}
+        for path in prepared:
+            if path.suffix in ('.dm', '.dme', '.dmf'):
+                target = source / path.relative_to(work); target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, target)
+        capture_record['executables_sha256'] = {str(path): fingerprint(path)
+            for path in (byond / 'dreamseeker.exe', byond / 'dd.exe', Path(a.client))}
+        capture_record['executable_file_versions'] = {str(path): file_version(path)
+            for path in (byond / 'dreamseeker.exe', byond / 'dd.exe', Path(a.client))}
+        with Run(a.params, capture_out / 'wire') as run:
+            capture_record['dreamdaemon_version'] = run.byond
+            capture_record['system_dpi'] = dpi
+            def trigger():
+                token = uuid.uuid4().hex
+                trigger_path.parent.mkdir(parents=True, exist_ok=True)
+                with trigger_path.open('x', encoding='ascii') as signal: signal.write(token)
+                return {'file': a.trigger_file, 'token': token}
+            pids = {'stock': run.stock, 'client': run.client}
+            capture_sequence(capture_out, pids, lambda subject: grab(pids[subject], with_geometry=True),
+                             a.duration, a.interval, capture_record, trigger if trigger_path else None)
+    except BaseException as error:
+        capture_record['complete'] = False
+        capture_record['error'] = f'{type(error).__name__}: {error}'
+        raise
+    finally:
+        for name in ('events.log', 'dd.out', 'client.log'):
+            path = work / name
+            if path.exists(): shutil.copyfile(path, capture_out / name)
+        if trigger_path and trigger_path.is_file(): shutil.copyfile(trigger_path, capture_out / 'trigger.txt')
+        write_record(capture_out, capture_record)
+    print(f'{a.args[0]}: retained {len(capture_record["frames"])} captures in {capture_out}')
 else:
     actions = a.args[1:]
     form = re.compile(r'(?:(?:right|down|up|rdown|rup|move):)?\d+,\d+$|wait:\d+(?:\.\d+)?$|menu:.*$')
     wrong = [action for action in actions if not form.match(action)]
     if not actions or wrong: sys.exit('click <name> ACTION...' + (': not an action: ' + ' '.join(wrong) if wrong else ''))
-    frames = work / 'frames-click'; shutil.rmtree(frames, ignore_errors=True)
+    frames = work / 'frames-click'; remove_runtime(frames)
     with Run(a.params, frames) as run:
         names = [l.split()[1] for l in run.lines() if l.startswith('READY')]   # stock logs in first
         said = [run.act(run.stock, actions), run.act(run.client, actions)]
@@ -285,4 +415,7 @@ else:
         for i in range(max(len(stock), len(client))):
             s, c = (plain(part[i]) if i < len(part) else '-' for part in (stock, client))
             print(('    same   ' if s == c else '    DIFFER ') + s + ('' if s == c else '\n             ' + c))
-if not a.work: shutil.rmtree(work, ignore_errors=True)
+if not a.work:
+    if work.parent != Path(tempfile.gettempdir()).resolve() or not work.name.startswith('stockprobe-'):
+        raise ValueError('temporary runtime cleanup escaped its owned directory')
+    shutil.rmtree(work, ignore_errors=True)
