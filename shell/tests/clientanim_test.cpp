@@ -1,7 +1,7 @@
-// animate(client) timing against stock DreamDaemon 516.1684 (tests/data/clientanim-world). Every frame is ingested at
-// the tick of the "@N" chat marker before it. The expected offsets are what stock DreamSeeker's chain evaluator gives:
-// parallel sequences overlap, a head step starts at its own StepDelay, a direct client.pixel_* set shifts a tween in
-// flight, and vg's directional_recoil fired every two ticks holds the view kicked until the burst ends.
+// animate(client) replay of retained DreamDaemon 516.1684 wire (tests/data/clientanim-world).
+// Each frame arrives at its preceding "@N" tick; the named checks below own their sample times and expected offsets.
+// Those numeric offsets are historical source-encoded expectations, not retained stock output. The fractional
+// direct-set checks separately test recorded wire facts and Fugue's sampling/arrival-clock invariants. See the fixture README.
 #include <QtTest>
 #include "tests/testmain.h"
 #include "model/world.h"
@@ -11,11 +11,7 @@
 using namespace fugue;
 
 namespace {
-constexpr int64_t kT0 = 1'000'000'000'000'000'000;
-constexpr int64_t kTick = 100'000'000;
-constexpr uint32_t kRes = 0x163d55fd;
 constexpr uint32_t kPlayer = 0xc82828, kMarker = 0x28c828, kHud = 0x2828dc;
-int64_t at(double tick) { return kT0 + int64_t(tick * double(kTick)); }
 }  // namespace
 
 class ClientAnim : public QObject {
@@ -29,7 +25,10 @@ class ClientAnim : public QObject {
     std::unique_ptr<shell::test::ReplayFixture> replay_;
     size_t nextFrame_ = 0;
     double sampledTick_ = -1;
+    int64_t originNs_ = 0, tickNs_ = 0;
+    QSize viewport_;
 
+    int64_t at(double tick) const { return originNs_ + int64_t(tick * double(tickNs_)); }
     void reset() {
         replay_ = std::make_unique<shell::test::ReplayFixture>();
         nextFrame_ = 0;
@@ -49,7 +48,14 @@ class ClientAnim : public QObject {
         }
         replay_->refresh(at(tick));
         sampledTick_ = tick;
-        return AnimationFixture::raster(replay_->frame, replay_->sprites);
+        const QImage rendered = AnimationFixture::raster(replay_->frame, replay_->sprites);
+        if (rendered.size() != viewport_) {
+            const auto error = QString("tick %1: expected retained viewport %2x%3, got %4x%5")
+                .arg(tick).arg(viewport_.width()).arg(viewport_.height()).arg(rendered.width()).arg(rendered.height());
+            QTest::qFail(qPrintable(error), __FILE__, __LINE__);
+            return {};
+        }
+        return rendered;
     }
     static uint32_t rgb(const QImage& img, int x, int y) { return img.pixel(x, y) & 0xffffff; }
 
@@ -65,6 +71,23 @@ class ClientAnim : public QObject {
 
 private slots:
     void initTestCase() {
+        QFile file(QString(FUGUE_TEST_DATA_DIR) + "/clientanim-world/manifest.json");
+        QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(file.fileName()));
+        QJsonParseError parseError;
+        const auto manifest = QJsonDocument::fromJson(file.readAll(), &parseError).object();
+        QCOMPARE(parseError.error, QJsonParseError::NoError);
+        originNs_ = manifest["clock_unix_ns"].toInteger();
+        tickNs_ = manifest["tick_ns"].toInteger();
+        QVERIFY(originNs_ > 0 && tickNs_ > 0);
+        const auto viewport = manifest["viewport"].toObject();
+        viewport_ = QSize(viewport["w"].toInt(), viewport["h"].toInt());
+        QVERIFY(viewport_.width() > 0 && viewport_.height() > 0);
+        const int expectedFrames = manifest["frames"].toInt();
+        const int expectedResources = manifest["resources"].toInt();
+        const auto resourceNames = manifest["resource_names"].toObject();
+        QVERIFY(expectedFrames > 0 && expectedResources > 0);
+        QCOMPARE(resourceNames.size(), expectedResources);
+
         shell::test::ReplayFixture recording;
         int tick = 0;
         bool ordered = true;
@@ -79,10 +102,20 @@ private slots:
             frames_.push_back({type, body, tick});
         }), qPrintable(recording.error));
         QVERIFY2(ordered, "Recorded tick markers must be valid and ordered");
-        QCOMPARE(int(frames_.size()), 609);
+        QCOMPARE(int(frames_.size()), expectedFrames);
         QVERIFY2(recording.loadResources("clientanim-world"), qPrintable(recording.error));
-        QCOMPARE(recording.resources.size(), size_t(1));
-        QVERIFY(recording.resources.count(kRes) && !recording.resources.at(kRes).isEmpty());
+        QCOMPARE(recording.resources.size(), size_t(expectedResources));
+        int64_t resourceBytes = 0;
+        for (auto entry = resourceNames.begin(); entry != resourceNames.end(); ++entry) {
+            bool valid = false;
+            const uint32_t id = entry.key().toUInt(&valid, 16);
+            QVERIFY(valid && !entry.value().toString().isEmpty());
+            QVERIFY2(recording.resources.count(id), qPrintable("Missing resource: " + entry.key()));
+            const auto& bytes = recording.resources.at(id);
+            QVERIFY(!bytes.isEmpty());
+            resourceBytes += bytes.size();
+        }
+        QCOMPARE(resourceBytes, manifest["resource_bytes"].toInteger());
         // Known-good unanimated control validates the adapter before chains.
         QCOMPARE(offset(30), QPoint(0, 0));
     }
@@ -117,7 +150,8 @@ private slots:
     }
 
     // A 2-tick kick at 227 and the return at 232: the return is the head step of the frame at 232 (StepDelay 0), so it
-    // starts at 232, three ticks after the kick ended. Stock DreamSeeker measured 0.49 s from kick to return.
+    // starts at 232, three ticks after the kick ended. A historical source note reports a stock measurement of
+    // 0.49 s from kick to return; the underlying stock output was not retained with this fixture.
     void headStartsAtStepDelay() {
         QCOMPARE(offset(229), QPoint(20, 0));
         QCOMPARE(offset(232), QPoint(20, 0));

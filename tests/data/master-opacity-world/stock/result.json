@@ -1,8 +1,23 @@
 {
   "complete": true,
+  "observation": {
+    "stockVersion": "516.1688",
+    "platform": "Windows",
+    "timing": "not-retained",
+    "menuStackSource": "Historical stock popup transcription; original images are not retained"
+  },
+  "replay": {
+    "mode": "static-phase",
+    "sampleNs": 0,
+    "control": "main.map",
+    "masterRefs": {"wire":"[0x2000002]","stock":"[0x2000001]"},
+    "view": [7,7],
+    "sourceSize": [224,224]
+  },
   "phases": [
     {
       "case": "control",
+      "checkpoint": {"wire":"frames-control.txt","pixels":"control-map.png","masterMouseOpacity":1},
       "actions": [
         {
           "kind": "click",
@@ -52,6 +67,8 @@
         {
           "kind": "menu",
           "point": [40,168],
+          "menuStack": ["member","floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"member","targetRef":"[0x2000000]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
@@ -59,6 +76,8 @@
         {
           "kind": "menu",
           "point": [60,168],
+          "menuStack": ["member","floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"member","targetRef":"[0x2000000]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
@@ -66,6 +85,8 @@
         {
           "kind": "menu",
           "point": [30,168],
+          "menuStack": ["floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"floor","targetRef":"[0x1000007]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
@@ -74,6 +95,7 @@
     },
     {
       "case": "two",
+      "checkpoint": {"wire":"frames-two.txt","pixels":"two-map.png","masterMouseOpacity":2},
       "actions": [
         {
           "kind": "click",
@@ -123,6 +145,8 @@
         {
           "kind": "menu",
           "point": [40,168],
+          "menuStack": ["member","floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"member","targetRef":"[0x2000000]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
@@ -130,6 +154,8 @@
         {
           "kind": "menu",
           "point": [60,168],
+          "menuStack": ["member","floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"member","targetRef":"[0x2000000]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
@@ -137,6 +163,8 @@
         {
           "kind": "menu",
           "point": [30,168],
+          "menuStack": ["floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"floor","targetRef":"[0x1000007]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
@@ -145,6 +173,7 @@
     },
     {
       "case": "zero",
+      "checkpoint": {"wire":"frames-zero.txt","pixels":"zero-map.png","masterMouseOpacity":0},
       "actions": [
         {
           "kind": "click",
@@ -194,6 +223,8 @@
         {
           "kind": "menu",
           "point": [40,168],
+          "menuStack": ["floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"floor","targetRef":"[0x1000008]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
@@ -201,6 +232,8 @@
         {
           "kind": "menu",
           "point": [60,168],
+          "menuStack": ["floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"floor","targetRef":"[0x1000008]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
@@ -208,6 +241,8 @@
         {
           "kind": "menu",
           "point": [30,168],
+          "menuStack": ["floor"],
+          "menuVerb": "inspect",
           "callbacks": [
             {"kind":"Menu","target":"floor","targetRef":"[0x1000007]","location":null,"locationXYZ":null,"control":null,"params":{}}
           ]
