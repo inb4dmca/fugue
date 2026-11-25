@@ -416,6 +416,58 @@ private slots:
         }
         QCOMPARE(callbacks,150);QCOMPARE(empty,1);
     }
+    // tests/data/plane-click-world (stock 516.1689): a HUD plane master with a matrix, filters or both over a world
+    // object, a client image and a vis_contents member on its plane. replay/<case>.txt is what DreamDaemon sent for the
+    // case; clicks.json what stock named for left clicks there (with icon-x/y) and the entries of its right-click menus.
+    void planeClicksLikeStock() {
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/plane-click-world/clicks.json";
+        QJsonDocument document; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
+        QSet<QString> remaining{"plain", "outline1", "turn90", "scalex2", "turn90-outline1", "tree45", "tree45-scalex2",
+                                "iconalpha", "rtalpha", "ptalpha", "rtalpha-inverse", "ptalpha-inverse", "turn90-rtalpha",
+                                "scalex2-ptalpha"};
+        QSet<QString> over;
+        int clicks = 0, menus = 0;
+        for (const auto& value : document.object()["cases"].toArray()) {
+            const auto row = value.toObject(); const auto name = row["case"].toString();
+            QVERIFY2(remaining.remove(name), qPrintable(path + ": unknown or duplicate case " + name));
+            test::ReplayFixture f;
+            QVERIFY2(f.load(name + ".txt", "plane-click-world/replay"), qPrintable(name + ": " + f.error));
+            QCOMPARE(f.frame.source.size(), QSize(224, 224));
+            auto pick = [&](const QJsonValue& at, QString& context) -> std::optional<MapPointer> {
+                context = QString("%1 at %2,%3").arg(name).arg(at[0].toInt()).arg(at[1].toInt());
+                if (!testinput::isIntegerTuple(at, 2, 0, 223)) return {};
+                return mapPointerAt(QPointF(at[0].toInt(), at[1].toInt()), {224, 224}, {7, 7}, f.frame.source,
+                                    f.frame.geometry, "map", true, f.sprites);
+            };
+            for (const auto& entry : row["clicks"].toArray()) {
+                const auto click = entry.toObject(); QString context;
+                const auto hit = pick(click["at"], context);
+                QVERIFY2(hit, qPrintable(context));
+                const auto named = QString::fromStdString(f.targetName(*hit));
+                QVERIFY2(named == click["over"].toString() && hit->click.iconX == click["iconX"].toInt() &&
+                         hit->click.iconY == click["iconY"].toInt(),
+                         qPrintable(QString("%1: stock %2 x=%3 y=%4, got %5 x=%6 y=%7").arg(context, click["over"].toString())
+                                    .arg(click["iconX"].toInt()).arg(click["iconY"].toInt()).arg(named)
+                                    .arg(hit->click.iconX).arg(hit->click.iconY)));
+                over.insert(named); ++clicks;
+            }
+            for (const auto& entry : row["menus"].toArray()) {
+                const auto menu = entry.toObject(); QString context;
+                const auto hit = pick(menu["at"], context);
+                QVERIFY2(hit, qPrintable(context));
+                QStringList stock, listed;
+                for (const auto& atom : menu["entries"].toArray()) stock.push_back(atom.toString());
+                for (const auto& candidate : mapPointerStack(*hit)) listed.push_back(QString::fromStdString(f.targetName(candidate)));
+                QVERIFY2(!stock.empty() && listed == stock,
+                         qPrintable(QString("%1: stock menu %2, got %3").arg(context, stock.join(", "), listed.join(", "))));
+                ++menus;
+            }
+        }
+        QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + QStringList(remaining.values()).join(", ")));
+        QVERIFY2(over == (QSet<QString>{"floor", "part", "holder", "child", "master", "leaner"}), qPrintable(QStringList(over.values()).join(", ")));
+        QVERIFY2(clicks >= 60 && menus >= 30, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
+    }
     void worldPassMouseLifetimeAndBounds() {
         test::PlaneSourceFixture f;
         f.relay({{"appearanceFlags",double(0x80000204u)}});
