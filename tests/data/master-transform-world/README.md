@@ -30,7 +30,10 @@ matches stock within 1/255. KEEP_TOGETHER with a master matrix stays refused, wh
 
 Stock **516.1689**, 2026-11-25. The master has no overlay; a red 16 px box stands at (5,4) and, for the `edge` cases, a
 whole blue tile at (7,4), on the view's right edge. `grab.py <workdir> <port> <case>...` grabs stock alone and keeps
-the 224 px map as `filters/<case>.png`. `compositiongpu_test::masterTransformFilters` rebuilds each scene from sprites
+the 224 px map as `filters/<case>.png`. `stockprobe.py --stock-only --map 224x224 --params set={} pair <case>...`
+writes the same pixels as `<case>-stock.png`, and with `--still 0.5 --live --jobs 4` all thirty in about twelve
+seconds (every one compared with the grab kept here); `grab.py` is kept for the record of how these were taken.
+`compositiongpu_test::masterTransformFilters` rebuilds each scene from sprites
 and compares every pixel with the grab (at most 8 levels per channel).
 
 - **The filters run first, on the untransformed plane, and the matrix turns their result.** Under `scalex2` an
@@ -58,7 +61,8 @@ Fugue now does all of this for every filter kind, with or without a tree.
 ## Clicks (`clicks.json`)
 
 Every atom logs `Click()` with its name and icon-x/y; `stockprobe.py click` clicks the same MAP pixels in stock and in
-Fugue. `clicks.json` keeps what stock answered.
+Fugue. `clicks.json` keeps what stock answered. Many cases go in one run as a script, one `<case> X,Y X,Y ...` line
+each: `stockprobe.py --map 224x224 --params set={} click @<script>`.
 
 - **A filter adds nothing to click and takes nothing away.** The box is clicked where it stood before the filter,
   under an outline, blur, drop shadow, wave, ripple or bloom; the outline, the blur's spread, the shadow, the glow
