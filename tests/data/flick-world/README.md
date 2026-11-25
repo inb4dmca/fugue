@@ -23,4 +23,7 @@ after the second client logs in, so stock and Fugue can be grabbed on one server
 Wire, s2c 0x6c: `[variant u8][0: state \0 | 1: res u32 | 2: state \0, res u32][kind u8][ref u32][variant 0: res u32]`
 `[key u16]`. Kind 0 is a mob, 1 a turf (ref = x + maxx * (y + maxy * z), zero-based, no key), 2 an obj. An obj and a mob are preceded by s2c 0xc7 (kind 2 or 3): it makes
 an obj's record and binds its appearance, and only checks a mob's. A flick whose record is absent, or held under
-another key, is kept for 20 ticks and starts when the record appears; Fugue drops it.
+another key, is kept for 20 ticks and starts when the record appears; Fugue drops it. No capture shows that hold
+changing what is drawn: in 516.1689 a mob flicked before its record arrived never shows the flick, whether the mob
+was made that tick (the table above) or existed off-view and moved into view 5, 15 or 30 ticks later, and Fugue
+draws the same.
