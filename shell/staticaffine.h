@@ -13,6 +13,9 @@ struct StaticAffine {
     QTransform forward, inverse; // source top-left/Y-down pixels, relative to sprite.position
     QRect bounds;
     bool visualCoordinates = false;
+    // When set, a bilinear sample reads the surface as though it ended at this rectangle (whole surface pixels):
+    // its edge texels repeat past it. Past the surface's own edge it stays clear. Empty for no limit.
+    QRect sampled;
     bool operator==(const StaticAffine&) const = default;
     static std::optional<StaticAffine> make(const std::array<double, 6>& m, QSize size) {
         if (size.isEmpty() || size.width() > 8192 || size.height() > 8192) return {};

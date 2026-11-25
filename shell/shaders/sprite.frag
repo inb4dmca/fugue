@@ -226,8 +226,13 @@ void main() {
             a = mod(effect.w,2.0) != 0.0 ? (a >= 0.75 ? 1.0 : 0.0) : min(1.0,a);
             float ring = (1.0-src.a)*effectColor.a*a;
             result = src + vec4(effectColor.rgb*ring,ring);
-        } else if (effect.x > 7.5) result = borderLinear(uv/texel.xy-vec2(0.5));
-        else result = src;
+        } else if (effect.x > 7.5) {
+            // effect.y: the surface is read as though it ended at effectColor (left, top, right, bottom in pixels), its
+            // edge texels repeated past it; a stock master's plane through its matrix (see the planner).
+            vec2 p = uv/texel.xy;
+            if (effect.y > 0.5) p = clamp(p,effectColor.xy+vec2(0.5),effectColor.zw-vec2(0.5));
+            result = borderLinear(p-vec2(0.5));
+        } else result = src;
         // The outline rounds each step; it recovers those byte values before its
         // next bilinear sample. Other passes round straight channels.
         if (effect.x == 5.0) {

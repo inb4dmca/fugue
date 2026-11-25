@@ -89,12 +89,44 @@ taken in one run:
   x=5 y=220 although pixel 85 draws plane pixel 5,5 (icon x=6); `fx-grid-pxs-s50t90` at 56,56 hits the floor although
   that pixel draws the grid. Fugue already answered every one of 29 such clicks (`fx-grid-pxs-s50`, `-s75`, `-s25`,
   `-s50t90`, `fx-grid-s50`, at the plane's edges and inside) as stock did; they are not kept in `clicks.json`.
-- **Enlarging a bilinear plane** (`fx-grid-s200`): the view's outermost row and column are sampled as though the
-  plane ended at the view's edge (pixel 0,0 is plane pixel 56,56 unmixed, where the bilinear weights give a quarter of
-  its neighbours). Fugue does not do this yet; the test expects it to fail.
+- **An enlarged bilinear plane is read as though it ended at the part of it the view shows**: the view's rectangle
+  taken back through the matrix, its bounding box rounded outward to whole plane pixels, past which the edge texels
+  repeat. Under `s200` that part is plane pixels 56..167, so pixel 0,0 is plane pixel 56,56 unmixed, where the bilinear
+  weights would give a quarter of its neighbours. Every pixel of the grabs below fits this rule within 2 levels; with
+  no limit, or with the part rounded to the nearest pixel or kept fractional, they do not:
+
+  | case | matrix | shown part | what it decides |
+  |---|---|---|---|
+  | `fx-grid-s200` | 2 | 56..167 | the limit exists (892 border pixels otherwise) |
+  | `fx-grid-s200t90` | 2, quarter turn | 56..167 | the same under a quarter turn (892) |
+  | `fx-grid-sx200y300` | 2 by 3 | 56..167 by 74.67..149.33 | each axis on its own: only the x border is limited |
+  | `fx-grid-s150` | 1.5 | 37.33..186.67 | outward, not fractional (596 off if kept fractional) |
+  | `fx-grid-s300` | 3 | 74.67..149.33 | outward, not to nearest (1776 off if 75..148) |
+  | `fx-grid-s200m3` | 2, moved 3,-5 | 54.5..166.5 by 53.5..165.5 | outward with a translation (892 off if to nearest) |
+  | `fx-grid-s200t30` | 2, turned 30 degrees | 35.5..188.5 (box) | the box, not the turned square (4 off if fractional, 12 if to nearest) |
+
+  Under `s150`, `s300`, `s200m3` and `s200t30` the outward box lies far enough out that no pixel's samples reach it:
+  these grabs tell the rounding apart but are the same with no limit at all. In the turned case the shown part is a
+  turned square, and only its bounding box limits anything; whether a tighter, turned limit exists is not shown by a
+  grab (no pixel samples outside the square but inside its box).
+- **Not with a filter**: `fx-grid-outline1-s200` (the same plane with an outline of 1, which lies wholly outside the
+  view) blends the view's border with the plane past it, exactly as `s200` would with no limit (the 892 pixels).
+- **A shrunk plane fades at its own edge**: where the shown part lies past the plane (every shrinking case) the plane's
+  edge is mixed with what is behind over one texel, not repeated (`fx-grid-s50t30`: a pixel whose centre is 0.2 texel
+  outside the plane's left edge is mostly floor).
+
+The six new grabs, and `fx-grid-s200` again, were taken in one run, as the others:
+`stockprobe.py --world tests/data/master-transform-world --stock-only --map 224x224 --params set={} --still 0.5 --live
+--jobs 4 pair fx-grid-s300 fx-grid-sx200y300 fx-grid-s200m3 fx-grid-s200t90 fx-grid-s200t30 fx-grid-outline1-s200
+fx-grid-s200` (516.1689, 2026-11-26; the new `fx-grid-s200` came out identical to the kept one).
 
 `compositiongpu_test::masterTransformFilters` rebuilds each grid scene from one sprite and compares every pixel with
 the grab (8 levels); for `fx-grid-pxs-s50t90` a pixel on a texel boundary may take either of the two texels.
+
+Fugue before this blended an enlarged plane's border with the plane past the view (`fx-grid-s200`, `-s200t90`: 892
+pixels; `-sx200y300`: 448). The planner now gives an unfiltered master's matrix the shown part, rounded outward
+(`StaticAffine::sampled`), and the renderer's bilinear read of the turned surface clamps to it (`sprite.frag`,
+operation 8).
 
 Fugue before this left the choice on a boundary to its GPU's sampler, which took the texel after it in some columns
 and the one before it in others (`fx-grid-pxs-s50`: 1260 pixels off, every 2nd to 3rd column), and drew half a texel
@@ -166,8 +198,8 @@ the `master-*` cases without an outline, through the real hit test) hold the rul
 
 Nested
 masters with a matrix (still refused), and non-32 px worlds. For filters with a matrix:
-turns that are not quarter turns, a master with a render target, and the view-edge clamp of an enlarged bilinear plane
-(`fx-grid-s200`). For clicks: mouse-opacity 2. Right-click menus, images and vis_contents members on a turned or
+turns that are not quarter turns, and a master with a render target (whether the view-edge limit of an enlarged plane
+applies to its target or to a relay with a matrix was not grabbed; Fugue does not limit either). For clicks: mouse-opacity 2. Right-click menus, images and vis_contents members on a turned or
 filtered plane, and render-target masks are in `tests/data/plane-click-world`. For animation: no mid-flight frame is
 kept or compared pixel for pixel (only the holds are), clicks on an animating master were not taken, and a
 KEEP_TOGETHER master with an animating matrix is still refused.

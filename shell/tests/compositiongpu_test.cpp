@@ -27,7 +27,8 @@ static std::optional<std::array<double,6>> gridMatrix(const QString& shape) {
         {"plain",{1,0,0,0,1,0}}, {"s75",{.75,0,0,0,.75,0}}, {"s50",{.5,0,0,0,.5,0}}, {"s25",{.25,0,0,0,.25,0}},
         {"s60",{.6,0,0,0,.6,0}}, {"s40",{.4,0,0,0,.4,0}}, {"sx50",{.5,0,0,0,1,0}}, {"sy50",{1,0,0,0,.5,0}},
         {"sx50y75",{.5,0,0,0,.75,0}}, {"s50m",{.5,0,16,0,.5,8}}, {"s50m3",{.5,0,3,0,.5,-5}},
-        {"s150",{1.5,0,0,0,1.5,0}}, {"s200",{2,0,0,0,2,0}},
+        {"s150",{1.5,0,0,0,1.5,0}}, {"s200",{2,0,0,0,2,0}}, {"s300",{3,0,0,0,3,0}}, {"sx200y300",{2,0,0,0,3,0}},
+        {"s200m3",{2,0,3,0,2,-5}}, {"s200t90",turned({2,0,0,0,2,0},90)}, {"s200t30",turned({2,0,0,0,2,0},30)},
         {"s50t90",turned({.5,0,0,0,.5,0},90)}, {"s50t30",turned({.5,0,0,0,.5,0},30)}};
     const auto found = shapes.find(shape);
     if (found == shapes.end()) return std::nullopt;
@@ -290,7 +291,7 @@ private slots:
         QTest::addColumn<QString>("name");
         const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-transform-world/filters");
         const auto files=directory.entryList({"fx-*.png"},QDir::Files,QDir::Name);
-        QVERIFY2(files.size()==60,qPrintable(directory.path()+": expected 60 stock grabs"));
+        QVERIFY2(files.size()==66,qPrintable(directory.path()+": expected 66 stock grabs"));
         for (const auto& file:files) QTest::newRow(qPrintable(file.chopped(4))) << file.chopped(4);
     }
     void masterTransformFilters() {
@@ -336,7 +337,7 @@ private slots:
             for (int y=0;y<32;++y) for (int x=0;x<16;++x) mask.setPixelColor(x,y,Qt::white);
             f.kind=PlaneFilter::AlphaMask; f.icon=1; f.image=std::make_shared<const QImage>(mask); f.x=32;
         }
-        if (!name.contains("grid") && !name.endsWith("plain") && !name.endsWith("scalex2") && !name.endsWith("turn90") &&
+        if ((!name.contains("grid") || name.contains("outline")) && !name.endsWith("plain") && !name.endsWith("scalex2") && !name.endsWith("turn90") &&
             !name.endsWith("half-edge"))
             effects->filters={f};
         QVERIFY(effects->valid(source.size()));
@@ -382,17 +383,14 @@ private slots:
             if (d > 8 && !off++) first = {x, y};
         }
         if (either) qInfo() << either << "pixels on a texel boundary took the other texel of the two";
-        // A bilinear plane enlarged so that the view's edge falls inside a texel: stock's outermost row and column of the
-        // view sample as though the plane ended there (fx-grid-s200, its 892 pixels). Not yet done here.
-        QString message;
-        if (off) {
-            const QString saved = QDir::temp().filePath("fugue-transform-" + name + ".png");   // to look at beside stock's
-            drawn.save(saved);
-            message = QString("%1 pixels differ from stock (worst %2), the first at %3,%4; drawn: %5")
-                          .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved);
-        }
-        if (name == "fx-grid-s200") QEXPECT_FAIL("", "stock clamps an enlarged bilinear plane at the view's edge", Abort);
-        QVERIFY2(!off, qPrintable(message));
+        // An enlarged bilinear plane is read as though it ended at the part the view shows, rounded out to whole plane
+        // pixels, so the view's outermost row and column are not mixed with what lies past it (fx-grid-s200: 892
+        // pixels otherwise; -s200t90, -sx200y300), but not with a filter (fx-grid-outline1-s200).
+        if (!off) return;
+        const QString saved = QDir::temp().filePath("fugue-transform-" + name + ".png");   // to look at beside stock's
+        drawn.save(saved);
+        QFAIL(qPrintable(QString("%1 pixels differ from stock (worst %2), the first at %3,%4; drawn: %5")
+                             .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved)));
     }
 };
 FUGUE_TEST_MAIN(CompositionGpuTest)

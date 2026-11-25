@@ -666,6 +666,20 @@ void CompositionPlan::plan() {
                 affine.inverse = affine.forward.inverted();
                 affine.bounds = affine.forward.mapRect(QRectF(QPointF(),composite.size)).toAlignedRect();
             }
+            // Stock 516.1689 samples an unfiltered plane as though it ended at the part of it the view shows: the view
+            // taken back through the matrix, its bounding box rounded out to whole plane pixels. An enlarged plane's
+            // outermost row and column of the view are so not mixed with what lies just outside it (master-transform-
+            // world fx-grid-s200, -s200t90, -sx200y300; -s150, -s300, -s200m3 round outward, not to nearest). With a
+            // filter the whole surface is sampled (fx-grid-outline1-s200). Where that box lies past the plane, the
+            // plane's own edge still fades to clear over a texel (fx-grid-s50t30), so the box is not cut to the plane.
+            if (composite.affine && master.renderTarget.isEmpty() && (!effects || effects->filters.empty())) {
+                const QRectF view(QPointF(source.topLeft()-composite.position),QSizeF(source.size()));
+                const QRectF shown = composite.affine->inverse.mapRect(view);
+                const double margin = 1e-6;   // a bound on a whole pixel is not pushed outward by rounding error
+                composite.affine->sampled = QRect(
+                    QPoint(int(std::floor(shown.left()+margin)),int(std::floor(shown.top()+margin))),
+                    QPoint(int(std::ceil(shown.right()-margin))-1,int(std::ceil(shown.bottom()-margin))-1));
+            }
         }
         if (!master.renderTarget.isEmpty()) {
             if (materialPending || (effects && effects->matrix)) result = addPass({{generated(composite), result}},{},true);

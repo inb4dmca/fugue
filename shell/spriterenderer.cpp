@@ -239,6 +239,12 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
         // A KEEP_TOGETHER surface ends at its own box (item.hardEdge): the sampler repeats its edge texel there.
         if (premultiplied && sprite.affine && sprite.smooth && !item.hardEdge) {  // a PIXEL_SCALE relay samples its surface unfiltered
             effect = {8,0,0,0,0,0,0,0,1.0f/sprite.size.width(),1.0f/sprite.size.height(),1,0};
+            if (const QRect& sampled = sprite.affine->sampled; !sampled.isEmpty()) {
+                // effect.y: sample as though the surface ended at effectColor (left, top, right, bottom in pixels).
+                effect[1] = 1;
+                effect[4] = float(sampled.left()); effect[5] = float(sampled.top());
+                effect[6] = float(sampled.right()+1); effect[7] = float(sampled.bottom()+1);
+            }
             // A bilinear border sample has half a texel of support outside the
             // captured rectangle. Do not clamp it or cut it off at the quad edge.
             rect = sprite.affine->forward.mapRect(QRectF(-.5,-.5,sprite.size.width()+1,sprite.size.height()+1))

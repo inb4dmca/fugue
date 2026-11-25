@@ -62,6 +62,17 @@ world
         if("s50m3") return matrix(0.5, 0, 3, 0, 0.5, -5)
         if("s150") return matrix(1.5, 0, 0, 0, 1.5, 0)
         if("s200") return matrix(2, 0, 0, 0, 2, 0)
+        if("s300") return matrix(3, 0, 0, 0, 3, 0)
+        if("sx200y300") return matrix(2, 0, 0, 0, 3, 0)
+        if("s200m3") return matrix(2, 0, 3, 0, 2, -5)
+        if("s200t90")
+            var/matrix/M = matrix(2, 0, 0, 0, 2, 0)
+            M.Turn(90)
+            return M
+        if("s200t30")
+            var/matrix/M = matrix(2, 0, 0, 0, 2, 0)
+            M.Turn(30)
+            return M
     world.log << "UNKNOWN SHAPE [name]"
     return matrix()
 /proc/set_master(obj/master/M, kind)
