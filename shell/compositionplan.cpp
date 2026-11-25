@@ -632,7 +632,10 @@ void CompositionPlan::plan() {
         disposition = MasterDisposition::Captured;
         const bool targetCapture = !master.renderTarget.isEmpty();
         const int captured = targetCapture ? capturePlane(std::move(items)) : addPass(std::move(items));
-        auto [result,quad] = applyEffects(captured,effects);
+        // The filters run on the untransformed plane; the matrix turns their result below.
+        PlaneEffects surface;
+        if (effects) { surface = *effects; surface.matrix.reset(); }
+        auto [result,quad] = applyEffects(captured,effects ? &surface : nullptr);
         auto composite = quad; composite.tint = master.tint; composite.color = master.color;
         bool materialPending = !identity;
         // Scalar masters byte-round the premultiplied modulator, not sampled RGB.
@@ -645,9 +648,21 @@ void CompositionPlan::plan() {
         // Materialize color BEFORE resampling a transformed surface. Combining
         // nonlinear clamp/color with affine sampling reverses the contract.
         if (effects && effects->matrix) {
-            if (materialPending) result = addPass({{generated(composite), result}},{},targetCapture);
+            if (materialPending) result = addPass({{generated(composite), result}},passes[result].bounds,targetCapture);
             composite.tint = {1,1,1,1}; composite.color = identityColor;
             composite.affine = StaticAffine::make(*effects->matrix, source.size());
+            composite.smooth = true; // stock samples the turned plane bilinearly (master-transform-world fx-scalex2)
+            // The pivot is the view's centre however far the filters grew the surface, and what they drew past
+            // the view turns with the rest (stock 516.1689, master-transform-world turn90-shadow6,
+            // half-edge-outline4).
+            const QPointF grown = composite.position - source.topLeft();
+            if (composite.affine && !grown.isNull()) {
+                auto& affine = *composite.affine;
+                affine.forward = QTransform::fromTranslate(grown.x(),grown.y()) * affine.forward *
+                                 QTransform::fromTranslate(-grown.x(),-grown.y());
+                affine.inverse = affine.forward.inverted();
+                affine.bounds = affine.forward.mapRect(QRectF(QPointF(),composite.size)).toAlignedRect();
+            }
         }
         if (!master.renderTarget.isEmpty()) {
             if (materialPending || (effects && effects->matrix)) result = addPass({{generated(composite), result}},{},true);

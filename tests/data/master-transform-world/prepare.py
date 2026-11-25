@@ -24,3 +24,4 @@ def box(fill, lo=8, hi=23):
 
 box((200, 60, 60, 255)).save(t / 'box.png')        # 16x16 at 8..23
 box((40, 80, 230, 255)).save(t / 'blue.png')
+Image.new('RGBA', (32, 32), (40, 80, 230, 255)).save(t / 'full.png')  # a whole tile, for the fx-*edge* cases

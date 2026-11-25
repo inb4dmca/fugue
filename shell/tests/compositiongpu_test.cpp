@@ -148,6 +148,63 @@ private slots:
         QFAIL(qPrintable(QString("%1 pixels differ from stock, the first at %2,%3; drawn: %4")
                              .arg(off).arg(first.x()).arg(first.y()).arg(saved)));
     }
+    // tests/data/master-transform-world/filters: the map stock DreamSeeker 516.1689 drew for a plane master with a
+    // matrix, filters or both over a red 16 px box at (5,4) and, for "edge", a blue tile at (7,4). Rebuilt here from
+    // sprites; no channel of any pixel may be more than 8 levels from stock's.
+    void masterTransformFilters_data() {
+        QTest::addColumn<QString>("name");
+        const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-transform-world/filters");
+        const auto files=directory.entryList({"fx-*.png"},QDir::Files,QDir::Name);
+        QVERIFY2(files.size()==13,qPrintable(directory.path()+": expected 13 stock grabs"));
+        for (const auto& file:files) QTest::newRow(qPrintable(file.chopped(4))) << file.chopped(4);
+    }
+    void masterTransformFilters() {
+        QFETCH(QString, name);
+        QImage stock(QString(FUGUE_TEST_DATA_DIR)+"/master-transform-world/filters/"+name+".png");
+        stock = stock.convertToFormat(QImage::Format_RGBA8888);
+        const QRect source(0,0,224,224);
+        QCOMPARE(stock.size(),source.size());
+        MapSprites scene;
+        auto box=test::ink(1); box.image.fill(Qt::transparent);
+        for (int y=8;y<24;++y) for (int x=8;x<24;++x) box.image.setPixelColor(x,y,QColor(200,60,60));
+        box.position={128,96}; scene.push_back(box);
+        if (name.contains("edge")) {
+            auto edge=test::ink(1); edge.image.fill(QColor(40,80,230)); edge.atom=44; edge.position={192,96};
+            scene.push_back(edge);
+        }
+        auto effects=std::make_shared<PlaneEffects>();
+        if (name.contains("scalex2")) effects->matrix=std::array<double,6>{2,0,0,0,1,0};
+        if (name.contains("turn90")) effects->matrix=std::array<double,6>{0,1,0,-1,0,0};
+        if (name.contains("half")) effects->matrix=std::array<double,6>{.5,0,0,0,.5,0};
+        PlaneFilter f;
+        if (name.contains("outline")) { f.kind=PlaneFilter::Outline; f.size=name.contains("outline4") ? 4 : 1; f.color={0,1,0,1}; }
+        if (name.contains("blur2")) f.size=2;
+        if (name.contains("shadow6")) { f.kind=PlaneFilter::Shadow; f.x=6; f.color={1,1,1,1}; }
+        if (name.contains("outline") || name.contains("blur") || name.contains("shadow")) effects->filters={f};
+        QVERIFY(effects->valid(source.size()));
+        auto master=test::master(1); master.planeEffects=effects; scene.push_back(master);
+        GpuComparison gpu;
+#ifdef Q_OS_WIN
+        const bool gl = false;
+#else
+        const bool gl = true;
+#endif
+        QVERIFY2(gpu.initialize(gl,source.size(),true), "Required GPU backend could not be initialized");
+        const QImage drawn = gpu.render(gpu.bounded, scene, source, QColor(16,16,16));
+        QCOMPARE(drawn.size(), stock.size());
+        int off = 0, worst = 0; QPoint first;
+        for (int y = 0; y < stock.height(); ++y) for (int x = 0; x < stock.width(); ++x) {
+            const QRgb a = drawn.pixel(x, y), b = stock.pixel(x, y);
+            const int d = std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
+            worst = std::max(worst, d);
+            if (d > 8 && !off++) first = {x, y};
+        }
+        if (!off) return;
+        const QString saved = QDir::temp().filePath("fugue-transform-" + name + ".png");   // to look at beside stock's
+        drawn.save(saved);
+        QFAIL(qPrintable(QString("%1 pixels differ from stock (worst %2), the first at %3,%4; drawn: %5")
+                             .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved)));
+    }
 };
 FUGUE_TEST_MAIN(CompositionGpuTest)
 #include "compositiongpu_test.moc"

@@ -34,9 +34,10 @@ bool PlaneEffects::requiresSimpleSources() const {
 }
 bool PlaneEffects::valid(QSize viewport) const {
     if (!supported || filters.size() > 8 || (matrix && !StaticAffine::make(*matrix, viewport))) return false;
-    // A plane transform with filters is not modelled.
-    if (matrix && !filters.empty()) return false;
     for (const auto& f : filters) {
+        // A master's filters run first and its matrix turns the result (stock 516.1689, master-transform-world
+        // filters); that is measured for blur, outline and drop shadow only.
+        if (matrix && f.kind != PlaneFilter::Blur && f.kind != PlaneFilter::Outline && f.kind != PlaneFilter::Shadow) return false;
         if (f.kind == PlaneFilter::AlphaMask || f.kind == PlaneFilter::Color) {
             if (f.size || f.grow) return false;
             if (f.kind == PlaneFilter::AlphaMask) {

@@ -242,8 +242,14 @@ private slots:
             transform.append(QJsonObject{{"f32",QString("0x%1").arg(std::bit_cast<uint32_t>(value),8,16,QLatin1Char('0'))}});
         const QJsonObject affine{{"hasTransform",true},{"transform",transform}};
         const auto transformed=decode({outline},affine);
-        QVERIFY(transformed.supported);QVERIFY(transformed.matrix);QVERIFY(transformed.filters.empty());
-        QCOMPARE(transformed.ignoredFilters,size_t(1));QCOMPARE(transformed.matrix,decode({},affine).matrix);
+        // A matrix keeps blur, outline and drop shadow (master-transform-world filters); other kinds are left out.
+        QVERIFY(transformed.supported);QVERIFY(transformed.matrix);QCOMPARE(transformed.filters,decode({outline}).filters);
+        QCOMPARE(transformed.ignoredFilters,size_t(0));QCOMPARE(transformed.matrix,decode({},affine).matrix);
+        QVERIFY(!transformed.boundedTreeFilters());
+        const QJsonObject wave{{"type",5},{"flags",1},{"paramMask",0x3d},{"params","0000803f0000803f00000000000000000000"}};
+        QCOMPARE(decode({wave}).filters.size(),size_t(1));
+        const auto waved=decode({outline,wave},affine);
+        QVERIFY(waved.supported);QVERIFY(waved.matrix);QVERIFY(waved.filters.empty());QCOMPARE(waved.ignoredFilters,size_t(2));
         for(const QJsonObject fields:{QJsonObject{{"hasTransform",true},{"transform",QJsonArray{}}},
                 QJsonObject{{"renderSource","*unsupported"}},QJsonObject{{"maptext","unsupported"}}})
             QVERIFY(!decode({unknown},fields).supported); // no structural fail-open
@@ -376,7 +382,8 @@ private slots:
             effects=admitted;effects.filters[0].color[3]=alpha;QVERIFY(!effects.valid({224,224}));
         }
         effects=admitted;effects.filters.resize(9,outline);QVERIFY(!effects.valid({224,224}));
-        effects=admitted;effects.matrix=std::array<double,6>{1,0,0,0,1,0};QVERIFY(!effects.valid({224,224}));
+        effects=admitted;effects.matrix=std::array<double,6>{1,0,0,0,1,0};
+        QVERIFY(effects.valid({224,224}));QVERIFY(!effects.boundedTreeFilters()); // drawn, but not a tree's filters
         for (auto kind : {PlaneFilter::Blur,PlaneFilter::Shadow}) {
             effects=admitted;effects.filters[0].kind=kind;QVERIFY(effects.valid({224,224}));
         }
