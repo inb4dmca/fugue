@@ -91,5 +91,5 @@ Nested
 masters with a matrix (still refused), animated master matrices, and non-32 px worlds. For filters with a matrix:
 turns that are not quarter turns, a master with a render target, an alpha mask from a render target, animated
 filters, and PIXEL_SCALE on a master that shrinks its plane (under `half` stock keeps other rows and columns than
-Fugue's nearest sampling). For clicks: right-click menus, mouse-opacity 2, and images or vis_contents on a
-turned plane.
+Fugue's nearest sampling). For clicks: mouse-opacity 2. Right-click menus, images and vis_contents members on a
+turned or filtered plane, and render-target masks are in `tests/data/plane-click-world`.
