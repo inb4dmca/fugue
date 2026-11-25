@@ -13,6 +13,14 @@ world's actions or expected values:
 python -B tools/stockprobe/stockprobe.py --world tests/data/clientanim-directset-world --client build/ninja/release/app/Release/fugue-qt.exe --work build/directset-runtime --out build/observations --map 352x352 --settle 1 --duration 4 --interval 0.025 --trigger-file capture.txt capture directset-01
 ```
 
+`record`, `pair` and `click @script` take any number of cases in one run and
+compile the world once. Options that are off by default make a batch faster:
+`--still` (observe as soon as the drawn scene stops changing), `--live` (one
+server and one pair of clients for all cases; the world reboots into each case)
+and `--jobs` (several servers at once). `stockprobe.py --help` says what each
+relies on; [Batches](#batches) below has measurements. `capture` takes none of
+them.
+
 The work directory must be new or empty; the named output directory must not
 exist. Change the output name and work directory for another observation. Only
 processes started by the tool are stopped. Capture failures retain partial
@@ -23,6 +31,49 @@ It logs `READY <key>` to `events.log` once for each client. After two READY line
 and `--settle`, the optional trigger file receives a fresh token inside the work
 directory. The world can use this to start its actions. The trigger is generic;
 the world owns what it means and should log its own action/checkpoint markers.
+
+## Batches
+
+One `pair` case run by itself takes 7.7 s on the machine these were measured on:
+6.0 s of it is `--settle`, 0.4 s preparing and compiling the world, 0.1 s until
+DreamDaemon has opened it, 1.0 s until both clients have logged in, and 0.2 s
+grabbing and stopping. A `click` case adds 0.74 s per action and window (0.24 s
+posting the messages, 0.5 s for the world to answer). The settle is therefore
+what `--still` removes, the start-up what `--live` removes, and `--jobs` divides
+whatever is left, the actions included.
+
+Measured 2026-11-25 with BYOND 516.1689 and a debug Fugue, while the machine was
+also building; wall time of the whole run, each figure one run:
+
+| | 30 `pair` cases | 20 `click` cases, 44 clicks |
+|---|---|---|
+| one run per case, as before | 228 s | 216 s |
+| `--jobs 4` | 59 s | 59 s |
+| `--still 0.5` | 73 s | 114 s |
+| `--still 0.5 --jobs 4` | 22 s, 23 s | |
+| `--still 0.5 --live` | 43 s, 43 s, 44 s | 99 s, 99 s |
+| `--still 0.5 --live --jobs 4` | 14 s, 14 s | 28 s, 29 s |
+| the same with `--stock-only` | 12 s | |
+
+The cases were `tests/data/master-transform-world`'s (`--map 224x224 --params
+set={}`). In every row all thirty stock grabs were pixel-identical to the ones
+kept in that fixture's `filters/`, the client grabs to those of the one-run-per-
+case row, and each click's printed lines to that row's and to `clicks.json`.
+`tests/data/stock-parity-world` shows what the options cost a scene that moves:
+of its thirty sets `--live --jobs 4` reproduced all but `animated-groups` (which
+no two runs reproduce), `--jobs 4` alone also missed `sweep`, whose objects step
+every 2.5 s, and `--still 0.5` grabbed `sweep` and `animated-render-target`
+early, with other pixels than after the whole settle.
+
+`--live` keeps what it shows honest by observing its last case a second time on a
+fresh server. A copy of the world changed to read `world.params` in a global's
+initial value drew the first case for every later one, and was reported.
+
+A starting client takes the foreground (a `STARTUPINFO` asking for an inactive
+window is ignored by both clients), so a batch disturbs whoever is typing once
+per case, or once per server with `--live`. Grabs and clicks do not: maps were
+read unchanged from windows that overlapped, lay on top of each other, or had
+been moved off the screen.
 
 ## Retained evidence
 
