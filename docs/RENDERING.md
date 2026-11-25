@@ -147,11 +147,7 @@ Set variables for an individual client process, not globally:
   window (`shell/gpubackend.h` settles it at start-up and sets Qt's `QSG_RHI_BACKEND` to match). Verify
   actual backend creation; a requested environment value is not backend evidence.
   `FUGUE_FRAME_TRACE` prints the backend and device that were created.
-  Vulkan is experimental. Its off-screen suites pass. `shell_map_native` run by hand with `FUGUE_GPU_BACKEND=vulkan`
-  has two failures (`stockOutlinePrecisionAndWorkload`, `standaloneBlurPixels`): a plane's intermediate surfaces
-  come out empty in the first scene frame a MapWidget draws when that frame is a `grabFramebuffer()` taken before
-  the window has presented at its new size. Presenting once first, or drawing any scene first, avoids it. The cause
-  is not known, nor whether a frame presented on screen can be affected.
+  Vulkan is experimental: its suites pass, but it has had no use in the client.
 - `FUGUE_DUMP_REFUSED=<dir>`: write the bytes of an icon that could not be drawn there.
 
 Atom traces describe the direct-world occurrence, not every HUD/image/vis copy.

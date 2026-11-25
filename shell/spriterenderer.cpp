@@ -105,13 +105,14 @@ struct SpriteRenderer::Impl {
         if (!p->create()) { p.reset(); return false; }
         return true;
     }
-    void draw(QRhiCommandBuffer* cb, const std::vector<Draw>& draws, int offscreen) {
+    void draw(QRhiCommandBuffer* cb, const std::vector<Draw>& draws, int offscreen, const QRhiViewport& viewport) {
         if (draws.empty()) return;
         const QRhiCommandBuffer::VertexInput input(vertices.get(), 0);
         int previous = -1;
         for (const auto& draw : draws) {
             if (draw.blend != previous) {
                 cb->setGraphicsPipeline(pipelines[offscreen][draw.blend].get());
+                cb->setViewport(viewport); // after the pipeline: see SpriteRenderer::draw
                 cb->setVertexInput(0, 1, &input); previous = draw.blend;
             }
             const QRhiCommandBuffer::DynamicOffset offset(0, draw.uniform);
@@ -388,11 +389,12 @@ void SpriteRenderer::renderOffscreen(QRhiCommandBuffer* cb, QRhiResourceUpdateBa
         // QRhi viewports have a bottom-left origin even on top-down render
         // targets. Keep the logical image at texture UV origin on both APIs.
         const int y = d.rhi->isYUpInFramebuffer() ? 0 : surface.texture->pixelSize().height()-size.height();
-        cb->setViewport(QRhiViewport(0,float(y),float(size.width()),float(size.height())));
-        d.draw(cb,d.passDraws[index],pass.byteCapture ? 2 : 1); cb->endPass();
+        d.draw(cb,d.passDraws[index],pass.byteCapture ? 2 : 1,
+               QRhiViewport(0,float(y),float(size.width()),float(size.height())));
+        cb->endPass();
     }
 }
-void SpriteRenderer::draw(QRhiCommandBuffer* cb) {
-    if (d_->prepared) d_->draw(cb,d_->finalDraws,false);
+void SpriteRenderer::draw(QRhiCommandBuffer* cb, const QRhiViewport& viewport) {
+    if (d_->prepared) d_->draw(cb,d_->finalDraws,false,viewport);
 }
 }

@@ -60,11 +60,11 @@ endif()
 set(_shell_profile_env "FUGUE_AUDIO=none;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox")
 # Vulkan is tested where the Vulkan headers are installed (vcpkg's vulkan-headers; not a dependency of the build):
 # Qt declares its Vulkan types only with them. fugue_shell_vulkan_headers(<target>) tells an off-screen suite.
-# The off-screen suites then get a _vulkan entry each. The native map suites do not yet: shell_map_native has two
-# failures on Vulkan (docs/RENDERING.md).
+# Every GPU and native suite then gets a _vulkan entry, which needs a Vulkan driver to run.
 find_package(VulkanHeaders CONFIG QUIET)
 if(TARGET Vulkan::Headers AND NOT APPLE)
   list(APPEND _shell_gpu_backends vulkan)
+  list(APPEND _shell_native_backends vulkan)
 endif()
 function(fugue_shell_vulkan_headers target)
   if(TARGET Vulkan::Headers)

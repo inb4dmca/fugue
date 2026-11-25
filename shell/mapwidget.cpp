@@ -759,10 +759,11 @@ void MapWidget::render(QRhiCommandBuffer* cb) {
         cb->beginPass(sceneTarget_.get(), Qt::black, {1.0f, 0}, updates);
         updates = nullptr;
         cb->setGraphicsPipeline(pipeline_.get());
-        cb->setViewport(QRhiViewport(0, 0, float(source_.width()), float(source_.height())));
+        const QRhiViewport sceneViewport(0, 0, float(source_.width()), float(source_.height()));
+        cb->setViewport(sceneViewport);
         cb->setShaderResources(bindings_.get());
         cb->draw(3);
-        spriteRenderer_->draw(cb);
+        spriteRenderer_->draw(cb, sceneViewport);
         cb->endPass();
     }
     cb->beginPass(renderTarget(), Qt::black, {1.0f, 0}, updates);

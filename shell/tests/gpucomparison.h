@@ -78,8 +78,7 @@ struct GpuComparison {
         auto* updates=rhi->nextResourceUpdateBatch();uploaded=renderer.prepare(updates,scene,source);
         renderer.renderOffscreen(cb,updates);
         cb->beginPass(target.get(),clear,{1,0});
-        cb->setViewport(QRhiViewport(0,0,float(texture->pixelSize().width()),float(texture->pixelSize().height())));
-        renderer.draw(cb);cb->endPass();
+        renderer.draw(cb,QRhiViewport(0,0,float(texture->pixelSize().width()),float(texture->pixelSize().height())));cb->endPass();
         QRhiReadbackResult readback;bool completed=false;readback.completed=[&]{completed=true;};
         updates=rhi->nextResourceUpdateBatch();updates->readBackTexture(QRhiReadbackDescription(texture.get()),&readback);
         cb->resourceUpdate(updates);

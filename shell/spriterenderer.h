@@ -9,6 +9,7 @@ class QRhi;
 class QRhiCommandBuffer;
 class QRhiRenderPassDescriptor;
 class QRhiResourceUpdateBatch;
+class QRhiViewport;
 namespace fugue::shell {
 class CompositionPlan;
 class SpriteRenderer {
@@ -22,7 +23,9 @@ public:
                      QRect source);
     // Consumes the updates, then records dependency-ordered plane/target passes.
     void renderOffscreen(QRhiCommandBuffer* cb, QRhiResourceUpdateBatch* updates);
-    void draw(QRhiCommandBuffer* cb);
+    // Draws into the pass in progress, over the whole of viewport. The viewport is set here, after a pipeline is
+    // bound: QRhi takes the scissor rectangle from a viewport only then, and Vulkan draws nothing without one.
+    void draw(QRhiCommandBuffer* cb, const QRhiViewport& viewport);
     bool ready() const;
     // Resource/recording admission is separate from graph support. The presenter
     // publishes this only after composing the complete frame, never on failure.

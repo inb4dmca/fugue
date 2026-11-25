@@ -278,8 +278,11 @@ they get is another backend's. They use the machine's own adapter. Set `FUGUE_GP
 adapter instead (Direct3D 11's WARP), as CI does; some stock comparisons hold only on a graphics card.
 
 Vulkan is experimental and optional. Where the Vulkan headers are installed (`vcpkg install vulkan-headers`; they are
-not in `vcpkg.json`), the off-screen GPU suites also get a `_vulkan` entry, which needs a Vulkan driver to run. The
-native map suites have no Vulkan entry yet; `docs/RENDERING.md` says why.
+not in `vcpkg.json`), every GPU and native suite also gets a `_vulkan` entry, which needs a Vulkan driver to run.
+To have Vulkan report misuse of its API, install `vulkan-validationlayers` too and run a suite with
+`VK_ADD_LAYER_PATH` set to the directory holding `VkLayer_khronos_validation.json`,
+`VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` and `QT_WIDGETS_RHI_DEBUG_LAYER=1`; messages appear as `vkDebug:`
+lines.
 
 GPU checks that need a window-system connection also carry `display`. On Windows,
 `-L gpu -LE display` selects the Direct3D 11 checks, which can run without a desktop.
