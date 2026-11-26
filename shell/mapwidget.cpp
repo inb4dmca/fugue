@@ -308,21 +308,22 @@ void MapWidget::popupClosed() {
     // The pointer is picked again as soon as the menu closes (mapMenuClosed has stock's rule).
     if (!input_) return;
     const auto buttons = QApplication::mouseButtons();
-    const auto closed = mapMenuClosed(buttons & Qt::RightButton, buttons & ~Qt::RightButton);
-    if (closed == MapMenuClosed::Nothing) return;
+    middleFromMenu_ = (buttons & Qt::MiddleButton) && !presses_.contains(int(Qt::MiddleButton));
     const auto global = QCursor::pos();
     const QPoint local = mapFromGlobal(global);
-    std::optional<MapPointer> p;
-    if (isVisible() && rect().contains(local))
-        p = pointerAt(local, global, QApplication::keyboardModifiers(),
-                      closed == MapMenuClosed::PickRight ? Qt::RightButton : Qt::NoButton);
+    // Every map hears of the menu closing; the one under the pointer reports.
+    bool overMap = false;
+    for (auto* w = QApplication::widgetAt(global); w && !overMap; w = w->parentWidget())
+        overMap = dynamic_cast<MapWidget*>(w);
+    const auto closed = mapMenuClosed(buttons & Qt::LeftButton, buttons & Qt::RightButton,
+                                      buttons & Qt::MiddleButton, overMap);
+    if (closed == MapMenuClosed::Nothing || !isVisible() || !rect().contains(local)) return;
+    auto p = pointerAt(local, global, QApplication::keyboardModifiers(),
+                       closed == MapMenuClosed::PickRight    ? Qt::RightButton
+                       : closed == MapMenuClosed::PickMiddle ? Qt::MiddleButton
+                                                             : Qt::NoButton);
     if (!p) {
-        // Every map hears of the menu closing; the one under the pointer reports, and only when none is does a leave.
-        for (auto* w = QApplication::widgetAt(global); w; w = w->parentWidget())
-            if (auto* map = dynamic_cast<MapWidget*>(w)) {
-                if (map != this) return;
-                break;
-            }
+        // Over this map, outside its picture: what a move there would report.
         sendUnpicked(MapPointer::Leave);
         return;
     }
@@ -475,6 +476,13 @@ void MapWidget::mousePressEvent(QMouseEvent* e) {
         QRhiWidget::mousePressEvent(e);
         return;
     }
+    // A right press while the middle button is held does nothing, nor does its release: no MouseDown, no menu (stock
+    // 516.1689, tests/data/hover-world round3 mmidbefore).
+    if (e->button() == Qt::RightButton && presses_.contains(int(Qt::MiddleButton))) {
+        e->accept();
+        return;
+    }
+    if (e->button() == Qt::MiddleButton) middleFromMenu_ = false;
     setFocus(Qt::MouseFocusReason);
     if (auto p = pointerAt(e->position(), e->globalPosition().toPoint(), e->modifiers(), e->button());
         p && (!p->backgroundHidden || (e->button() == Qt::RightButton && p->insideScene))) {
@@ -496,6 +504,13 @@ void MapWidget::mouseDoubleClickEvent(QMouseEvent* e) {
 }
 void MapWidget::mouseReleaseEvent(QMouseEvent* e) {
     const int button = int(e->button());
+    // The middle press the verb menu took is released as if pressed where it is released.
+    if (input_ && e->button() == Qt::MiddleButton && !presses_.contains(button) && std::exchange(middleFromMenu_, false))
+        if (auto p = pointerAt(e->position(), e->globalPosition().toPoint(), e->modifiers(), e->button());
+            p && !p->backgroundHidden) {
+            p->kind = MapPointer::Down;
+            presses_[button] = {std::make_shared<const MapPointer>(*p), *p};
+        }
     if (!input_ || !presses_.contains(button)) {
         QRhiWidget::mouseReleaseEvent(e);
         return;

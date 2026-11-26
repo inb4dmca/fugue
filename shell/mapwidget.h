@@ -54,7 +54,8 @@ public:
     std::function<void()> presentationChanged;
 
     // The verb popup closed. It swallowed the pointer's motion, so what is under the pointer is reported now, with
-    // right=1 while the right button is still down; that press, when it is what closed the menu, sends no MouseDown.
+    // right=1 or middle=1 while that button is still down; a right press, when it is what closed the menu, sends no
+    // MouseDown. A middle press the menu took is released here as a click (middleFromMenu_).
     void popupClosing();  // as it hides: notes a right button that is down
     void popupClosed();   // once it is hidden: the hover report
 protected:
@@ -87,6 +88,9 @@ private:
     // that belongs to the press (Released).
     void sendUnpicked(MapPointer::Kind);
     QElapsedTimer closedPopupTimer_;  // running: the verb menu just closed under a held right button
+    // The verb menu closed with the middle button held, its press taken by the menu: stock 516.1689 sends MouseUp and
+    // Click where that button is released, with no MouseDown (tests/data/hover-world round3 mmidheld).
+    bool middleFromMenu_ = false;
     void refreshMetrics();
     void placeMetrics();
     QLabel* overlay_ = nullptr;
