@@ -917,6 +917,21 @@ private slots:
             const QRect shown = clip->translated(placement.destination.topLeft().toPoint()).intersected(QRect({}, control));
             QCOMPARE(shown, QRect(QPoint(c.stripX, c.stripY), QPoint(c.endX - 1, c.endY - 1)));
         }
+        // A scaled map: icon-size 48 in a control of 336 pixels is the 224 pixel case magnified 1.5 times. Stock draws
+        // the world from 24 pixels across and the colour-matrix atoms stretched by 13/14 there too (8,1|obj|wide-fx|
+        // 336x336|48: the strip 0..23, the swap at 69..90, the magenta turf at 248..290): the rule holds in scene pixels.
+        {
+            shell::MapPresentationSettings scaled; scaled.iconSize = 48;
+            const QSize control(336, 336), sceneSize(256, 224);
+            const auto placement = shell::mapPresentation(control, sceneSize, 32, scaled);
+            QCOMPARE(placement.scale, 1.5);
+            const auto clip = shell::mapWorldClip(placement, control, sceneSize, {0,0,1,0}, 32);
+            QVERIFY(clip);
+            QCOMPARE(*clip, QRect(32, 0, 208, 224));
+            const QRectF shown = QRectF(*clip).translated(placement.destination.topLeft().x() / placement.scale, 0);
+            QCOMPARE(QRectF(shown.x() * placement.scale, 0, shown.width() * placement.scale, 336), QRectF(24, 0, 312, 336));
+            QCOMPARE(shell::mapWorldView(sceneSize, {0,0,1,0}, 32), QRect(0, 0, 224, 224));
+        }
         // A map that is not enlarged: no clip, even in a control smaller than the view (stock: no strip at 192).
         shell::MapPresentationSettings normal; normal.iconSize = 32;
         for (int size : {192, 224, 288})
