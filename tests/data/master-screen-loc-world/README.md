@@ -154,7 +154,8 @@ part right (down) by what is cut off. The world is drawn only in that part; scre
   and cut with no strip at all: the rule belongs to the enlarged map only.
 
 A colour-matrix atom is the view-sized picture of it stretched from the view's place onto that part (the magenta turf
-at 169..191 and 43..47 for `8,1` at 192 pixels: 6/7 of a tile both ways), and its own tile stays black.
+at 169..191 and 43..47 for `8,1` at 192 pixels: 6/7 of a tile both ways), and its own tile stays black (more in
+`|wide-fx` below).
 
 Fugue draws the world in the added tiles and only in that part (`mapWorldClip` in `shell/mappresentation.h`, applied by
 `SpriteRenderer` to world sprites; `EntityMapTest::worldInTheLargerMap` has the strip and edge each capture shows,
@@ -197,11 +198,38 @@ area, as on the letterbox), hover and drags over the added tiles, and a turned c
 8,1_obj_wide_192x192 100,8 16,100 100,30 right:100,8 menu: right:16,100 menu:             (--map 192x192)
 ```
 
-Still different: the colour-matrix atoms stand on their own tiles (the replay leaves them out), a turned world sprite
-is not cut, and the rule was not measured with a scaled map.
+### What takes the stretched path, turned sprites, a scaled map (`|wide-fx`)
+
+A third field `wide-fx` is `wide` with white squares (`w.dmi`, staged by `prepare.py`) added on level 2, each drawn
+one way (`extras()` in `world.dm`): a plain `color` at 7,6, a colour matrix that swaps red and blue on the red square
+at 6,10, an outline filter at 9,7, KEEP_TOGETHER with an overlay at 7,10, `alpha = 128` at 9,10, BLEND_ADD at 9,6, a
+matrix scaling by 2 at 7,8, and a whole tile turned by 45 degrees at 5,7 (the view's left column) and at 12,6 (the
+column `8,1` adds). A fifth field sets the map's `icon-size` (`8,1|obj|wide|336x336|48`). Grabbed on 2026-11-26 with
+`stockprobe.py --map <size> pair` (96 dpi):
+
+- Only the colour matrices take the stretched path: the swap moves with the magenta turf and the orange object (at
+  224 pixels 46..60 instead of 16..31 across, at 192 pixels 59..72 and 43..56), while the plain colour, alpha, the
+  outline, KEEP_TOGETHER, BLEND_ADD and the scale stay on their tiles. The picture of the view is mapped onto the
+  clip as a whole (at 192 pixels the view's 224 pixels go to 32..224 across and 16..208 down, cut by the control), a
+  pixel is covered when its centre is, and it is drawn in the atom's turn: the swap's picture covers the left of
+  KEEP_TOGETHER's square at 7,10, and at 192 pixels the turfs of the row below cover most of the magenta turf's.
+- A turned world sprite is cut like any other: at 224 pixels the one at 5,7 shows from x=16 only, at 288 pixels the
+  one at 12,6 shows its corner in the view up to x=240 and nothing in the black added column.
+- With icon-size 48 in a control of 336 pixels the picture is the 224 pixel case magnified 1.5 times: the strip is
+  0..23, the swap 69..90, the magenta turf 248..290, the orange object 248..267: the rule holds in scene pixels.
+
+Fugue now draws a world sprite coloured by a colour matrix stretched from the view (`mapWorldView`) onto the clip and
+not on its own tile, and cuts turned world sprites by the clip (`SpriteRenderer`). `replay/` gained `8,1_obj_wide-fx`
+at 224, 192 and 288 pixels (`stockprobe.py --map <size> record`); `CompositionGpuTest::masterLocWideReplay` now
+compares every pixel of all nine controls, colour-matrix atoms included, with no channel more than 8 levels off, and
+`stockprobe.py pair` of `8,1_obj_wide-fx` at 224 and of `8,1_obj_wide-fx_336x336_48` showed no differing pixel. The
+scaled case is checked by `EntityMapTest::worldInTheLargerMap`. Not measured: a turned or filtered atom with a colour
+matrix, a colour matrix on an image, a vis copy or a plane-1 atom, a colour from `client.color`, and maps scaled
+other than by icon-size 48.
 The live client applies the phase's `winset` of the window's and the map's size as stock does
 (`tests/data/winset-size-world`): `stockprobe.py --map 288x288 pair` of `8,1_obj_wide_288x288` gave no differing
-pixel (2026-11-26, 516.1689, 144 dpi), and at 240 and 192 pixels the map differs only in the colour-matrix atoms above.
+pixel (2026-11-26, 516.1689, 144 dpi), and at 240 and 192 pixels the map differed only in the colour-matrix atoms above,
+which Fugue now stretches too.
 ## Reproduction
 
 Requires BYOND and Python/Pillow. Stage icons, then this world:
@@ -225,4 +253,5 @@ described above; it does not count `blurred`) and copies its captures here under
 case={} pair 8,1_obj_wide` grabs stock and Fugue side by side.
 The replay set came from `stockprobe.py --world tests/data/master-screen-loc-world --map 288x288 record
 8,1_obj_wide 0,4_obj_wide 1,9_obj_wide 8,1_obj_wide_288x288 9,1_obj_wide_240x240 8,1_obj_wide_192x192` (the world reads
-`set` as it reads `case`), which writes `replay/` (frames, resources, stock's map at the top left of the window).
+`set` as it reads `case`), which writes `replay/` (frames, resources, stock's map at the top left of the window); the
+`8,1_obj_wide-fx` sets came from the same command with `--map 224x224`, `192x192` and `288x288`.

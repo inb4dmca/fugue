@@ -749,7 +749,8 @@ void MapWidget::render(QRhiCommandBuffer* cb) {
         }
         if (spriteRenderer_)
             metrics_->uploaded(spriteRenderer_->prepare(
-                updates, sprites_, source_, mapWorldClip(placement, size(), source_.size(), geometry_.hud, geometry_.tile)));
+                updates, sprites_, source_, mapWorldClip(placement, size(), source_.size(), geometry_.hud, geometry_.tile),
+                mapWorldView(source_.size(), geometry_.hud, geometry_.tile)));
     }
     if (spriteRenderer_ && updates) {
         spriteRenderer_->renderOffscreen(cb, updates);

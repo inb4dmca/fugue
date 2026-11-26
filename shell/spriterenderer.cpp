@@ -51,6 +51,7 @@ struct SpriteRenderer::Impl {
     std::vector<Draw> finalDraws;
     bool prepared = false, dirty = false;
     std::optional<QRect> worldClip; // the prepared one, in scene coordinates
+    QRect worldView; // likewise
     Stats stats;
 
     std::unique_ptr<QRhiShaderResourceBindings> bindings(QRhiTexture* texture, bool smooth = false) {
@@ -149,9 +150,11 @@ bool SpriteRenderer::initialize(QRhi* rhi, QRhiRenderPassDescriptor* pass, int s
     return d.layout && d.pipeline(0, 0, pass);
 }
 uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSprites& sprites,
-                                 QRect source, std::optional<QRect> worldClip) {
+                                 QRect source, std::optional<QRect> worldClip, QRect worldView) {
     auto& d = *d_;
     if (worldClip) worldClip->translate(source.topLeft());
+    if (!worldClip) worldView = {};
+    worldView.translate(source.topLeft());
     struct Measure {
         Stats& stats;
         std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
@@ -159,8 +162,10 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
     } measure{d.stats};
     ++d.stats.preparations;
     if (d.prepared && d.plan->sprites.constData() == sprites.constData() && d.plan->sprites.size() == sprites.size() &&
-        d.plan->source == source && d.worldClip == worldClip) { d.dirty = false; ++d.stats.replays; return 0; }
-    d.worldClip = worldClip;
+        d.plan->source == source && d.worldClip == worldClip && d.worldView == worldView) {
+        d.dirty = false; ++d.stats.replays; return 0;
+    }
+    d.worldClip = worldClip; d.worldView = worldView;
     d.stats.draws = d.stats.surfaces = d.stats.passes = d.stats.surfaceBytes = d.stats.workPixels = d.stats.ignoredFilters = 0;
     d.stats.rejection = {}; d.stats.composition = {};
     d.stats.requestedSurfaces = d.stats.candidatePasses = d.stats.reachablePasses = 0;
@@ -292,19 +297,42 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
             bindings = selected.get();
         }
         if (!bindings) return false;
-        QRect clipped = rect.intersected(capture);
-        // World sprites end where stock draws the world (mapWorldClip); screen objects and surfaces do not. A turned
-        // world sprite is not cut.
+        // World sprites end where stock draws the world (mapWorldClip), turned ones too; screen objects and surfaces
+        // do not (stock 516.1689, master-screen-loc-world "|wide-fx": a sprite turned by 45 degrees in the view's left
+        // column is cut by the strip, one in a black added tile is not drawn).
         const bool world = sprite.kind == MapSprite::Turf || sprite.kind == MapSprite::Entity ||
                            sprite.kind == MapSprite::Image || sprite.kind == MapSprite::Vis || sprite.kind == MapSprite::Blackness;
-        if (worldClip && world && !premultiplied && !sprite.affine) clipped &= *worldClip;
-        if (clipped.isEmpty()) return true;
+        const bool cut = worldClip && world && !premultiplied;
+        // target: where the part `from` of the sprite's rectangle is drawn; the same unless stretched.
+        QRectF from = rect.intersected(capture), target = from;
+        if (cut && !sprite.affine) {
+            const QRect view = d.worldView;
+            if (sprite.color != identityColor && sprite.kind != MapSprite::Blackness && !view.isEmpty() && view != *worldClip) {
+                // A world atom coloured by a colour matrix is drawn by stock as a picture of the view stretched from the
+                // view onto the clip, sampled at pixel centres, and not on its own tile; what of it is outside the view
+                // is not in that picture (stock 516.1689, master-screen-loc-world "|wide-fx": the colour-matrix turf,
+                // objects and a channel swap move by 13/14 of their place for one added column, 6/7 at 192 pixels,
+                // while a plain colour, alpha, a filter, KEEP_TOGETHER, BLEND_ADD and a scale stay on their tiles).
+                const QRectF part = QRectF(rect.intersected(view));
+                if (part.isEmpty()) return true;
+                const QRectF to(*worldClip), v(view);
+                const double sx = to.width() / v.width(), sy = to.height() / v.height();
+                const QRectF stretched(to.x() + (part.x() - v.x()) * sx, to.y() + (part.y() - v.y()) * sy,
+                                       part.width() * sx, part.height() * sy);
+                const QRectF shown = stretched.intersected(QRectF(capture)).intersected(to);
+                if (shown.isEmpty()) return true;
+                from = QRectF(part.x() + (shown.x() - stretched.x()) / sx, part.y() + (shown.y() - stretched.y()) / sy,
+                              shown.width() / sx, shown.height() / sy);
+                target = shown;
+            } else target = from = from.intersected(QRectF(*worldClip));
+        }
+        if (target.isEmpty()) return true;
         const QSize output = capture.size();
-        const float x0 = 2.0f*(clipped.x()-capture.x())/output.width()-1;
-        const float y0 = 1-2.0f*(clipped.y()-capture.y())/output.height();
-        const float x1 = x0+2.0f*clipped.width()/output.width(), y1 = y0-2.0f*clipped.height()/output.height();
-        const float u0 = float(clipped.x()-rect.x())/rect.width(), v0 = float(clipped.y()-rect.y())/rect.height();
-        const float u1 = u0+float(clipped.width())/rect.width(), v1 = v0+float(clipped.height())/rect.height();
+        const float x0 = float(2*(target.x()-capture.x())/output.width()-1);
+        const float y0 = float(1-2*(target.y()-capture.y())/output.height());
+        const float x1 = float(x0+2*target.width()/output.width()), y1 = float(y0-2*target.height()/output.height());
+        const float u0 = float((from.x()-rect.x())/rect.width()), v0 = float((from.y()-rect.y())/rect.height());
+        const float u1 = float(u0+from.width()/rect.width()), v1 = float(v0+from.height()/rect.height());
         const quint32 first = quint32(vertices.size());
         auto vertex = [&](float x,float y,float u,float v) {
             // These positions put the image's top at clip-space +1, which is the texture's first row on Direct3D
@@ -323,8 +351,42 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
             };
             const float dx = premultiplied && !item.hardEdge ? .5f/sprite.size.width() : 0;
             const float dy = premultiplied && !item.hardEdge ? .5f/sprite.size.height() : 0;
-            corner(-dx,-dy); corner(-dx,1+dy); corner(1+dx,-dy);
-            corner(1+dx,-dy); corner(-dx,1+dy); corner(1+dx,1+dy);
+            if (cut) {
+                // The turned quad cut by the clip: a convex polygon, its texture coordinates affine in position.
+                struct P { double x, y, u, v; };
+                const QSize dimensions = sprite.image.size();
+                std::vector<P> polygon;
+                for (const auto& [u, v] : {std::pair{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}}) {
+                    const QPointF p = sprite.affine->forward.map(QPointF(u*dimensions.width(), v*dimensions.height())) + sprite.position;
+                    polygon.push_back({p.x(), p.y(), u, v});
+                }
+                const QRectF edge(*worldClip);
+                auto cutBy = [&](auto inside, auto cross) {
+                    std::vector<P> out;
+                    for (size_t i = 0; i < polygon.size(); ++i) {
+                        const P& a = polygon[i]; const P& b = polygon[(i + 1) % polygon.size()];
+                        if (inside(a)) out.push_back(a);
+                        if (inside(a) != inside(b)) {
+                            const double t = cross(a, b);
+                            out.push_back({a.x + (b.x - a.x)*t, a.y + (b.y - a.y)*t, a.u + (b.u - a.u)*t, a.v + (b.v - a.v)*t});
+                        }
+                    }
+                    polygon = std::move(out);
+                };
+                cutBy([&](const P& p) { return p.x >= edge.left(); }, [&](const P& a, const P& b) { return (edge.left() - a.x)/(b.x - a.x); });
+                cutBy([&](const P& p) { return p.x <= edge.right(); }, [&](const P& a, const P& b) { return (edge.right() - a.x)/(b.x - a.x); });
+                cutBy([&](const P& p) { return p.y >= edge.top(); }, [&](const P& a, const P& b) { return (edge.top() - a.y)/(b.y - a.y); });
+                cutBy([&](const P& p) { return p.y <= edge.bottom(); }, [&](const P& a, const P& b) { return (edge.bottom() - a.y)/(b.y - a.y); });
+                if (polygon.size() < 3) return true;
+                auto point = [&](const P& p) {
+                    vertex(float(2*(p.x-capture.x())/output.width()-1), float(1-2*(p.y-capture.y())/output.height()),
+                           float(p.u), float(p.v));
+                };
+                for (size_t i = 1; i + 1 < polygon.size(); ++i) { point(polygon[0]); point(polygon[i]); point(polygon[i + 1]); }
+            } else {
+                corner(-dx,-dy); corner(-dx,1+dy); corner(1+dx,-dy);
+                corner(1+dx,-dy); corner(-dx,1+dy); corner(1+dx,1+dy);
+            }
         } else {
             vertex(x0,y0,u0,v0); vertex(x0,y1,u0,v1); vertex(x1,y0,u1,v0);
             vertex(x1,y0,u1,v0); vertex(x0,y1,u0,v1); vertex(x1,y1,u1,v1);
@@ -355,10 +417,11 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
                           sprite.blend >= 0 && sprite.blend <= 4 ? sprite.blend : 0;
         auto* descriptor = offscreen == 2 ? d.byteCapturePass.get() : offscreen ? d.offscreenPass.get() : d.finalPass;
         if (!d.pipeline(offscreen, blend, descriptor)) return false;
+        const quint32 emitted = quint32(vertices.size()) - first;   // 6, or three per triangle of a cut turned quad
         if (!draws.empty() && draws.back().bindings == bindings && draws.back().uniform == offset &&
             draws.back().blend == blend && draws.back().vertex + draws.back().count == first)
-            draws.back().count += 6;
-        else draws.push_back({bindings, first, offset, blend});
+            draws.back().count += emitted;
+        else draws.push_back({bindings, first, offset, blend, emitted});
         return true;
     };
     for (int i : plan.schedule) {
