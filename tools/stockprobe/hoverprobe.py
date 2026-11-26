@@ -7,11 +7,13 @@ The world is prepared with its own prepare.py <dir> [switches] and compiled once
 run every case of SCRIPT in turn. Each line of SCRIPT is "<case> ACTION...", and an ACTION is one of
 
   X,Y            a real pointer move to that MAP pixel (SetCursorPos: the window under it gets a real move). Points
-                 outside the map are allowed: -40,100 is left of the window, 100,-60 above its client area
+                 outside the map are allowed (with a wider skin, its other controls are reached this way): -40,100 is left of the window, 100,-60 above its client area
   post:X,Y       a WM_MOUSEMOVE posted to the window at that point; the real pointer stays where it is
   sweep:X0,Y0,X1,Y1,N,MS   N real moves from the first point to the second, MS milliseconds apart
   down up rdown rup        a real press or release of the left or right button where the pointer is
   tap            a real left press and release at once
+  key:K kdown:K kup:K      a real key pressed and released, pressed, or released: K is ctrl, shift, alt or esc
+  shot:NAME      a grab of the screen around the window, NAME.png beside --out (to find where things are drawn)
   wait:SECONDS   give the world time
 
 An action is followed by --settle seconds before its lines are read; with a "!" after it (tap!) the next one follows
@@ -79,7 +81,9 @@ subprocess.run([sys.executable, str(world / 'prepare.py'), str(work)] + switches
 built = subprocess.run([str(byond / 'dm.exe'), 'world.dme'], cwd=work, capture_output=True, text=True)
 if ' 0 errors' not in built.stdout: raise SystemExit(built.stdout)
 cases = [line.split() for line in Path(a.script).read_text().splitlines() if line.strip() and not line.startswith('#')]
-FORM = re.compile(r'(-?\d+,-?\d+|post:\d+,\d+|sweep:(-?\d+,){5}\d+|down|up|rdown|rup|tap)!?$|wait:\d+(\.\d+)?$')
+FORM = re.compile(r'(-?\d+,-?\d+|post:\d+,\d+|sweep:(-?\d+,){5}\d+|down|up|rdown|rup|tap|(key|kdown|kup):(ctrl|shift|alt|esc))!?$'
+                  r'|wait:\d+(\.\d+)?$|shot:\w+$')
+KEYS = {'ctrl': 0x11, 'shift': 0x10, 'alt': 0x12, 'esc': 0x1b}
 for case in cases:
     bad = [x for x in case[1:] if not FORM.match(x)]
     if bad: raise SystemExit('not an action: ' + ' '.join(bad))
@@ -125,6 +129,14 @@ try:
             return time.perf_counter() - start
         elif kind in ('down', 'up', 'rdown', 'rup', 'tap'):
             user32.mouse_event({'down': 2, 'up': 4, 'rdown': 8, 'rup': 16, 'tap': 6}[kind], 0, 0, 0, 0)
+        elif kind in ('key', 'kdown', 'kup'):
+            if kind != 'kup': user32.keybd_event(KEYS[value], 0, 0, 0)
+            if kind != 'kdown': user32.keybd_event(KEYS[value], 0, 2, 0)
+        elif kind == 'shot':
+            from PIL import ImageGrab
+            r = wintypes.RECT(); user32.GetWindowRect(hwnd, ctypes.byref(r))
+            ImageGrab.grab((r.left, r.top, r.right + 200, r.bottom + 200), all_screens=True).save(
+                Path(a.out).with_name(value + '.png'))
         elif kind == 'wait':
             time.sleep(float(value))
 
@@ -134,7 +146,7 @@ try:
         for action in case[1:]:
             before = len(lines()); clock = time.perf_counter() - begin
             took = act(action)
-            if not action.startswith('wait:') and not action.endswith('!'): time.sleep(a.settle)
+            if not action.startswith(('wait:', 'shot:')) and not action.endswith('!'): time.sleep(a.settle)
             said.append({'action': action, 'at': round(clock, 3), 'logged': lines()[before:]})
             if took is not None: said[-1]['took'] = round(took, 4)
         results.append({'case': case[0], 'actions': said})
@@ -146,6 +158,10 @@ try:
     Path(a.out).write_text(json.dumps({'stock': version.group(1) if version else '?', 'switches': switches,
                                        'params': a.params, 'cases': results}, indent=1) + '\n')
 finally:
+    for key in KEYS.values():   # nothing is left held for the user
+        if user32.GetAsyncKeyState(key) & 0x8000: user32.keybd_event(key, 0, 2, 0)
+    for button, up in ((1, 4), (2, 16)):
+        if user32.GetAsyncKeyState(button) & 0x8000: user32.mouse_event(up, 0, 0, 0, 0)
     user32.SetCursorPos(saved.x, saved.y)
     for p in reversed(procs):
         if p.poll() is None: p.kill()
