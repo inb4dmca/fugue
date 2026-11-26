@@ -247,8 +247,10 @@ std::optional<QPoint> relayPixel(const MapSprite& relay, const CompositionPlan::
 }
 std::optional<MapPointer> planeRelayHit(const MapPointer& pointer, const MapSprite& consumer,
                                       const MapSprite& ink, const MapSprite& master, QPoint pixel,
-                                      const CompositionPlan::Binding& binding, std::optional<QPoint> picture = {}) {
-    if (consumer.kind != MapSprite::Screen || consumer.passMouse || consumer.mouseTransparent ||
+                                      const CompositionPlan::Binding& binding, std::optional<QPoint> picture = {},
+                                      bool own = false) {
+    // own: the consumer's own ink (an overlay of the relay), named as the relay whether or not it passes the mouse.
+    if (consumer.kind != MapSprite::Screen || (consumer.passMouse && !own) || consumer.mouseTransparent ||
         consumer.mouseOpacity != 1 || consumer.maptext || consumer.tint[3] <= 0 || consumer.blend > 4 ||
         (consumer.planeEffects && !consumer.planeEffects->relayFilters())) return {};
     auto hit=pointer;
@@ -449,9 +451,11 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
         const auto pixel = planePixel(scenePixel, it->plane, source, transforms, false);
         auto hit = pointer;
         if (outlines.count(it->plane) && !outlinedInputPart(*it)) return;
-        // A KEEP_TOGETHER relay is the root of its own appearance: it is listed like any relay. Menus through an
-        // overlay's relay are not established.
-        if (!it->planeSourceDependency.isEmpty() && it->renderSource != it->planeSourceDependency) return;
+        // A KEEP_TOGETHER relay is the root of its own appearance: it is listed like any relay. The relay's own overlays
+        // are listed as the relay where their icons are, under a master's matrix too (stock 516.1689, plane-relay-world
+        // nokt-rov, nokt-rov-mturn90). Another relay among its overlays is not established.
+        if (!it->planeSourceDependency.isEmpty() && !it->renderSource.isEmpty() && it->renderSource != it->planeSourceDependency)
+            return;
         if (!it->renderSource.isEmpty()) {
             // A relay standing on a turned plane that another relay draws is reached through that plane's matrix
             // (chain-m5turn90); one drawn on a turned plane directly is not established.
@@ -602,9 +606,10 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
             if (!it->planeSourceDependency.isEmpty()) {
                 if (binding.planeDependency < 0 || binding.localDependency) continue;
                 const auto* surface=&plan.planeSources.surfaces[binding.planeDependency];
-                if (!surface->input || outlines.count(it->plane) || transforms.count(it->plane) ||
-                    transforms.count(sprites[surface->master].plane)) continue;
-                const auto hit=planeRelayHit(out,*it,*it,sprites[surface->master],pixel,binding);
+                // The relay's own overlay is clicked as the relay, PASS_MOUSE or not, and under a master's matrix
+                // (stock 516.1689, plane-relay-world nokt-rov, nokt-rov-mturn90).
+                if (!surface->input || outlines.count(it->plane) || transforms.count(it->plane)) continue;
+                const auto hit=planeRelayHit(out,*it,*it,sprites[surface->master],pixel,binding,{},true);
                 if (!hit) continue;
                 out=*hit;
             } else namePlaneSprite(out, *it, partPixel, source, transforms);

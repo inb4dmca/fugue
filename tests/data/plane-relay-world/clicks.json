@@ -4089,6 +4089,162 @@
     }
    ],
    "date": "2026-11-26"
+  },
+  {
+   "case": "nokt-rov",
+   "clicks": [
+    {
+     "at": [
+      15,
+      207
+     ],
+     "over": "relay",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      143,
+      111
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      15,
+      207
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "nokt-rov-mturn90",
+   "clicks": [
+    {
+     "at": [
+      15,
+      207
+     ],
+     "over": "relay",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      111,
+      143
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 15
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      15,
+      207
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      111,
+      143
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "ovrelay-loc23",
+   "menus": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      60,
+      60
+     ],
+     "entries": [
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26",
+   "pendingClicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      60,
+      60
+     ],
+     "over": "floor",
+     "iconX": 29,
+     "iconY": 4
+    }
+   ],
+   "clicks": []
+  },
+  {
+   "case": "ovrelay-mturn90",
+   "menus": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26",
+   "pendingClicks": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 15
+    }
+   ],
+   "clicks": []
   }
  ]
 }

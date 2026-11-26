@@ -575,7 +575,8 @@ private slots:
                                 "norelay", "locleft", "locright", "locroff", "rpx", "rpw-loc23", "locpd-mark", "locpe",
                                 "locpf-mark", "locrange", "locrow", "chain", "chain-loc23-bneg", "chain-rhalf",
                                 "chain-bhalf", "chain-loc23-bturn90", "chain-bopaque-loc23", "chain-m5turn90",
-                                "mcenter", "fblur-loc23", "foutline-loc23", "foutline-rturn90", "fcolor-loc23"};
+                                "mcenter", "fblur-loc23", "foutline-loc23", "foutline-rturn90", "fcolor-loc23",
+                                "nokt-rov", "nokt-rov-mturn90", "ovrelay-loc23", "ovrelay-mturn90"};
         QSet<QString> over;
         int clicks = 0, menus = 0;
         for (const auto& value : document.object()["cases"].toArray()) {
@@ -617,7 +618,7 @@ private slots:
         QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + QStringList(remaining.values()).join(", ")));
         QVERIFY2(over == (QSet<QString>{"floor", "part", "other", "button", "relay", "relay2", "mark"}),
                  qPrintable(QStringList(over.values()).join(", ")));
-        QVERIFY2(clicks >= 213 && menus >= 185, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
+        QVERIFY2(clicks >= 217 && menus >= 191, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
     }
     void worldPassMouseLifetimeAndBounds() {
         test::PlaneSourceFixture f;
