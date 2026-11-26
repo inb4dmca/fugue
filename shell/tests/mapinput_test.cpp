@@ -199,7 +199,8 @@ private slots:
             QVERIFY(!mapPointerCurrent(forged,w,1));
             forged.click.over.kind=proto::enc::RefTurf; QVERIFY(!mapPointerCurrent(forged,w,1));
             auto drag=p; drag.kind=MapPointer::Drag; drag.source=std::make_shared<const MapPointer>(p);
-            QVERIFY(!mapPointerCurrent(drag,w,1)); drag.kind=MapPointer::Drop; QVERIFY(!mapPointerCurrent(drag,w,1));
+            // Stock 516.1689 drags and drops a client image's atom like any other (plane-click-world gestures.json).
+            QVERIFY(mapPointerCurrent(drag,w,1)); drag.kind=MapPointer::Drop; QVERIFY(mapPointerCurrent(drag,w,1));
             ++w.imageInstances[7].identity; QVERIFY(!mapPointerCurrent(p,w,1)); --w.imageInstances[7].identity;
             ++atom.renderIdentity; QVERIFY(!mapPointerCurrent(p,w,1)); --atom.renderIdentity;
             const auto transparent=image.affine->forward.map(QPointF(16,16)).toPoint();
@@ -312,9 +313,10 @@ private slots:
         for(auto kind:{MapPointer::Down,MapPointer::Up,MapPointer::Click}) {
             auto p=hit;p.kind=kind;QVERIFY(mapPointerCurrent(p,f.world,17));
         }
+        // Stock 516.1689 drags and drops what a PASS_MOUSE relay shows (plane-click-world gestures.json, relay).
         for(auto kind:{MapPointer::DoubleClick,MapPointer::Wheel,MapPointer::Drag,MapPointer::Drop}) {
             auto p=hit;p.kind=kind;p.source=std::make_shared<const MapPointer>(hit);
-            QVERIFY(!mapPointerCurrent(p,f.world,17));
+            QCOMPARE(mapPointerCurrent(p,f.world,17),kind==MapPointer::Drag || kind==MapPointer::Drop);
         }
         for(uint32_t id:{3,5}) {
             const auto fields=fieldsJson(f.world.appearances[id]);
@@ -426,6 +428,50 @@ private slots:
             }
         }
         QCOMPARE(callbacks,150);QCOMPARE(empty,1);
+    }
+    // tests/data/plane-click-world gestures.json (stock 516.1689): a press, moves with the button held and a release,
+    // with the mouse procs the world logged. A drag and a drop name the pressed atom and the atom under the pointer,
+    // each the one a click there names: a client image's atom, a vis_contents member and a plane's own atom alike.
+    void planeDragsLikeStock() {
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/plane-click-world/gestures.json";
+        QJsonDocument document; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
+        int drags = 0, drops = 0; QSet<QString> dragged;
+        for (const auto& value : document.object()["cases"].toArray()) {
+            const auto row = value.toObject(); const auto name = row["case"].toString();
+            const QString replay = QString(FUGUE_TEST_DATA_DIR) + "/plane-click-world/replay/" + name + ".txt";
+            if (!QFile::exists(replay)) continue;   // a case kept for its log alone
+            const int64_t login = 1'000'000'000'000'000'000;
+            test::ReplayFixture f; f.session.setIngestClockNs(login);
+            QVERIFY2(f.load(name + ".txt", "plane-click-world/replay", {}, login + 6'000'000'000), qPrintable(name + ": " + f.error));
+            auto pick = [&](const QString& at) {
+                const auto xy = at.split(',');
+                return mapPointerAt(QPointF(xy.value(0).toInt(), xy.value(1).toInt()), {224, 224}, {7, 7}, f.frame.source,
+                                    f.frame.geometry, "map", true, f.sprites);
+            };
+            std::shared_ptr<const MapPointer> pressed;
+            for (const auto& entry : row["actions"].toArray()) {
+                const auto action = entry.toObject()["action"].toString();
+                QStringList logged; for (const auto& line : entry.toObject()["logged"].toArray()) logged.push_back(line.toString());
+                const auto colon = action.indexOf(':'); if (colon < 0) continue;   // a plain click
+                const auto verb = action.left(colon); const auto hit = pick(action.mid(colon + 1));
+                QVERIFY2(hit, qPrintable(name + " " + action));
+                if (verb == "down") { auto down = *hit; down.kind = MapPointer::Down; pressed = std::make_shared<const MapPointer>(down); continue; }
+                if (!pressed) { QVERIFY2(logged.isEmpty(), qPrintable(name + " " + action)); continue; }   // a move, nothing held
+                const bool drop = verb == "up";
+                const auto line = logged.filter(drop ? "DROP " : "DRAG ").value(0).split(' ');   // DRAG <source> over=<atom> ...
+                QVERIFY2(line.size() >= 3 && line[2].startsWith("over="), qPrintable(name + " " + action + ": " + logged.join("; ")));
+                auto gesture = *hit; gesture.kind = drop ? MapPointer::Drop : MapPointer::Drag; gesture.source = pressed;
+                const auto from = QString::fromStdString(f.targetName(*pressed)), over = QString::fromStdString(f.targetName(gesture));
+                QVERIFY2(from == line[1] && over == line[2].mid(5),
+                         qPrintable(QString("%1 %2: stock %3 over %4, got %5 over %6").arg(name, action, line[1], line[2].mid(5), from, over)));
+                QVERIFY2(mapPointerCurrent(gesture, f.session.world(), 0), qPrintable(name + " " + action + ": not sent"));
+                dragged.insert(from); ++(drop ? drops : drags);
+                if (drop) pressed.reset();
+            }
+        }
+        QVERIFY2(drags >= 6 && drops >= 4, qPrintable(QString("%1 drags, %2 drops").arg(drags).arg(drops)));
+        QVERIFY2(dragged.contains("holder") && dragged.contains("part"), qPrintable(QStringList(dragged.values()).join(", ")));
     }
     // tests/data/plane-click-world (stock 516.1689): a HUD plane master with a matrix, filters or both over a world
     // object, a client image and a vis_contents member on its plane (turned on their own too), held at the end of an
@@ -632,7 +678,7 @@ private slots:
         QVERIFY2(over == (QSet<QString>{"floor", "part", "other", "button", "relay", "relay2", "mark", "holder",
                                          "child"}),
                  qPrintable(QStringList(over.values()).join(", ")));
-        QVERIFY2(clicks >= 227 && menus >= 201, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
+        QVERIFY2(clicks >= 230 && menus >= 201, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
     }
     void worldPassMouseLifetimeAndBounds() {
         test::PlaneSourceFixture f;
@@ -668,7 +714,7 @@ private slots:
         }
         for(auto kind:{MapPointer::DoubleClick,MapPointer::Wheel,MapPointer::Drag,MapPointer::Drop}) {
             auto event=hit;event.kind=kind;event.source=std::make_shared<const MapPointer>(hit);
-            QVERIFY(!mapPointerCurrent(event,f.world,17));
+            QCOMPARE(mapPointerCurrent(event,f.world,17),kind==MapPointer::Drag || kind==MapPointer::Drop);
         }
         const auto original=f.sprites;
         {   // The master's matrix is taken back (stock 516.1689, tests/data/plane-relay-world mturn90): moved one pixel

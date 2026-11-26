@@ -688,8 +688,12 @@ bool mapPointerCurrent(const MapPointer& p, const model::World& w, uint64_t sess
     if (p.backgroundHidden && (!p.source || (p.kind!=MapPointer::Drag && p.kind!=MapPointer::Drop && p.kind!=MapPointer::Up))) return false;
     if (p.z != w.viewZ) return false;
     const bool dragging = p.kind == MapPointer::Drag || p.kind == MapPointer::Drop;
-    if (dragging && (!p.source || p.source->masterFallback || p.visHit || p.imageIdentity || p.relayHit || p.source->relayHit ||
-        p.source->visHit || p.source->imageIdentity || p.planeMousePath || p.source->planeMousePath || p.source->click.over.kind == proto::enc::RefNull)) return false;
+    // Stock 516.1689 drags and drops a client image's atom, a vis_contents member and what a PASS_MOUSE plane relay
+    // shows like any other atom, naming what a click at each point names (plane-click-world gestures.json). A relay
+    // that takes the pointer itself is not measured and still takes no part in a drag.
+    auto unmeasured = [](const MapPointer& end) { return bool(end.relayHit); };
+    if (dragging && (!p.source || p.source->masterFallback || unmeasured(p) || unmeasured(*p.source) ||
+        p.source->click.over.kind == proto::enc::RefNull)) return false;
     if (p.source && (p.source->source || p.source->session != p.session || p.source->z != p.z ||
         !mapPointerCurrent(*p.source, w, session))) return false;
     const auto& c = p.click;
@@ -706,7 +710,8 @@ bool mapPointerCurrent(const MapPointer& p, const model::World& w, uint64_t sess
     if (p.screen && !scopeCurrent(p.visHit ? p.visHit->hudRoot : c.over.ref)) return false;
     if (p.planeMousePath) {
         const auto& path = *p.planeMousePath;
-        if (p.kind != MapPointer::Down && p.kind != MapPointer::Up && p.kind != MapPointer::Click && p.kind != MapPointer::Hover) return false;
+        if (p.kind != MapPointer::Down && p.kind != MapPointer::Up && p.kind != MapPointer::Click && p.kind != MapPointer::Hover &&
+            !dragging) return false;
         if (path.hops.empty() || path.hops.size() > 8 || p.relayHit || p.imageIdentity || p.visHit) return false;
         auto current = [&](const MapPointer& endpoint, uint32_t appearance) {
             const auto ap = w.hudAppid.find(endpoint.click.over.ref);
@@ -729,10 +734,19 @@ bool mapPointerCurrent(const MapPointer& p, const model::World& w, uint64_t sess
             try {
                 const proto::Appearance& m = w.appearances.at(hop.masterAppearance).fields;
                 const proto::Appearance& r = w.appearances.at(hop.relayAppearance).fields;
+                // The relay is the screen object itself or one of its overlays or underlays (stock 516.1689,
+                // plane-relay-world ovrelay-*: an overlay with a render source draws and passes the pointer like a relay).
+                auto relays = [&](const proto::Appearance& a) {
+                    return QString::fromStdString(a.renderSource) == hop.name && (a.appearanceFlags & 0x80000000u);
+                };
+                bool relayed = relays(r);
+                for (const auto* children : {&r.overlays, &r.underlays})
+                    for (const uint32_t id : *children) {
+                        const auto child = w.appearances.find(id);
+                        relayed = relayed || (child != w.appearances.end() && relays(child->second.fields));
+                    }
                 if (!SceneAppearance(m).master || resolvePlane(m.plane) != hop.plane ||
-                    QString::fromStdString(m.renderTarget) != hop.name ||
-                    QString::fromStdString(r.renderSource) != hop.name ||
-                    !(r.appearanceFlags & 0x80000000u)) return false;
+                    QString::fromStdString(m.renderTarget) != hop.name || !relayed) return false;
             } catch (const std::exception&) { return false; }
         }
     }

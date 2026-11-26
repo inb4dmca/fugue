@@ -166,9 +166,9 @@ listed, `relay2` without PASS_MOUSE was not clicked over a plane holding another
 the chain's atoms from the menu (10 of the 37 new clicks and 4 of the 30 new menus differed). Through a relay a
 client image and a vis_contents member were floor, and the holder was missing from the menu (`iv-loc23`). `nopass-rhalf`, `nopass-rt_45`, the
 percents and `mcenter` already matched. After: all 59 grabs match stock (checked on Vulkan), and all 227 tested
-clicks and 201 menus. The two clicks of `ovrelay-*` name the right atom, but the check that a click is still current
-when it is sent expects the relay's own appearance, not its overlay, to carry the render source, so Fugue does not send
-them; they are kept in `clicks.json` as `pendingClicks` and not tested.
+clicks and 201 menus. The clicks of `ovrelay-*` named the right atom but were not sent: the check that a click is
+still current when it is sent expected the relay's own appearance, not its overlay, to carry the render source. It
+now accepts an overlay or underlay too, and those three clicks are tested with the rest (230).
 
 ## Not covered
 

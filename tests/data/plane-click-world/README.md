@@ -102,13 +102,14 @@ and an atom's own render-target mask hid nothing. The animated masters, the turn
 sources already matched. After: all 130 clicks and 67 menus in `clicks.json` match stock.
 
 Hover and drag go through the same hit test as a click in Fugue (`MapWidget::pointerAt`), so they name the same atom
-and icon-x/y. But Fugue does not send a MouseDrag or MouseDrop whose dragged or dragged-over atom is a client image's
-atom, a vis_contents member or reached through a plane relay (`mapPointerCurrent` refuses them), where stock does;
-and it sends no hover through a relay without PASS_MOUSE. Not changed here.
+and icon-x/y. Fugue used to send no MouseDrag or MouseDrop whose dragged or dragged-over atom was a client image's
+atom, a vis_contents member or reached through a plane relay; it now sends them as stock does, and
+`mapinput_test::planeDragsLikeStock` replays the recorded drags and drops of `outline1` and `turn90` (the `relay`
+case has no replay here, so its drags are covered only by the check that such a drag is sent). A relay that takes the
+pointer itself (no PASS_MOUSE) still takes no part in a drag and gets no hover: stock was not measured there.
 
 ## Not covered
 
 An image overlay on a vis member, a plane render target that is hidden (`*`) but consumed by nothing, MouseMove,
-images and members drawn through a relay (Fugue names the floor at `relay` 80,111 and 111,47, where stock names
-`holder` and `child`; that case is in `gestures.json` only), mid-flight clicks on an animating master, and a mask
+drags and hover on a relay without PASS_MOUSE, mid-flight clicks on an animating master, and a mask
 source turned other than by a quarter or with other filters than an outline.

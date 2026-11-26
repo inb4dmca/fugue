@@ -4196,7 +4196,7 @@
     }
    ],
    "date": "2026-11-26",
-   "pendingClicks": [
+   "clicks": [
     {
      "at": [
       175,
@@ -4215,8 +4215,7 @@
      "iconX": 29,
      "iconY": 4
     }
-   ],
-   "clicks": []
+   ]
   },
   {
    "case": "ovrelay-mturn90",
@@ -4233,7 +4232,7 @@
     }
    ],
    "date": "2026-11-26",
-   "pendingClicks": [
+   "clicks": [
     {
      "at": [
       111,
@@ -4243,8 +4242,7 @@
      "iconX": 16,
      "iconY": 15
     }
-   ],
-   "clicks": []
+   ]
   },
   {
    "case": "nopass-rhalf",

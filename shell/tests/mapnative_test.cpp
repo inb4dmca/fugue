@@ -3127,7 +3127,10 @@ private slots:
         QImage terrain(64, 64, QImage::Format_RGBA8888); terrain.fill(Qt::green);
         mailbox->publish(terrain, QRect(0, 0, 64, 64), 0, 0, {QRect(10, 20, 2, 2), QSize(100, 100), 32, 2, 7});
         std::vector<MapPointer> events;
-        map.setInputHandler("world.map", true, [&](const MapPointer& p) { events.push_back(p); });
+        map.setInputHandler("world.map", true, [&](const MapPointer& p) {
+            // The real pointer crossing the window sends hovers of its own; this test sends none.
+            if (p.kind != MapPointer::Hover && p.kind != MapPointer::Leave) events.push_back(p);
+        });
         map.show();
         QVERIFY(QTest::qWaitForWindowExposed(&map));
         QVERIFY(!map.grabFramebuffer().isNull());
