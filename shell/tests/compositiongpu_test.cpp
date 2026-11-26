@@ -244,7 +244,7 @@ private slots:
             if (!line.isEmpty() && !line.startsWith('#')) sets.push_back(line.section('\t',0,0));
         }
         sets.sort();
-        QCOMPARE(sets.size(),37);
+        QCOMPARE(sets.size(),45);
         for (const auto& suffix:{QString(".png"),QString(".txt")}) {
             QStringList expected;
             for (const auto& set:sets) expected.push_back(set+suffix);

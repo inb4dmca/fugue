@@ -369,6 +369,33 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
     };
     return walk(walk,consumerIndex,pixel);
 }
+// The atom whose ink is at a point of a plane's own picture. Where a PASS_MOUSE relay of another plane stands on it, the
+// ink there is that plane's, found the same way (stock 516.1689, plane-relay-world chain-bopaque-loc23: a relay without
+// PASS_MOUSE of a plane that holds the first relay is clicked where the first plane's atoms are drawn).
+qsizetype relayedInk(const CompositionPlan& plan, int index, QPoint sample, uint64_t& work, int depth) {
+    const auto& surface = plan.planeSources.surfaces[size_t(index)];
+    if (surface.input) return PlaneSources::ink(surface, plan.sprites, sample, work);
+    if (!surface.relayInput || depth >= 8) return -1;
+    for (auto it = surface.parts.rbegin(); it != surface.parts.rend(); ++it) {
+        if (!work) return -1;
+        --work;
+        const auto& s = plan.sprites[*it];
+        if (s.renderSource.isEmpty()) {
+            if (s.rect().contains(sample) && s.image.pixelColor(sample - s.position).alpha()) return *it;
+            continue;
+        }
+        const auto& b = plan.bindings[size_t(*it)];
+        if (b.refused || b.localName || b.planeSource < 0 || !s.passMouse || s.mouseTransparent || s.mouseOpacity != 1)
+            return -1;
+        const auto local = relayPixel(s, b, sample, plan.source);
+        if (!local) continue;
+        const auto& inner = plan.sprites[plan.planeSources.surfaces[size_t(b.planeSource)].master];
+        const auto ink = relayedInk(plan, b.planeSource, planePixel(*local, inner.plane, plan.source, plan.transforms, false),
+                                    work, depth + 1);
+        if (ink >= 0) return ink;
+    }
+    return -1;
+}
 // A relay without PASS_MOUSE is clicked itself where the plane's picture has ink, its matrix and its master's taken
 // back (stock 516.1689, plane-relay-world nopass-loc23, nopass-rturn90, nopass-mturn90).
 std::optional<MapPointer> planeRelayAt(const MapPointer& pointer, const MapSprite& consumer,
@@ -380,7 +407,7 @@ std::optional<MapPointer> planeRelayAt(const MapPointer& pointer, const MapSprit
     if (!local) return {};
     const auto& master = plan.sprites[surface->master];
     const QPoint sample = planePixel(*local, master.plane, plan.source, plan.transforms, false);
-    const auto ink=PlaneSources::ink(*surface,plan.sprites,sample,work);
+    const auto ink=relayedInk(plan,binding.planeSource,sample,work,0);
     if (ink<0) return {};
     return planeRelayHit(pointer,consumer,plan.sprites[ink],master,pixel,binding,local);
 }
@@ -423,7 +450,10 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
         // overlay's relay are not established.
         if (!it->planeSourceDependency.isEmpty() && it->renderSource != it->planeSourceDependency) return;
         if (!it->renderSource.isEmpty()) {
-            if (!it->renderTarget.isEmpty() || hiddenHere.count(it->plane) || transforms.count(it->plane)) return;
+            // A relay standing on a turned plane that another relay draws is reached through that plane's matrix
+            // (chain-m5turn90); one drawn on a turned plane directly is not established.
+            if (!it->renderTarget.isEmpty() || hiddenHere.count(it->plane) || (transforms.count(it->plane) && !through))
+                return;
             if (!binding.localName && binding.planeSource >= 0) {
                 if (it->kind != MapSprite::Screen || depth >= 8) return;
                 const auto local = relayPixel(*it, binding, pixel, source);

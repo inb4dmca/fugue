@@ -11,7 +11,13 @@ struct PlaneSources {
         qsizetype master = -1;
         std::vector<qsizetype> parts;
         bool input = true;
+        // As input, but some parts may be relays of other planes, whose ink is asked of those planes (mapinput.cpp).
+        bool relayInput = true;
     };
+    static bool masterInput(const MapSprite& m, QRect viewport) {
+        return material(m) && m.haveKey && (m.hudIdentity || m.targetIdentity) &&
+            m.renderSource.isEmpty() && (!m.planeEffects || coverage(*m.planeEffects, viewport.size()));
+    }
     std::vector<Surface> surfaces;
     std::map<QString,int> names;
     PlaneSources(const MapSprites& sprites, QRect viewport, const std::map<int,qsizetype>& masters) {
@@ -27,8 +33,7 @@ struct PlaneSources {
             if (!unique) it->second=-1;
             planes[plane]=next;
             Surface s; s.master=index;
-            s.input = material(m) && m.haveKey && (m.hudIdentity || m.targetIdentity) &&
-                m.renderSource.isEmpty() && (!m.planeEffects || coverage(*m.planeEffects, viewport.size()));
+            s.input = masterInput(m, viewport);
             surfaces.push_back(std::move(s));
         }
         for (qsizetype i=0;i<sprites.size();++i) {
@@ -43,12 +48,18 @@ struct PlaneSources {
             // finite matrices and admitted master filters neither erase original
             // ink nor add generated ink. Keep the whole-surface structural proof:
             // an unsupported contributor must never yield a partial guessed mask.
-            surface.input &= material(s) && !s.image.isNull() &&
+            const bool own = material(s) && !s.image.isNull() &&
                 (s.size.isEmpty() || s.size==s.image.size()) &&
                 (s.kind==MapSprite::Entity || s.kind==MapSprite::Screen || s.kind==MapSprite::Turf) &&
                 !s.imageIdentity && !s.visHit && !s.localGroup && !s.planeEffects &&
                 s.renderSource.isEmpty() && s.renderTarget.isEmpty() && s.planeSourceDependency.isEmpty();
+            // A screen object relaying another plane's surface onto this one: its ink is that plane's.
+            const bool relay = s.kind==MapSprite::Screen && !s.renderSource.isEmpty() && s.renderTarget.isEmpty() &&
+                (s.planeSourceDependency.isEmpty() || s.planeSourceDependency==s.renderSource) && !s.localGroup;
+            surface.input &= own;
+            surface.relayInput &= own || relay;
         }
+        for (auto& s : surfaces) s.relayInput &= s.master >= 0 && masterInput(sprites[s.master], viewport);
     }
     // A master's matrix moves its plane's original ink without adding or removing any: the picker takes the pointer
     // back through it before asking ink() (stock 516.1689, plane-relay-world mturn90, nopass-mturn90).
