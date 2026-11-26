@@ -423,7 +423,8 @@ private slots:
         QCOMPARE(callbacks,150);QCOMPARE(empty,1);
     }
     // tests/data/plane-click-world (stock 516.1689): a HUD plane master with a matrix, filters or both over a world
-    // object, a client image and a vis_contents member on its plane. replay/<case>.txt is what DreamDaemon sent for the
+    // object, a client image and a vis_contents member on its plane (turned on their own too), held at the end of an
+    // animation, or masked through a render target. replay/<case>.txt is what DreamDaemon sent for the
     // case; clicks.json what stock named for left clicks there (with icon-x/y) and the entries of its right-click menus.
     void planeClicksLikeStock() {
         const QString path = QString(FUGUE_TEST_DATA_DIR) + "/plane-click-world/clicks.json";
@@ -431,14 +432,23 @@ private slots:
         QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
         QSet<QString> remaining{"plain", "outline1", "turn90", "scalex2", "turn90-outline1", "tree45", "tree45-scalex2",
                                 "iconalpha", "rtalpha", "ptalpha", "rtalpha-inverse", "ptalpha-inverse", "turn90-rtalpha",
-                                "scalex2-ptalpha"};
+                                "scalex2-ptalpha",
+                                // 2026-11-26: an image and a member turned on their own, on a plain, turned or scaled
+                                // plane; a master held at the end of an animated matrix or mask offset; a mask whose
+                                // source is turned or outlined; an atom's own mask from a render target.
+                                "selfturn", "turn90-selfturn", "scalex2-selfturn", "spin90", "grow2x", "iconalpha-slide",
+                                "rtalpha-rtturn", "rtalpha-rtoutline", "ptalpha-ptturn", "ptalpha-ptoutline", "selfmask",
+                                "selfmask-inverse"};
         QSet<QString> over;
         int clicks = 0, menus = 0;
         for (const auto& value : document.object()["cases"].toArray()) {
             const auto row = value.toObject(); const auto name = row["case"].toString();
             QVERIFY2(remaining.remove(name), qPrintable(path + ": unknown or duplicate case " + name));
+            // Taken six seconds after login, as the animated cases' clicks were: the end of their first step, held.
+            const int64_t login = 1'000'000'000'000'000'000, clicked = login + 6'000'000'000;
             test::ReplayFixture f;
-            QVERIFY2(f.load(name + ".txt", "plane-click-world/replay"), qPrintable(name + ": " + f.error));
+            f.session.setIngestClockNs(login);
+            QVERIFY2(f.load(name + ".txt", "plane-click-world/replay", {}, clicked), qPrintable(name + ": " + f.error));
             QCOMPARE(f.frame.source.size(), QSize(224, 224));
             auto pick = [&](const QJsonValue& at, QString& context) -> std::optional<MapPointer> {
                 context = QString("%1 at %2,%3").arg(name).arg(at[0].toInt()).arg(at[1].toInt());
@@ -472,7 +482,7 @@ private slots:
         }
         QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + QStringList(remaining.values()).join(", ")));
         QVERIFY2(over == (QSet<QString>{"floor", "part", "holder", "child", "master", "leaner"}), qPrintable(QStringList(over.values()).join(", ")));
-        QVERIFY2(clicks >= 60 && menus >= 30, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
+        QVERIFY2(clicks >= 130 && menus >= 67,qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
     }
     // tests/data/master-screen-loc-world (stock 516.1689, README "Clicks in the larger map"): a screen object outside the
     // 7x7 view enlarges the map, in controls of 192, 224 and 288 pixels. Stock takes the pointer to the world only in

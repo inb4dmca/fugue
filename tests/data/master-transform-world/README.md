@@ -300,5 +300,7 @@ turns that are not quarter turns (outside the grid cases), the margin by which e
 before it runs (drop shadow and blur are not yet drawn as stock does at the view's edge), and a relay of an atom's own
 render target with a matrix or PIXEL_SCALE. For clicks: mouse-opacity 2. Right-click menus, images and vis_contents members on a turned or
 filtered plane, and render-target masks are in `tests/data/plane-click-world`. For animation: no mid-flight frame is
-kept or compared pixel for pixel (only the holds are), clicks on an animating master were not taken, and a filter
+kept or compared pixel for pixel (only the holds are), clicks on a master held at the end of an animated matrix or
+mask offset are in `tests/data/plane-click-world` (`spin90`, `grow2x`, `iconalpha-slide`; mid-flight clicks were
+not taken), and a filter
 list that differs within one step cannot be produced from DM (see above).

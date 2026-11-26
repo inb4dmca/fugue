@@ -58,6 +58,12 @@ faster. Each is off by default, because each relies on something about the world
 --stock-only leaves this client out: pair writes <name>-stock.png alone and click prints what stock answered; no
 --client is needed. --timings prints where each case's time went, on stderr.
 
+--cursor also puts the real mouse pointer on each point before its messages are posted. Stock 516.1689 starts a drag
+only where the real pointer has moved: without --cursor a press moved elsewhere sends no MouseDrag or MouseDrop and
+ends in a Click on the atom it is released over. A posted move sends no MouseEntered or MouseMove either way (stock
+sends MouseEntered after a press, a drop or a closed menu). --cursor moves the user's pointer, and a window over the
+client's at that point gets real moves too: use it with --stock-only.
+
 Stock draws by the display scale its process started on (default-size maptext differs between 100 % and 150 %), so
 replay/recorded.tsv keeps the scale of every recording; DreamSeeker's map also stays blank while the display is idle.
 """
@@ -85,6 +91,7 @@ ap.add_argument('--still', type=float, default=0, help='grab once the maps have 
 ap.add_argument('--live', action='store_true', help='one server and its clients for all cases; see above')
 ap.add_argument('--jobs', type=int, default=1, help='servers to run at once, on --port and the ports after it')
 ap.add_argument('--stock-only', action='store_true', help='pair and click without this client')
+ap.add_argument('--cursor', action='store_true', help='click: move the real pointer to each point too; see above')
 ap.add_argument('--timings', action='store_true', help="print each case's time breakdown on stderr")
 ap.add_argument('command', choices=['record', 'pair', 'click', 'capture'])
 ap.add_argument('args', nargs='+')
@@ -200,6 +207,8 @@ held = {}   # pid -> the MK_ button bits its window was last left with
 
 def mouse(pid, kind, x, y):
     hwnd = main_window(pid); p = wintypes.POINT(x, y); target = user32.ChildWindowFromPointEx(hwnd, p, 0) or hwnd
+    if a.cursor:
+        screen = wintypes.POINT(x, y); user32.ClientToScreen(hwnd, ctypes.byref(screen)); user32.SetCursorPos(screen.x, screen.y)
     user32.MapWindowPoints(hwnd, target, ctypes.byref(p), 1); where = (p.y << 16) | (p.x & 0xffff)
     for message, buttons in MOUSE[kind]:
         buttons = held.get(pid, 0) if buttons is None else buttons
