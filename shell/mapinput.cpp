@@ -149,9 +149,7 @@ void nameSprite(MapPointer& out, const MapSprite& s, QPoint pixel, std::optional
     out.filteredPlane = false;
     out.masterFallback = false;
     auto& c = out.click;
-    c.over = s.kind == MapSprite::Turf ? proto::enc::turfRef(s.cell.x(), s.cell.y()) :
-        s.visHit && s.visHit->turf ? proto::enc::turfRef(s.visHit->cell[0] + 1, s.visHit->cell[1] + 1) :
-        (s.atom & 0x80000000u) ? proto::enc::mobRef(s.atom & 0x7fffffffu) : proto::enc::objRef(s.atom);
+    c.over = mapSpriteRef(s);
     out.screen = s.kind == MapSprite::Screen;
     c.loc = out.screen ? proto::enc::nullRef() : proto::enc::turfRef(s.cell.x(), s.cell.y());
     c.iconX = pixel.x() - s.iconBottom.x() + 1;
@@ -430,6 +428,11 @@ std::optional<MapPointer> planeRelayAt(const MapPointer& pointer, const MapSprit
     if (ink<0) return {};
     return planeRelayHit(pointer,consumer,plan.sprites[ink],master,pixel,binding,local);
 }
+}
+proto::enc::AtomRef mapSpriteRef(const MapSprite& s) {
+    return s.kind == MapSprite::Turf ? proto::enc::turfRef(s.cell.x(), s.cell.y()) :
+        s.visHit && s.visHit->turf ? proto::enc::turfRef(s.visHit->cell[0] + 1, s.visHit->cell[1] + 1) :
+        (s.atom & 0x80000000u) ? proto::enc::mobRef(s.atom & 0x7fffffffu) : proto::enc::objRef(s.atom);
 }
 QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
     QVector<MapPointer> result;

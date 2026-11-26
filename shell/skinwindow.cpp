@@ -1,5 +1,6 @@
 #include "shell/skinwindow.h"
 #include "shell/macrodialog.h"
+#include "shell/mapmenu.h"
 #include "shell/mapwidget.h"
 #include <algorithm>
 #include <cctype>
@@ -364,7 +365,8 @@ void SkinWindow::showMapMenu(const MapMenu& menu) {
     auto* popup = new QMenu(this);
     popup->setObjectName("mapContextMenu");
     mapMenu_ = popup;
-    popup->setFont(skinMenuFont());
+    // The system's menu font, for the atoms' entries and the verbs alike: stock's verbs are plain Windows menu items,
+    // and it draws the atoms' names in the same font (stock 516.1689, tests/data/menu-world). Not the menu bar's.
     auto* ignoreMiddle = new MenuIgnoresMiddle(popup);
     popup->installEventFilter(ignoreMiddle);
     connect(popup, &QMenu::aboutToHide, popup, &QObject::deleteLater);
@@ -386,7 +388,7 @@ void SkinWindow::showMapMenu(const MapMenu& menu) {
         const auto& item = menu.items[i];
         if (!group || groupId != item.group) {
             groupId = item.group;
-            group = popup->addMenu(QString(item.atom).replace("&", "&&"));
+            group = popup->addMenu(mapMenuEntryIcon(item.icon, devicePixelRatioF()), QString(item.atom).replace("&", "&&"));
             group->installEventFilter(ignoreMiddle);
         }
         auto* action = group->addAction(QString(item.label).replace("&", "&&"));

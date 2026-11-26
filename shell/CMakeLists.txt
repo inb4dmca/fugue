@@ -215,6 +215,11 @@ if(TARGET mapinput_test)
   target_link_libraries(mapinput_test PRIVATE fugue_proto) # independent wire-backed input regressions
   target_compile_definitions(mapinput_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
 endif()
+fugue_shell_test(shell_mapmenu mapmenu_test) # right-click menu entries, verb labels and pictures against stock
+if(TARGET mapmenu_test)
+  target_link_libraries(mapmenu_test PRIVATE fugue_proto)
+  target_compile_definitions(mapmenu_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
+endif()
 fugue_shell_test(shell_mapmailbox mapmailbox_test) # coalesced notifications and newest-frame delivery
 fugue_shell_test(shell_map      map_test)         # portable configuration, routing and skin rebuilds
 if(TARGET map_test)

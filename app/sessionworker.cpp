@@ -3,6 +3,7 @@
 #include "app/mapframeclock.h"
 #include "shell/turfmap.h"
 #include "shell/entitymap.h"
+#include "shell/mapmenu.h"
 #include "shell/namedmap.h"
 #include "shell/statview.h"
 #include "net/guest.h"
@@ -1000,38 +1001,26 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                     std::string stacked, offered;
                     {
                         int group = 0;
-                        for (const auto& rendered : shell::mapPointerStack(p)) {
-                            if (!shell::mapPointerCurrent(rendered, w, mapSession_)) continue;
+                        for (const auto& entry : shell::mapMenuStack(p, w, mapSession_)) {
+                            const auto& rendered = entry.rendered;
                             const auto& ref = rendered.click.over;
-                            const auto& loc = rendered.click.loc;
-                            const auto named = shell::mapPointerTarget(rendered, w);
-                            const bool turf = named && named->kind == shell::MapPointerTarget::Turf;
-                            // A turf is targeted at its own cell, which for a vis_contents member is not the cell it
-                            // is drawn on. A verb names a turf by cell on the map's z only, so a member from another z
-                            // has no entry rather than one that would run on the turf under it.
-                            if (turf && (!named->appid || named->cell[2] != uint16_t(p.z))) continue;
-                            const int x = rendered.screen ? 0 : turf ? int(named->cell[0]) + 1 : int(loc.x) + 1;
-                            const int y = rendered.screen ? 0 : turf ? int(named->cell[1]) + 1 : int(loc.y) + 1;
-                            auto hit = model::targetFromHit(w, ref.kind, ref.ref, x, y, rendered.screen);
-                            if (named && named->appid) hit.appid = *named->appid;
-                            std::string name;
-                            if (auto ap = w.appearances.find(hit.appid); ap != w.appearances.end())
-                                name = model::plainAtomName(ap->second.fields.name);
+                            const auto& hit = entry.hit;
+                            const auto& name = entry.name;
                             if (rec_)
                                 stacked += (stacked.empty() ? "" : ",") + std::string("{\"name\":") +
                                            model::Recorder::quote(name) + ",\"kind\":" + std::to_string(ref.kind) +
-                                           ",\"ref\":" + std::to_string(ref.ref) + ",\"x\":" + std::to_string(x) +
-                                           ",\"y\":" + std::to_string(y) +
+                                           ",\"ref\":" + std::to_string(ref.ref) + ",\"x\":" + std::to_string(entry.x) +
+                                           ",\"y\":" + std::to_string(entry.y) +
                                            ",\"screen\":" + (rendered.screen ? "true" : "false") + "}";
-                            if (name.empty()) continue;
+                            if (name.empty() || entry.verbs.empty()) continue;
+                            // The picture is taken now, from the scene the click was made on: stock's does not
+                            // change while the menu is open.
+                            const QImage icon = shell::mapMenuIcon(rendered);
                             std::string verbs;
-                            for (const auto& verb : model::atomMenu(w, hit.appid, hit.target)) {
+                            for (const auto& verb : entry.verbs) {
                                 if (mapChoices.size() >= 1024) break;
-                                std::string label = verb.verb.category.empty()
-                                                        ? verb.verb.name
-                                                        : verb.verb.category + " / " + verb.verb.name;
-                                menu.items.push_back(
-                                    {group, QString::fromStdString(name), QString::fromStdString(label)});
+                                menu.items.push_back({group, QString::fromStdString(name),
+                                                      QString::fromStdString(model::menuVerbLabel(verb.verb)), icon});
                                 if (rec_) verbs += (verbs.empty() ? "" : ",") + model::Recorder::quote(verb.verb.name);
                                 MapChoice choice{hit, verb.verb.id, verb.viaArgument, name};
                                 choice.attachment = rendered;
