@@ -561,8 +561,10 @@ private slots:
                                                                        .arg(clicks).arg(none).arg(menus)));
     }
     // tests/data/plane-relay-world (stock 516.1689): plane 1's master has the render target "*p1" and a screen object
-    // draws it through render_source, standing elsewhere (numbers, edges, percents, a range), with pixel offsets or a
-    // matrix of its own, without PASS_MOUSE, or over a master with a matrix (see its README). replay/<case>.txt is what DreamDaemon sent for the case; clicks.json what
+    // draws it through render_source, standing elsewhere (numbers, edges, percents, a range), with pixel offsets, a
+    // matrix or filters of its own, without PASS_MOUSE, over a master with a matrix, with an overlay of its own, as an
+    // overlay of a screen object, relayed again by a second relay of its own plane, or over a client image and a
+    // vis_contents member (see its README). replay/<case>.txt is what DreamDaemon sent for the case; clicks.json what
     // stock named for left clicks (with icon-x/y) and listed in right-click menus where the relay draws each atom, where
     // the atom stands and on empty floor.
     void planeRelaysLikeStock() {
