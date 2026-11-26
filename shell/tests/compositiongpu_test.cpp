@@ -93,8 +93,9 @@ private slots:
     // replay/<set>.png the map stock DreamSeeker 516.1689 drew for the same world, grabbed six seconds after login
     // (tools/stockprobe/stockprobe.py record writes all three). No channel of any pixel may be more than 8 levels from
     // stock's.
-    // Drawn on the entry's backend (Mesa's llvmpipe passes on OpenGL: LIBGL_ALWAYS_SOFTWARE=1 under
-    // xvfb-run with QT_QPA_PLATFORM=xcb; the offscreen platform has no OpenGL). A missing device fails this GPU check.
+    // Drawn on the entry's backend (Mesa's llvmpipe passes on OpenGL: on Linux each entry runs on its own Xvfb
+    // display with QT_QPA_PLATFORM=xcb, tools/xvfb-test.sh; the offscreen platform has no OpenGL). A missing device
+    // fails this GPU check.
 private:
     std::unique_ptr<GpuComparison> replayGpu_;   // one device for every set
     std::unique_ptr<GpuComparison> transformGpu_;   // and one for every master transform grab

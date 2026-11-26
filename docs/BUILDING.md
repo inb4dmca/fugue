@@ -19,6 +19,9 @@ The distribution must supply Qt 6.7+ and matching private headers. Older package
 (such as Ubuntu 24.04's Qt 6.4) cannot build the MAP renderer; use a newer Qt SDK or
 configure `-DFUGUE_HEADLESS_ONLY=ON` for the non-GUI modules.
 
+On Linux, running the tests also requires Xvfb and Mesa's OpenGL (Debian/Ubuntu: `xvfb libgl1-mesa-dri libglx-mesa0`,
+Fedora: `xorg-x11-server-Xvfb mesa-dri-drivers`, Arch: `xorg-server-xvfb mesa`); see [Tests](#tests).
+
 On Linux, audio at run time requires one of `pw-play` (PipeWire), `paplay` (PulseAudio) or `aplay` (ALSA) on the `PATH`.
 macOS uses the system Core Audio framework; no external audio player is needed.
 
@@ -301,11 +304,12 @@ fails it. Use
 `-L native -LE desktop` for the other native checks and `-L desktop` when that
 screen access is available. Unfiltered CTest still includes both.
 
-On Linux, use Mesa and a dedicated Xvfb display:
-
-```sh
-LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ctest --test-dir build -L 'gpu|native' --no-tests=error --output-on-failure
-```
+On Linux, every test process runs on a private Xvfb display that its launcher (`tools/xvfb-test.sh`) starts and
+stops, so tests never see or draw on your desktop or touch its clipboard, and parallel entries get separate displays.
+Plain `ctest` therefore behaves the same on a desktop, over SSH and in CI. Xvfb has no GPU, so OpenGL comes from
+Mesa's software rasterizer (llvmpipe), as in CI. To run the tests on the current display and its own GPU driver
+instead, configure with `-DFUGUE_TEST_XVFB=OFF`; the `desktop` checks then sample your real screen and the X11
+primary-selection check replaces your selection and clipboard.
 
 CTest sets the environment for each profiled entry. Test sources and fixture READMEs under `tests/data/` describe
 individual expectations, required capabilities and reproduction conditions.

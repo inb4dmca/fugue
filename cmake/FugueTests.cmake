@@ -25,10 +25,29 @@ else()
   set(FUGUE_TEST_BACKEND opengl)
 endif()
 
+# Where test processes run is the platform's choice, not each entry's: every entry starts through the same
+# launcher. On Linux that is a private Xvfb display per test process (tools/xvfb-test.sh), so no test sees or draws
+# on the developer's desktop or takes its clipboard, the same way locally as in CI. -DFUGUE_TEST_XVFB=OFF runs the
+# tests on the current display instead, e.g. to exercise the machine's own GPU driver.
+set(_fugue_test_launcher)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  option(FUGUE_TEST_XVFB "Run each test process on a private Xvfb display" ON)
+  if(FUGUE_TEST_XVFB)
+    find_program(FUGUE_SH sh REQUIRED)
+    set(_fugue_test_launcher ${FUGUE_SH} ${PROJECT_SOURCE_DIR}/tools/xvfb-test.sh)
+  endif()
+endif()
+
 # Entries start as portable and fast: headless checks that take a few seconds each, the inner-loop selection
 # (`ctest -L fast`). An entry that needs a GPU device, a window, a device or WebEngine replaces these labels.
 function(fugue_add_test name)
-  add_test(NAME ${name} COMMAND ${ARGN})
+  set(command ${ARGN})
+  list(GET command 0 program)
+  if(_fugue_test_launcher AND TARGET ${program}) # behind a launcher CMake no longer resolves the target itself
+    list(REMOVE_AT command 0)
+    list(PREPEND command "$<TARGET_FILE:${program}>")
+  endif()
+  add_test(NAME ${name} COMMAND ${_fugue_test_launcher} ${command})
   set_tests_properties(${name} PROPERTIES LABELS "portable;fast" TIMEOUT 120
     FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;FUGUE_AUDIO=none;FUGUE_GPU_BACKEND=${FUGUE_TEST_BACKEND};QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")

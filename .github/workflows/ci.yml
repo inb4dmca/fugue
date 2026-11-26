@@ -17,7 +17,8 @@ jobs:
           sudo apt-get install -y build-essential cmake ninja-build pkg-config \
             zlib1g-dev libjpeg-dev libopenmpt-dev libgl-dev libegl-dev libxkbcommon-dev \
             libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 \
-            libnss3 libasound2t64 libcups2 libxcomposite1 libxdamage1 libxrandr2 libxtst6 fonts-wine
+            libnss3 libasound2t64 libcups2 libxcomposite1 libxdamage1 libxrandr2 libxtst6 fonts-wine \
+            xvfb libgl1-mesa-dri libglx-mesa0 libxcb-image0 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1
       # Use one SDK for Qt libraries and their matching GuiPrivate headers.
       - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125   # v4.4.1
         with:
@@ -39,14 +40,9 @@ jobs:
         run: ctest --test-dir build -L portable --no-tests=error --output-on-failure
       - name: Test host fonts
         run: ctest --test-dir build -L font --no-tests=error --output-on-failure
-      # GPU and native profiles require OpenGL/XCB on Linux; use Mesa under a virtual display.
+      # Every entry runs on its own Xvfb display with Mesa (tools/xvfb-test.sh), as it does locally.
       - name: Test GPU and native profiles
-        env:
-          QT_QPA_PLATFORM: xcb
-          LIBGL_ALWAYS_SOFTWARE: 1
-        run: |
-          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libxcb-image0 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1
-          xvfb-run -a ctest --test-dir build -L 'gpu|native' --no-tests=error --output-on-failure
+        run: ctest --test-dir build -L 'gpu|native' --no-tests=error --output-on-failure
 
   macos:
     strategy:
