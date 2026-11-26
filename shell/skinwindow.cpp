@@ -445,6 +445,8 @@ QWidget* SkinWindow::makeWidget(const skin::Control& c) {
         connect(sp, &StatPanelWidget::tabRequested, this, &SkinWindow::statTabRequested);
         connect(sp, &StatPanelWidget::rowClicked, this, &SkinWindow::statRowClicked);
         connect(sp, &StatPanelWidget::verbClicked, this, &SkinWindow::statVerbClicked);
+        connect(sp, &StatPanelWidget::rowHovered, this, &SkinWindow::statRowHovered);
+        connect(sp, &StatPanelWidget::hoverLeft, this, &SkinWindow::statHoverLeft);
         w = sp;
     } else if (c.type == "OUTPUT") {
         auto* tb = new QTextBrowser(this);

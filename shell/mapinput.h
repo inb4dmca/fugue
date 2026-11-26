@@ -111,6 +111,11 @@ struct MapPointer {
     bool closedPopup = false; // Down: the right press that closed the verb menu, consumed whatever the flag
     QPoint global;
     float dx = 0, dy = 0;
+    // A hover pick over the stat panel (shell/statview.h statHoverPointer): click.over the row's atom or null over
+    // the panel's empty space, click.locStr the selected tab's name, click.control the INFO control. infoIcon: the row
+    // draws an icon (params carry icon-x/icon-y); infoAppid: the row's appearance, for the hover gate.
+    bool info = false, infoIcon = false;
+    uint32_t infoAppid = 0;
 };
 struct RelayHit {
     MapPointer producer, consumer;
@@ -204,9 +209,10 @@ public:
         uint32_t flags = 0;      // appearance flags of what the pick names
         uint32_t sentFlags = 0;  // of what the last report that went out named
     };
-    // A pick of the pointer over a map (Hover) or the pointer leaving one (Leave), at nowNs on any steady clock. Every
-    // map control of the session shares the record, and any control's leave clears it, whichever control the record
-    // names. A stale pick (current false) changes nothing. Gate::sentFlags are those of last().
+    // A pick of the pointer over a map or the stat panel (Hover) or the pointer leaving one (Leave), at nowNs on any
+    // steady clock. Every map control and the stat panel share the record, and any control's leave clears it, whichever
+    // control the record names. A stat panel pick (MapPointer::info) is never a move report: stock reports no pixel
+    // step within a row, even with client/MouseMove (tests/data/hover-world panel.json). A stale pick (current false) changes nothing. Gate::sentFlags are those of last().
     void update(const MapPointer&, bool current, const Gate&, int64_t nowNs);
     // A button released, by a click, a drop or a cancelled gesture: the record is cleared, so the next pick is an over
     // report even on the same atom, and a leave before any pick sends nothing.

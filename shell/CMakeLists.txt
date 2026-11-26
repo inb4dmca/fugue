@@ -134,6 +134,11 @@ fugue_shell_test(shell_statview statview_test) # worker INFO thumbnails and row 
 if(TARGET statview_test)
   target_link_libraries(statview_test PRIVATE fugue_proto) # decoder registration objects for real stat frames
 endif()
+fugue_shell_test(shell_stathover stathover_test) # stat panel hover against stock's recorded reports, and the widget's picks
+if(TARGET stathover_test)
+  target_link_libraries(stathover_test PRIVATE fugue_proto)
+  target_compile_definitions(stathover_test PRIVATE FUGUE_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data")
+endif()
 fugue_shell_test(shell_atomdiagnostic atomdiagnostic_test) # bounded worker-side atom/INFO evidence
 fugue_shell_test(shell_iconcache iconcache_test) # generated icon recipes and resource dependencies
 fugue_shell_test(shell_assetrecovery assetrecovery_test)

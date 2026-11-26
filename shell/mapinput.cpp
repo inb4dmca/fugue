@@ -983,7 +983,8 @@ void MapHover::update(const MapPointer& p, bool current, const Gate& g, int64_t 
     const bool over = !record_ || record_->over.kind != r.over.kind || record_->over.ref != r.over.ref ||
                       record_->over.x != r.over.x || record_->over.y != r.over.y || record_->control != r.control ||
                       record_->map != r.map;
-    const bool moved = !over && r.over.kind != proto::enc::RefNull && (record_->px != r.px || record_->py != r.py);
+    const bool moved = !over && !p.info && r.over.kind != proto::enc::RefNull &&
+                       (record_->px != r.px || record_->py != r.py);
     record_ = std::move(r);
     if (over ? g.clientHover || (g.flags & kHoverProcs) || (g.sentFlags & kHoverProcs) || replacing
              : moved && (g.clientMove || (g.flags & kMoveProc) || replacing))
@@ -1023,6 +1024,13 @@ Bytes mapPointerBody(const MapPointer& pointer) {
     const MapPointer p = wire(pointer);
     auto c = p.click;
     if (p.kind == MapPointer::Leave) return proto::enc::encodeHoverLeave();
+    if (p.info) {  // the stat panel: the INFO click's shape (proto::enc::infoHoverParams)
+        if (p.kind != MapPointer::Hover) return {};
+        const bool atom = c.over.kind != proto::enc::RefNull;
+        return proto::enc::encodeInfoClick(proto::enc::kMouseHover, c.over, c.locStr, c.control,
+                                           atom ? proto::enc::infoHoverParams(c.mods, p.infoIcon, c.iconX, c.iconY)
+                                                : std::string());
+    }
     // A second map is named by its short id when it is hovered or pressed (as the pointer carries it), and by its full
     // id in a release, a click, a double click and a drag step (stock 516.1689: DOWN "map2", UP and CLICK
     // "main.map2").

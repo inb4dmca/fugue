@@ -160,6 +160,9 @@ signals:
     void statRowClicked(int row, const QString& control, const QString& button, int mods, bool dbl, quint64 generation,
                         bool icon, int iconX, int iconY);  // INFO: the session clicks that atom
     void statVerbClicked(const QString& verb);             // INFO: a verb-category entry; the session runs it
+    // INFO: the pointer over the rows (row -1: the panel's empty space) and leaving them (StatPanelWidget::rowHovered).
+    void statRowHovered(int row, const QString& control, int mods, quint64 generation, bool icon, int iconX, int iconY);
+    void statHoverLeft();
 protected:
     void resizeEvent(QResizeEvent*) override;
     void moveEvent(QMoveEvent*) override;

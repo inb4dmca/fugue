@@ -29,6 +29,7 @@
 #include "shell/mapmetrics.h"
 #include "shell/mapmailbox.h"
 #include "shell/prompthost.h"
+#include "shell/statview.h"
 #include "shell/statpanelwidget.h"
 #include "skin/liveskin.h"
 
@@ -83,6 +84,10 @@ public:
     // An atom row's value was clicked: control = INFO control id, button "left"/"middle", mods = StatPanelWidget::RowMods.
     void postStatRow(int row, const std::string& control, const std::string& button, int mods, bool dbl,
                      quint64 generation, bool icon, int iconX, int iconY);
+    // The pointer over the INFO control's rows (row -1: its empty space), or leaving them: hover reports through the
+    // session's one hover record (shell::MapHover), with the maps'.
+    void postStatHover(int row, const std::string& control, int mods, quint64 generation, bool icon, int iconX, int iconY);
+    void postStatHoverLeft();
     // DreamSeeker's command-bar completion for a space typed at the end of `line` (net::InputModel::spaceCompletion),
     // answered from a snapshot of the verb list the session thread publishes. Thread-safe; false = type a plain space.
     bool spaceCompletion(const QString& line, QString& out) const;
@@ -157,6 +162,10 @@ private:
         bool icon;
         int iconX, iconY;
     };
+    struct StatHoverJob {
+        bool leave = false;
+        fugue::shell::StatHover hover;
+    };
     quint64 statGeneration_ = 0;  // never reset across reconnects/world replacement
     struct ArgJob {
         quint32 id;
@@ -165,7 +174,8 @@ private:
         bool none = false;
     };
     using Job =
-        std::variant<CmdJob, MoveJob, TopicJob, PromptJob, StatTabJob, StatRowJob, ArgJob, MapPointerJob, MapPickJob>;
+        std::variant<CmdJob, MoveJob, TopicJob, PromptJob, StatTabJob, StatRowJob, ArgJob, MapPointerJob, MapPickJob,
+                     StatHoverJob>;
     void post(Job j);
     mutable std::mutex verbsMu_;
     std::shared_ptr<const fugue::net::InputModel> verbSnap_;  // the session thread's im, re-published when Verb lands

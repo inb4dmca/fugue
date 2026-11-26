@@ -82,6 +82,21 @@ void SessionWorker::postMapPointer(const shell::MapPointer& pointer) {
     }
     if (inbox_.size() < 4098) inbox_.push_back(MapPointerJob{pointer});
 }
+void SessionWorker::postStatHover(int row, const std::string& control, int mods, quint64 generation, bool icon,
+                                  int iconX, int iconY) {
+    shell::StatHover h{row, control, generation, icon, iconX, iconY, {bool(mods & 1), bool(mods & 2), bool(mods & 4)}};
+    std::lock_guard<std::mutex> g(inMu_);
+    // Steps within one row say nothing new until the session has taken them: keep the last.
+    if (!inbox_.empty())
+        if (auto* last = std::get_if<StatHoverJob>(&inbox_.back());
+            last && !last->leave && last->hover.row == row && last->hover.generation == generation &&
+            last->hover.control == control) {
+            last->hover = std::move(h);
+            return;
+        }
+    if (inbox_.size() < 4096) inbox_.push_back(StatHoverJob{false, std::move(h)});
+}
+void SessionWorker::postStatHoverLeft() { post(StatHoverJob{true, {}}); }
 void SessionWorker::postMapMenuPick(quint64 token, int index) { post(MapPickJob{token, index}); }
 void SessionWorker::postTopic(const QString& href) { post(TopicJob{href.toStdString()}); }
 void SessionWorker::postPromptAnswer(quint32 id, bool alert, const QString& text) {
@@ -277,6 +292,24 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
         const auto now = steadyNs();
         for (auto body = hover.due(now); !body.empty(); body = hover.due(now))  // reports due together, in order
             s.sendInput(C2S::Command, proto::enc::mouseWireBody(std::move(body), s.wideVerbIds()));
+    };
+    // One hover pick (a map's or the stat panel's) into the session's one record, gated by the MouseSubs bits and the
+    // appearance flags of what it names and of what the last report named.
+    auto updateHover = [&](const shell::MapPointer& p, bool current) {
+        const auto& w = m.world();
+        auto flagsOf = [&](const shell::MapPointer& named) -> uint32_t {
+            std::optional<uint32_t> appid = named.info ? std::optional<uint32_t>(named.infoAppid) : std::nullopt;
+            if (!named.info)
+                if (const auto target = shell::mapPointerTarget(named, w); target) appid = target->appid;
+            if (!appid) return 0;
+            const auto a = w.appearances.find(*appid);
+            return a == w.appearances.end() ? 0 : a->second.fields.appearanceFlags;
+        };
+        shell::MapHover::Gate gate{im.clientHover(), im.clientMove()};
+        if (current && p.kind == shell::MapPointer::Hover) gate.flags = flagsOf(p);
+        if (const auto* last = hover.last()) gate.sentFlags = flagsOf(*last);
+        hover.update(p, current, gate, steadyNs());
+        sendHover();
     };
     bool rightPressSent = false;  // the right press in progress went to the wire (shell::mapPopupAction)
     // The live skin: skin and winset traffic goes in, and wingets are answered from it. Shared with the GUI.
@@ -903,6 +936,18 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 } else {
                     std::fprintf(stderr, "[input] stat tab %d out of range\n", sj->index);
                 }
+            } else if (auto* hj = std::get_if<StatHoverJob>(&j)) {
+                // The stat panel's pointer goes through the same record as the maps' (shell::MapHover).
+                std::optional<shell::MapPointer> p;
+                if (hj->leave) {
+                    p.emplace();
+                    p->kind = shell::MapPointer::Leave;
+                    p->session = mapSession_;
+                } else if (lastStatView) {
+                    p = shell::statHoverPointer(m.world(), *lastStatView, hj->hover, mapSession_);
+                }
+                if (!p) continue;  // picked on a view the panel no longer shows
+                updateHover(*p, true);
             } else if (auto* pointerJob = std::get_if<MapPointerJob>(&j)) {
                 const auto& p = pointerJob->pointer;
                 const auto& w = m.world();
@@ -910,17 +955,7 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 const auto& c = p.click;
                 const bool current = shell::mapPointerCurrent(p, w, mapSession_);
                 if (p.kind == shell::MapPointer::Hover || p.kind == shell::MapPointer::Leave) {
-                    auto flagsOf = [&](const shell::MapPointer& named) -> uint32_t {
-                        const auto target = shell::mapPointerTarget(named, w);
-                        if (!target || !target->appid) return 0;
-                        const auto a = w.appearances.find(*target->appid);
-                        return a == w.appearances.end() ? 0 : a->second.fields.appearanceFlags;
-                    };
-                    shell::MapHover::Gate gate{im.clientHover(), im.clientMove()};
-                    if (current && p.kind == shell::MapPointer::Hover) gate.flags = flagsOf(p);
-                    if (const auto* last = hover.last()) gate.sentFlags = flagsOf(*last);
-                    hover.update(p, current, gate, steadyNs());
-                    sendHover();
+                    updateHover(p, current);
                     continue;
                 }
                 const auto popup = shell::mapPopupAction(p, im.showPopupMenus(), rightPressSent);
@@ -1100,6 +1135,9 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 if (lastStatView && shell::statRowCurrent(w, *lastStatView, rj->row, rj->generation) &&
                     model::statRowRef(w, model::statValueOf(w.stat.lines[size_t(rj->row)].value), ref)) {
                     model::StatRowClick c;
+                    // A click on a row clears the hover record, as one on a map does (stock 516.1689,
+                    // tests/data/hover-world panel pclick: the next step is an over report, MouseMove at the server).
+                    hover.released();
                     c.sub = rj->dbl ? proto::enc::kMouseDblClick : proto::enc::kMouseClick;
                     c.button = rj->button;
                     c.mods.ctrl = rj->mods & 1;

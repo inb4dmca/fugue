@@ -70,12 +70,29 @@ signals:
     void rowClicked(int row, const QString& control, const QString& button, int mods, bool dbl, quint64 generation,
                     bool icon, int iconX, int iconY);
     void verbClicked(const QString& name);
+    // Pointer hover over the rows (stock 516.1689, tests/data/hover-world panel.json): every pick of the pointer, row
+    // -1 for the panel's empty space, which the session turns into hover reports through the one record it keeps for
+    // all the controls (shell::MapHover). An atom row is its value: the icon and the name text, not its label nor the
+    // space past the text. The pointer is picked again when the panel shows another tab, not when rows change.
+    void rowHovered(int row, const QString& control, int mods, quint64 generation, bool icon, int iconX, int iconY);
+    // The pointer left the rows (the tab strip is not part of them). Sent after the control the pointer went to has
+    // picked, as a map's leave is (MapWidget::leaveEvent).
+    void hoverLeft();
 
 protected:
     bool eventFilter(QObject* o, QEvent* e) override;
     void changeEvent(QEvent* e) override;  // a new font (the INFO control's) rebuilds the rows
 private:
+    struct Hit {
+        int row = -1;  // an atom row whose value the point is on, else -1
+        bool icon = false;
+        int iconX = 0, iconY = 0;
+    };
+    Hit hitAt(QPoint viewportPos) const;
+    void pickHover(QPoint viewportPos, Qt::KeyboardModifiers mods);
     void rebuildRows();
+    bool hoverInside_ = false;
+    bool repick_ = false;  // the tab changed: pick again once the new tab's rows are shown
     QString controlId_;
     int pressRow_ = -1;
     QTabBar* tabs_ = nullptr;

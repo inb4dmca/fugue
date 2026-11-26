@@ -561,6 +561,11 @@ int clientMain(int argc, char** argv) {  // called by app/launcher.cpp's main() 
                          worker.postStatRow(r, control.toStdString(), button.toStdString(), mods, dbl, generation, icon,
                                             iconX, iconY);
                      });
+    QObject::connect(&win, &fugue::shell::SkinWindow::statRowHovered, &win,
+                     [&](int r, const QString& control, int mods, quint64 generation, bool icon, int iconX, int iconY) {
+                         worker.postStatHover(r, control.toStdString(), mods, generation, icon, iconX, iconY);
+                     });
+    QObject::connect(&win, &fugue::shell::SkinWindow::statHoverLeft, &win, [&] { worker.postStatHoverLeft(); });
     // A stat-panel verb runs by its command name (`Set-Default-Language`), its nullable arguments prompted.
     QObject::connect(&win, &fugue::shell::SkinWindow::statVerbClicked, &win, [&](const QString& v) {
         worker.postCommand(QString::fromStdString(fugue::net::verbCommandName(v.toStdString())), true);
