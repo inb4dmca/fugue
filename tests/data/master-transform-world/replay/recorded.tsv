@@ -1,4 +1,7 @@
 # set	BYOND	display dpi	recorded
+ax-group-master-shift	516.1689	96	2026-11-26
+ax-group-spin90	516.1689	96	2026-11-26
+ax-group-turn90	516.1689	96	2026-11-26
 ax-outline1-addclear	516.1689	96	2026-11-26
 ax-outline1-grow2x	516.1689	144	2026-11-25
 ax-outline1-lateadd	516.1689	96	2026-11-26
@@ -12,5 +15,7 @@ ax-scalex2-outline1-size4	516.1689	144	2026-11-25
 ax-scalex2-wave-phase	516.1689	144	2026-11-25
 ax-shadow6-left-grow2x	516.1689	144	2026-11-25
 ax-shadow6-spin90	516.1689	144	2026-11-25
+ax-tree-group-spin90	516.1689	96	2026-11-26
+ax-tree-group-turn90	516.1689	96	2026-11-26
 ax-tree-scalex2-outline1-size4	516.1689	144	2026-11-25
 ax-turn90-shadow6-left	516.1689	144	2026-11-25

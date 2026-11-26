@@ -68,8 +68,8 @@ filters have different admitted ranges; consult their tests before widening them
 Unsupported plane-master filter records are currently skipped; incompatible
 remaining chains are omitted. This is degraded rendering, not stock parity.
 An animating HUD plane master keeps its filters and matrix at their tweened values; filters set on an animating
-master or atom after its animate() calls show at once. (Not with KEEP_TOGETHER
-and a changing matrix.)
+master or atom after its animate() calls show at once. KEEP_TOGETHER on a master with no overlays changes nothing;
+over overlays with a matrix, settled or animating, the plane is not drawn, as in stock.
 Static ordinary affine geometry, bounded root-transform trees and some master
 surfaces are supported; general transformed/animated attachment trees are not.
 

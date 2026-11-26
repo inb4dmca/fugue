@@ -110,6 +110,13 @@ world
 // (a second step to the same value), so a grab taken seconds after login sees the end of the first step while the
 // animation is still running. With "mid" the first step takes a minute instead and there is no hold.
 /proc/animate_master(obj/master/M, kind)
+    if(findtext(kind, "tree-group"))
+        // Stock draws nothing of this plane: a blue box on plane 0 keeps the map from being one flat colour, which
+        // stockprobe takes for a blank window.
+        var/obj/O = new /obj(locate(2, 6, 1))
+        O.icon = 'blue.png'
+        O.plane = 0
+        O.name = "marker"
     if(findtext(kind, "-add") || findtext(kind, "-clear") || findtext(kind, "pline") || findtext(kind, "late"))
         restructure(M, kind)
         return

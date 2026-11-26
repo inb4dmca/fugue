@@ -1345,6 +1345,48 @@ private slots:
             if (live == 12) QCOMPARE(s->planeEffects->filters[1].kind, shell::PlaneFilter::Blur);
         }
     }
+    // KEEP_TOGETHER on a master with nothing to group changes nothing: its matrix turns the plane, settled and animating;
+    // with an overlay and a matrix nothing of the tree is drawn, settled or animating (stock 516.1689,
+    // master-transform-world ax-group-turn90, ax-group-spin90, ax-tree-group-turn90, ax-tree-group-spin90).
+    void animatedGroupMaster() {
+        auto w = world(); shell::TurfMap terrain; shell::EntityMap scene;
+        w.hudOrder = {100}; w.hudIdentity[100] = {2,7,11};
+        const std::array<float,6> plain{1,0,0,0,1,0}, turn{0,1,0,-1,0,0};
+        const auto half = shell::animation::interpolate({1,0,0,0,1,0}, {0,1,0,-1,0,0}, .5, false);
+        const auto map = terrain.prepare(w, {}, 0, false);
+        auto sprite = [&](int64_t now) { return masterSprite(scene.prepare(w, map, reader(), now, nullptr, true)); };
+        auto matrixIs = masterMatrixIs;
+        auto& atom = w.atoms[100];
+        // PLANE_MASTER | KEEP_TOGETHER on a master without overlays, settled and animating.
+        const std::string group = R"(,"appearanceFlags":335544320)";
+        auto grouped = [&](std::array<float,6> matrix, const std::string& extra) {
+            return affinefixture::fields(matrix, group + R"(,"hasPlane":true,"plane":1,"screenLoc":"1,1")" + extra);
+        };
+        setFields(w.appearances[20], grouped(plain, ""));
+        setFields(w.appearances[21], grouped(turn, ""));
+        w.hudAppid[100] = atom.appid = 21;
+        atom.chain = {};
+        auto settled = sprite(1500);
+        QVERIFY2(settled && matrixIs(*settled, {0,1,0,-1,0,0}), "settled KEEP_TOGETHER master without overlays turns its plane");
+        atom.chain = {1000, 100, {{20, 21, std::bit_cast<uint32_t>(10.f), 0, 0, 1, 1000}}};
+        auto turning = sprite(1500);
+        QVERIFY2(turning && matrixIs(*turning, half), "animating KEEP_TOGETHER master without overlays turns its plane");
+        // With an overlay the tree draws nothing while it is turned, as when it is settled.
+        w.appearances[22] = w.appearances[1];
+        setFields(w.appearances[22], R"({"hasPlane":true,"plane":1,"pixelX":64,"pixelY":32})");
+        setFields(w.appearances[20], grouped(plain, R"(,"overlays":[22])"));
+        setFields(w.appearances[21], grouped(turn, R"(,"overlays":[22])"));
+        for (const bool animating : {false, true}) {
+            atom.chain = animating ? model::Atom::Chain{1000, 100, {{20, 21, std::bit_cast<uint32_t>(10.f), 0, 0, 1, 1000}}}
+                                   : model::Atom::Chain{};
+            const auto sprites = scene.prepare(w, map, reader(), 1500, nullptr, true);
+            // The refused tree leaves a master whose plane operation is unsupported, which hides its plane.
+            const auto context = animating ? "animating" : "settled";
+            QVERIFY2(std::none_of(sprites.begin(), sprites.end(), [](const auto& s) { return s.kind == shell::MapSprite::Screen; }), context);
+            QVERIFY2(std::all_of(sprites.begin(), sprites.end(), [](const auto& s) {
+                return s.kind != shell::MapSprite::Master || (s.planeEffects && !s.planeEffects->supported); }), context);
+        }
+    }
     void hudMasterMaterialAnimation() {
         auto w=world(); shell::TurfMap terrain; shell::EntityMap scene; shell::EntityMap::Stats stats;
         w.hudOrder={100}; w.hudAppid[100]=11; w.hudIdentity[100]={2,7,11};

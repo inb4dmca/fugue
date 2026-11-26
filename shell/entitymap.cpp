@@ -299,8 +299,11 @@ bool EntityMap::AnimationSampler::sample(const model::Atom::Chain& chain, uint32
     const bool surface = attachment && out.affine && out.transformValid && out.keepTogether && out.renderSource.isEmpty() &&
                          out.renderTarget.isEmpty();
     // A master's matrix turns its plane: it travels in the plane effects, as decodePlaneEffects puts a settled one there,
-    // and the master's own placement treats it as decodeEntityAppearance does.
-    const bool masterSurface = hudMaster && out.master && out.planeEffects && !out.keepTogether;
+    // and the master's own placement treats it as decodeEntityAppearance does. KEEP_TOGETHER on a master with nothing to
+    // group changes nothing; with overlays and a matrix the template draws nothing, as for a settled one (stock 516.1689,
+    // master-transform-world ax-group-spin90, ax-tree-group-spin90).
+    const bool masterSurface = hudMaster && out.master && out.planeEffects &&
+                               (!out.keepTogether || (out.underlays.empty() && out.overlays.empty()));
     if (masterSurface) {
         auto effects = std::make_shared<PlaneEffects>(*out.planeEffects);
         effects->matrix.reset();
@@ -561,9 +564,13 @@ EntityMap::Template EntityMap::TemplateBuilder::construct(const TemplateRequest&
             // Stock-bounded HUD master selection/grouping. This is structural:
             // do not flatten separate planes or move surface operations into leaves.
             // Matrices (stock 516.1688, tests/data/master-transform-world): the root master's turns its whole plane
-            // about the view centre, overlays included; a leaf's turns that leaf. KEEP_TOGETHER with a master matrix
-            // draws nothing in stock (refused here, which also draws nothing); nested masters are unprobed.
-            const bool matrixAdmitted = !ap.master || (root && !treeRoot.keepTogether);
+            // about the view centre, overlays included; a leaf's turns that leaf. KEEP_TOGETHER over overlays with a
+            // master matrix draws nothing of the plane in stock, settled or animating (refused here, which also draws
+            // nothing; 516.1689 ax-tree-group-turn90, ax-tree-group-spin90). Without overlays or underlays KEEP_TOGETHER
+            // groups nothing and the matrix turns the plane, settled or animating (ax-group-turn90, ax-group-spin90).
+            // Nested masters are unprobed.
+            const bool matrixAdmitted = !ap.master ||
+                (root && (!treeRoot.keepTogether || (treeRoot.underlays.empty() && treeRoot.overlays.empty())));
             if (!ap.present || !ap.valid || tile_ != 32 || (ap.hasTransform && !matrixAdmitted) || ap.visFlags ||
                 (ap.animationEffects && !ap.master) ||
                 (ap.keepTogether && ap.keepApart) || (!ap.master && ap.keepTogether) ||

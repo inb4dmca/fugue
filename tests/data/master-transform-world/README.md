@@ -24,7 +24,8 @@ difference, in `stock.json`. `entitymap_test::masterTreeTransformsLikeStock` con
 
 Master-tree admission accepts a matrix on the root master (without KEEP_TOGETHER) and on leaves; leaves inherit the
 root master's matrix about their own pivot, and the plane keeps its master matrix (the existing relay path). Every case
-matches stock within 1/255. KEEP_TOGETHER with a master matrix stays refused, which draws nothing, as stock does.
+matches stock within 1/255. KEEP_TOGETHER with a master matrix stays refused, which draws nothing, as stock does (over an overlay; without one
+see the `group` cases below).
 
 ## A master's matrix with filters (`fx-*` cases)
 
@@ -196,6 +197,22 @@ differs from its base takes it the same way, which is not measured. The box is s
 `stockprobe` run, so it is set up once. `entitymap_test::animatedMasterLateFilters` holds the rule on the master;
 `animatedMasterReplay` draws all the cases above.
 
+### KEEP_TOGETHER on the master (`group` cases)
+
+Stock **516.1689**, 2026-11-26. `group` puts KEEP_TOGETHER on the master; `tree` keeps its overlay, and then a blue box
+on plane 0 at (2,6) (`animate_master()`) keeps the map from being one flat colour.
+
+- **Without overlays KEEP_TOGETHER changes nothing**: the settled `ax-group-turn90` and the held `ax-group-spin90` are
+  pixel-identical to `fx-turn90`, `ax-group-master-shift` moves the plane by 16,8 as `master-shift` does, and (grabbed,
+  not kept) `fx-group-scalex2` and the held `ax-group-grow2x` equal `fx-scalex2`, `fx-group` equals `fx-plain`.
+- **With an overlay and a matrix nothing of the plane is drawn**, settled (`ax-tree-group-turn90`, as `group-master-turn`
+  above) and animating (`ax-tree-group-spin90`): only the floor and the plane-0 box.
+
+Fugue drew the overlay cases as stock does (nothing); it drew nothing for the settled master without overlays and the
+plane unturned for the animating one (256 pixels off each). A master with KEEP_TOGETHER and nothing to group now
+takes its matrix, settled or animating, as one without KEEP_TOGETHER does. `entitymap_test::animatedGroupMaster` holds both rules; `animatedMasterReplay` draws all
+the cases above.
+
 ## Clicks (`clicks.json`)
 
 Every atom logs `Click()` with its name and icon-x/y; `stockprobe.py click` clicks the same MAP pixels in stock and in
@@ -231,5 +248,4 @@ turns that are not quarter turns, and a master with a render target (whether the
 applies to its target or to a relay with a matrix was not grabbed; Fugue does not limit either). For clicks: mouse-opacity 2. Right-click menus, images and vis_contents members on a turned or
 filtered plane, and render-target masks are in `tests/data/plane-click-world`. For animation: no mid-flight frame is
 kept or compared pixel for pixel (only the holds are), clicks on an animating master were not taken, and a filter
-list that differs within one step cannot be produced from DM (see above), and a
-KEEP_TOGETHER master with an animating matrix is still refused.
+list that differs within one step cannot be produced from DM (see above).
