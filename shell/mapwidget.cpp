@@ -747,7 +747,9 @@ void MapWidget::render(QRhiCommandBuffer* cb) {
             metrics_->uploaded(uint64_t(upload.sizeInBytes()));
             imageDirty_ = false;
         }
-        if (spriteRenderer_) metrics_->uploaded(spriteRenderer_->prepare(updates, sprites_, source_));
+        if (spriteRenderer_)
+            metrics_->uploaded(spriteRenderer_->prepare(
+                updates, sprites_, source_, mapWorldClip(placement, size(), source_.size(), geometry_.hud, geometry_.tile)));
     }
     if (spriteRenderer_ && updates) {
         spriteRenderer_->renderOffscreen(cb, updates);

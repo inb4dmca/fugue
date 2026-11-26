@@ -19,6 +19,7 @@
 #include "shell/animation.h"
 #include "shell/namedmap.h"
 #include "shell/compositionplan.h"
+#include "shell/mappresentation.h"
 #include "shell/mapmailbox.h"
 #include "shell/clientoffset.h"
 #include "shell/tests/iconfixture.h"
@@ -873,6 +874,54 @@ private slots:
             QRect none; QVERIFY(!masterLocBounds(phases, "7:40,1|ov-outline", "overlay", none));
         }
         QCOMPARE(scene.hudMargins(), QMargins());
+    }
+    // In the larger map a screen object outside the view asks for, the world is placed in the added tiles too, and
+    // stock shows it where mapWorldClip says (stock 516.1689, master-screen-loc-world "|wide" phases, README "What the
+    // larger map shows"; the columns and rows of world each capture shows, in controls of 192, 224, 240 and 288 pixels).
+    void worldInTheLargerMap() {
+        auto w=world(); shell::TurfMap terrain; shell::EntityMap scene;
+        w.bounds.viewW=w.bounds.viewH=7;
+        for (uint32_t x=1; x<=20; ++x) { auto& a=w.atoms[100+x]; a=w.atoms[42]; a.x=x; a.key=uint16_t(200+x); }
+        w.hudOrder={100}; w.hudAppid[100]=10; w.hudIdentity[100]={2,7,11};
+        w.appearances[10].fields.iconResID = 0; w.appearances[10].fields.iconState = "red";
+        setFields(w.appearances[10], R"({"screenLoc":"8,1"})");
+        auto frame = terrain.prepare(w,{},0,false);
+        scene.prepare(w,frame,reader(),0,nullptr,true);
+        QCOMPARE(scene.hudMargins(), QMargins(0,0,1,0));
+        frame = terrain.prepare(w,{},0,false,scene.hudMargins());
+        const auto sprites = scene.prepare(w,frame,reader(),0,nullptr,true);
+        int left = INT_MAX, right = INT_MIN;
+        for (const auto& s : sprites) if (s.kind==shell::MapSprite::Entity && s.cell.y()==6) {
+            left = std::min(left, s.rect().left()); right = std::max(right, s.rect().right());
+        }
+        QVERIFY2(left <= frame.source.left() && right >= frame.source.right(), "the row of objects reaches the added column");
+
+        struct Case { int control; QMargins hud; int stripX, stripY, endX, endY; };
+        // Stock's map at the control's top left: world from stripX, stripY to endX, endY (exclusive).
+        for (const Case& c : {Case{224,{0,0,1,0},16,0,224,224}, Case{224,{1,0,0,0},32,0,224,224},
+                              Case{224,{0,0,2,0},32,0,224,224}, Case{224,{1,0,0,1},32,16,224,224},
+                              Case{224,{0,2,0,0},0,64,224,224},
+                              Case{240,{0,0,1,0},8,8,224,232}, Case{240,{1,0,0,0},32,8,240,232},
+                              Case{240,{0,0,2,0},24,8,224,232},
+                              Case{288,{0,0,1,0},16,32,240,256}, Case{288,{1,0,0,0},48,32,272,256},
+                              Case{288,{0,0,2,0},0,32,224,256},
+                              Case{192,{0,0,1,0},32,16,192,192}}) { // a strip on top too, where nothing was added
+            const QSize sceneSize(224 + 32*(c.hud.left()+c.hud.right()), 224 + 32*(c.hud.top()+c.hud.bottom()));
+            const QSize control(c.control, c.control);
+            shell::MapPresentationSettings normal; normal.iconSize = 32;
+            const auto placement = shell::mapPresentation(control, sceneSize, 32, normal);
+            QCOMPARE(placement.scale, 1.0);
+            const auto clip = shell::mapWorldClip(placement, control, sceneSize, c.hud, 32);
+            QVERIFY(clip);
+            // The clip in the control, cut by it.
+            const QRect shown = clip->translated(placement.destination.topLeft().toPoint()).intersected(QRect({}, control));
+            QCOMPARE(shown, QRect(QPoint(c.stripX, c.stripY), QPoint(c.endX - 1, c.endY - 1)));
+        }
+        // A map that is not enlarged: no clip, even in a control smaller than the view (stock: no strip at 192).
+        shell::MapPresentationSettings normal; normal.iconSize = 32;
+        for (int size : {192, 224, 288})
+            QVERIFY(!shell::mapWorldClip(shell::mapPresentation(QSizeF(size, size), {224, 224}, 32, normal),
+                                         QSizeF(size, size), {224, 224}, {}, 32));
     }
     // A range's grid is moved by its first end's pixel offsets and ignores the second end's (stock 516.1689,
     // master-screen-loc-world "1,1 to 3:8,3", "1,1 to 3:40,3", "1:8,1 to 3,3", "1:4,1:8 to 3:12,3", the same for a
