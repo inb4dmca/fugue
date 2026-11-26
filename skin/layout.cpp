@@ -159,13 +159,11 @@ Rect runtimeRect(const File& f, const std::string& window, const Rect& box, cons
     return Rect{x1, y1, std::max(x1, x2), std::max(y1, y2)};
 }
 
-DesignGeometry designGeometry(const File& f, const Control& c, long long x, long long y, long long w, long long h) {
-    const Rect& box = c.box;
-    int dw = box.dx(), dh = box.dy();
-    if (const Block* b = f.window(c.window)) designSize(*b, box, dw, dh);
+DesignGeometry designGeometry(const Elem* anchors, const Rect& box, int dw, int dh, long long x, long long y,
+                              long long w, long long h) {
     int64_t a1x = 0, a1y = 0, a2x = 0, a2y = 0;
-    bool ok1 = c.elem && c.elem->point("anchor1", a1x, a1y);
-    bool ok2 = c.elem && c.elem->point("anchor2", a2x, a2y);
+    bool ok1 = anchors && anchors->point("anchor1", a1x, a1y);
+    bool ok2 = anchors && anchors->point("anchor2", a2x, a2y);
     // anchorAxis undone: the design coordinate that the anchor formula moves to `actual` in this box.
     auto design = [](long long actual, int64_t pct, bool ok, int designExtent, int actualExtent) {
         if (!ok || pct < 0) return actual;
@@ -173,10 +171,38 @@ DesignGeometry designGeometry(const File& f, const Control& c, long long x, long
     };
     long long x1 = design(x, a1x, ok1, dw, box.dx()), y1 = design(y, a1y, ok1, dh, box.dy());
     long long x2 = design(x + w, a2x, ok2, dw, box.dx()), y2 = design(y + h, a2y, ok2, dh, box.dy());
-    if (ok1 && ok2) return {x1, y1, x2 - x1, y2 - y1};
-    if (ok1) return {x1, y1, w, h};           // that corner pins and the extent is kept (anchorRect)
-    if (ok2) return {x2 - w, y2 - h, w, h};
-    return {x, y, w, h};
+    DesignGeometry g{x, y, w, h, dw, dh};
+    if (ok1 && ok2) g = {x1, y1, x2 - x1, y2 - y1, dw, dh};
+    else if (ok1) g = {x1, y1, w, h, dw, dh};  // that corner pins and the extent is kept (anchorRect)
+    else if (ok2) g = {x2 - w, y2 - h, w, h, dw, dh};
+    return g;
+}
+
+DesignGeometry designGeometry(const File& f, const Control& c, long long x, long long y, long long w, long long h) {
+    int dw = c.box.dx(), dh = c.box.dy();
+    if (const Block* b = f.window(c.window)) designSize(*b, c.box, dw, dh);
+    return designGeometry(c.elem, c.box, dw, dh, x, y, w, h);
+}
+
+Elem runtimeElem(const PropStore& props, const std::string& name) {
+    Elem e;
+    e.name = name;
+    for (const char* key : {"pos", "size", "anchor1", "anchor2"}) {
+        std::string v;
+        if (props.get(name, key, v)) {
+            e.idx[key] = int(e.rows.size());
+            e.rows.push_back({key, v});
+        }
+    }
+    return e;
+}
+
+Rect runtimeParentBox(const Tree& tree, const File& file, const std::string& parent) {
+    const Block* block = file.window(parent);
+    if (block && block == findMainWindow(file)) return tree.client;
+    for (const Control& c : tree.controls)
+        if (c.window == parent) return c.box;
+    return {};
 }
 
 namespace {
@@ -401,13 +427,14 @@ Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>&
 }
 
 Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>& splits, const PropStore* props,
-                bool inferSlots, const GeometryOverrides* geometry) {
+                bool inferSlots, const GeometryOverrides* geometry, int below) {
     Tree t;
     t.client = client;
+    t.below = std::max(0, below);
     const Block* mw = findMainWindow(f);
     if (!mw) return t;
     Ctx c{f, t, splits, props, inferSlots, {}, {}, geometry};
-    layoutWindow(c, *mw, client, client, 0, "");
+    layoutWindow(c, *mw, client, Rect{client.x0, client.y0, client.x1, client.y1 + t.below}, 0, "");
     for (const Block& b : f.blocks) {
         if (b.kind != "window" || &b == mw || !isFloatingWindow(f, b) || c.seen.count(b.name)) continue;
         const Elem* m = b.main();
@@ -429,34 +456,34 @@ Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>&
 }
 
 void layoutRuntime(Tree& tree, const File& file, const PropStore& props, const std::string& name,
-                   const std::string& parent, const std::string& type, uint64_t identity) {
+                   const std::string& parent, const std::string& type, uint64_t identity,
+                   const GeometryOverrides* geometry) {
     // Runtime controls are siblings in their parent window, after file controls.
     // They retain their own identity through visibility/geometry changes.
     if (type != "BROWSER" && type != "MAP") return;
     const auto* block = file.window(parent);
     if (!block && type != "MAP") return;
-    Rect box;
-    if (block && block == findMainWindow(file))
-        box = tree.client;
-    else
-        for (const auto& c : tree.controls)
-            if (c.window == parent) {
-                box = c.box;
-                break;
-            }
-    Elem e;
-    e.name = name;
-    for (const char* key : {"pos", "size", "anchor1", "anchor2"}) {
-        std::string v;
-        if (props.get(name, key, v)) {
-            e.idx[key] = int(e.rows.size());
-            e.rows.push_back({key, v});
-        }
-    }
+    const bool inMain = block && block == findMainWindow(file);
+    Rect box = runtimeParentBox(tree, file, parent);
+    Elem e = runtimeElem(props, name);
     int dw = 0, dh = 0;
-    if (block)
+    GeomOverride ov;
+    if (block) {
         designSize(*block, box, dw, dh);
-    else {
+        // A pos / size winset, read in the box the control had then (runtime geometry, liveskin.cpp).
+        if (geometry) {
+            auto g = geometry->find(lowerAscii(parent + "." + name));
+            if (g != geometry->end()) {
+                ov.px = g->second.x;
+                ov.py = g->second.y;
+                ov.sw = g->second.w;
+                ov.sh = g->second.h;
+                ov.hasPos = ov.hasSz = ov.exact = true;
+                dw = g->second.refW;
+                dh = g->second.refH;
+            }
+        }
+    } else {
         // Popup MAP geometry is browser-client-relative; Qt's actual parent
         // supplies clipping. No invented main-window pane or default-map view.
         int64_t x = 0, y = 0, width = 0, height = 0;
@@ -474,8 +501,9 @@ void layoutRuntime(Tree& tree, const File& file, const PropStore& props, const s
     c.type = type;
     c.box = box;
     c.runtimeIdentity = identity;
-    c.full = anchorRect(e, {}, dw, dh, box);
-    c.rect = c.full.intersect(box);
+    c.full = anchorRect(e, ov, dw, dh, box);
+    // A control of the main window shows over its status strip as a .dmf one does (layoutSkin `below`).
+    c.rect = c.full.intersect(inMain ? Rect{box.x0, box.y0, box.x1, box.y1 + tree.below} : box);
     c.offPane = box.empty() || c.rect.empty();
     props.controlBool(parent, name, "is-visible", c.visible);
     props.controlBool(parent, name, "is-disabled", c.disabled);

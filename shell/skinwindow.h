@@ -30,6 +30,7 @@
 #include <QWidget>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <vector>
 #include "shell/browsehost.h"
@@ -59,7 +60,9 @@ public:
     // Parses (into the live skin) and builds. Returns "" or the parse error (the previous skin stays).
     QString loadSkin(const std::string& dmf);
     bool hasSkin() const { return live_->loaded(); }
-    // The window size that gives the skin its designed client area (menu bar included).
+    // The window size that gives the skin its designed client area (menu bar and status strip included), or the client
+    // area a winset of the main window's size has asked for since the skin was built: stock opens the skin at the size
+    // a world sets in Login() (516.1689).
     QSize designSize() const;
 
     // The live skin this window paints. Share it with the session thread (SkinFeed) so a wire winset reaches it.
@@ -161,6 +164,7 @@ protected:
     void resizeEvent(QResizeEvent*) override;
     void moveEvent(QMoveEvent*) override;
     void showEvent(QShowEvent*) override;
+    void changeEvent(QEvent*) override;
     // Closing the main window quits the client. The popups are transient for it, so the browse host is told first,
     // and the popups that close with it run no on-close.
     void closeEvent(QCloseEvent* e) override;
@@ -200,6 +204,14 @@ private:
     skin::SkinSnapshot snap_;
     uint64_t builtFileId_ = 0, lastGen_ = ~0ull, lastFocusSeq_ = 0;
     uint64_t lastWindowSizeSeq_ = 0;  // the last main-window size winset given to this window (SkinSnapshot)
+    uint64_t lastWindowPosSeq_ = 0, lastMaximizeSeq_ = 0;  // the same for its pos and is-maximized winsets
+    QSize requestedClient_;  // the client area the last size winset asked for since the skin was built (designSize)
+    QSize normalClient_;     // the client area while neither maximized nor full-screen (the restore size)
+    QSize restoreClient_;    // a size winset that arrived while maximized: given to the window when it is restored
+    std::optional<QPoint> restorePos_;  // likewise a pos winset
+    bool zoomed_ = false;               // maximized or full-screen, as last published (LiveSkin::setWindowState)
+    void publishWindowState();
+    void publishFrame();
     std::string lastMacro_;
     uint64_t lastMacroGen_ = 0;
     std::map<std::string, QWidget*> widgets_;  // "window.name" -> widget (created lazily)

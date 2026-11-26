@@ -37,6 +37,10 @@
 #include "shell/fugueicon.h"
 #include "shell/paste.h"
 #include "shell/skinfont.h"
+#ifdef Q_OS_WIN
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 namespace fugue::shell {
 
@@ -157,10 +161,12 @@ private:
 };
 }  // namespace
 
-// The status strip is 18 px and sits below the client area. Stock DreamSeeker shows it unless the skin sets
-// statusbar = false, and the layout uses the same height. Without the strip the input bar would sit flush on the
-// window's bottom edge.
-constexpr int kStatusBarH = 18;
+// The status strip sits below the client area. Stock DreamSeeker shows it unless the skin sets statusbar = false; it is
+// the system's status bar, 19 px at 96 dpi and 25 px at 144 dpi (516.1689, tests/data/winset-size-world): it follows
+// the system font rather than scaling in proportion. This client's is 19 logical pixels at every scale, so it equals
+// stock's at 96 dpi and is 28.5 device pixels to stock's 25 at 144 dpi. Without the strip the input bar would sit
+// flush on the window's bottom edge.
+constexpr int kStatusBarH = 19;
 
 SkinWindow::SkinWindow(QWidget* parent) : QWidget(parent), live_(std::make_shared<skin::LiveSkin>()) {
     setObjectName("skinwindow");
@@ -283,6 +289,7 @@ bool wantsStatusBar(const skin::SkinSnapshot& s) {
 void SkinWindow::syncStatusBar(const skin::SkinSnapshot& s) {
     if (!wantsStatusBar(s)) {
         if (status_) status_->hide();
+        live_->setStatusStrip(0);
         return;
     }
     if (!status_) {
@@ -297,6 +304,7 @@ void SkinWindow::syncStatusBar(const skin::SkinSnapshot& s) {
     }
     status_->setGeometry(0, height() - kStatusBarH, width(), kStatusBarH);
     status_->show();
+    live_->setStatusStrip(kStatusBarH);  // a zero `size` fills over it (liveskin.cpp applyGeometryLocked)
 }
 
 QSize SkinWindow::designSize() const {
@@ -308,7 +316,8 @@ QSize SkinWindow::designSize() const {
             bar = 22;
     }
     int status = wantsStatusBar(snap_) ? kStatusBarH : 0;
-    return QSize(design_.width(), design_.height() + bar + status);
+    const QSize client = requestedClient_.isValid() ? requestedClient_ : design_;
+    return QSize(client.width(), client.height() + bar + status);
 }
 
 QString SkinWindow::loadSkin(const std::string& dmf) {
@@ -506,6 +515,7 @@ void SkinWindow::rebuild(const skin::SkinSnapshot& s) {
     clearWidgets();
     mapPaneShown_ = infoPaneShown_ = false;  // a new skin shows its panes afresh (setPaneShown)
     builtFileId_ = s.fileId;
+    requestedClient_ = QSize();
     lastGen_ = ~0ull;
     design_ = QSize(640, 480);
     if (s.file)
@@ -980,18 +990,36 @@ void SkinWindow::syncFromLive() {
     }
     // A winset of the main window's size names its client area; the menu bar and the status strip come on top, as they
     // do in stock DreamSeeker 516 (a 224x224 window's frame grows by 64 both ways for main.size=288x288). The live
-    // layout has the new size already. A maximized or full-screen window keeps its size, and its real client area goes
-    // back to the layout.
+    // layout has the new size already. A maximized or full-screen window stays so and gets the size when it is
+    // restored (516.1689); its real client area stays the layout's.
     if (s.windowSizeSeq != lastWindowSizeSeq_) {
         lastWindowSizeSeq_ = s.windowSizeSeq;
         if (isWindow() && s.windowWidth > 0 && s.windowHeight > 0) {
+            requestedClient_ = QSize(s.windowWidth, s.windowHeight);
             if (isMaximized() || isFullScreen()) {
+                restoreClient_ = requestedClient_;
+                publishWindowState();
                 live_->setClient(width(), std::max(0, height() - chromeHeight()));
                 s = live_->snapshot();
             } else {
                 resize(s.windowWidth, s.windowHeight + chromeHeight());
             }
         }
+    }
+    // A winset of its pos moves the frame's top-left there (516.1689); a maximized window gets it when restored.
+    if (s.windowPosSeq != lastWindowPosSeq_) {
+        lastWindowPosSeq_ = s.windowPosSeq;
+        if (isWindow()) {
+            if (isMaximized() || isFullScreen())
+                restorePos_ = QPoint(s.windowPosX, s.windowPosY);
+            else
+                move(s.windowPosX, s.windowPosY);
+        }
+    }
+    if (s.maximizeSeq != lastMaximizeSeq_) {
+        lastMaximizeSeq_ = s.maximizeSeq;
+        if (isWindow())
+            setWindowState(s.maximize ? windowState() | Qt::WindowMaximized : windowState() & ~Qt::WindowMaximized);
     }
     if (s.generation != lastGen_ || s.fileId != snap_.fileId) {
         apply(s);
@@ -1123,19 +1151,82 @@ void SkinWindow::publishClientEnv() {
 }
 
 // The main window's place on the screen, as its frame's top-left. Stock answers this for mainwindow.pos and outer-pos.
+// While maximized, stock answers the place the window is restored to (516.1689: main.pos stayed 100,120 with the frame
+// at -8,-8), so a maximized or full-screen window's moves are not published.
 void SkinWindow::moveEvent(QMoveEvent* e) {
     QWidget::moveEvent(e);
-    if (isWindow()) live_->setWindowPos("", frameGeometry().x(), frameGeometry().y());
+    if (isWindow() && !isMaximized() && !isFullScreen())
+        live_->setWindowPos("", frameGeometry().x(), frameGeometry().y());
+    publishFrame();
 }
 
 void SkinWindow::showEvent(QShowEvent* e) {
     QWidget::showEvent(e);
-    if (isWindow()) live_->setWindowPos("", frameGeometry().x(), frameGeometry().y());
+    if (isWindow() && !isMaximized() && !isFullScreen())
+        live_->setWindowPos("", frameGeometry().x(), frameGeometry().y());
+    publishFrame();
+    publishWindowState();
+}
+
+// The frame's size: winget `outer-size`. Stock answers its window rectangle, which on Windows includes the invisible
+// resize borders (516.1689 at 96 dpi: 256x298 for a 240x240 client, where Qt's frame geometry is 240x290), so this
+// reads the same rectangle of this window, in logical pixels. Elsewhere it is Qt's frame geometry. The menu bar and
+// the status strip are this client's, so the answer equals stock's only where they are the same height.
+void SkinWindow::publishFrame() {
+    if (!isWindow()) return;
+    QSize frame = frameGeometry().size();
+#ifdef Q_OS_WIN
+    RECT r;
+    if (testAttribute(Qt::WA_WState_Created) && QGuiApplication::platformName() == QLatin1String("windows") &&
+        GetWindowRect(reinterpret_cast<HWND>(winId()), &r)) {
+        const qreal dpr = devicePixelRatioF() > 0 ? devicePixelRatioF() : 1;
+        frame = QSize(int(std::lround((r.right - r.left) / dpr)), int(std::lround((r.bottom - r.top) / dpr)));
+    }
+#endif
+    live_->setWindowFrame(frame.width(), frame.height());
+}
+
+void SkinWindow::publishWindowState() {
+    if (!isWindow()) return;
+    const bool zoomed = isMaximized() || isFullScreen();
+    if (zoomed == zoomed_ && !zoomed) return;
+    zoomed_ = zoomed;
+    QSize restore = restoreClient_;
+    if (!restore.isValid() && normalGeometry().isValid())
+        restore = QSize(normalGeometry().width(), std::max(0, normalGeometry().height() - chromeHeight()));
+    if (!restore.isValid()) restore = normalClient_;
+    live_->setWindowState(zoomed, restore.width(), restore.height());
+}
+
+// Maximizing publishes the size the window is restored to; restoring gives it a size or pos winset that arrived
+// meanwhile (516.1689: main.size=300x300 sent to a maximized window left it maximized and made it 300x300 when
+// restored).
+void SkinWindow::changeEvent(QEvent* e) {
+    QWidget::changeEvent(e);
+    if (e->type() != QEvent::WindowStateChange || !isWindow()) return;
+    const bool wasZoomed = zoomed_;
+    publishWindowState();
+    if (wasZoomed && !zoomed_ && (restoreClient_.isValid() || restorePos_)) {
+        const QSize size = std::exchange(restoreClient_, QSize());
+        const std::optional<QPoint> pos = std::exchange(restorePos_, std::nullopt);
+        // After the platform has put back its own restore geometry.
+        QMetaObject::invokeMethod(
+            this,
+            [this, size, pos] {
+                if (isMaximized() || isFullScreen()) return;
+                if (size.isValid()) resize(size.width(), size.height() + chromeHeight());
+                if (pos) move(*pos);
+            },
+            Qt::QueuedConnection);
+    }
 }
 
 void SkinWindow::resizeEvent(QResizeEvent* e) {
     QWidget::resizeEvent(e);
     publishClientEnv();
+    publishFrame();
+    if (isWindow() && !isMaximized() && !isFullScreen() && !isMinimized())
+        normalClient_ = QSize(width(), std::max(0, height() - chromeHeight()));
     if (bar_ && !bar_->isHidden()) bar_->setGeometry(0, 0, width(), bar_->sizeHint().height());
     if (status_ && !status_->isHidden()) status_->setGeometry(0, height() - kStatusBarH, width(), kStatusBarH);
     if (!live_->loaded()) return;
