@@ -18,9 +18,10 @@ public:
     explicit SpriteRenderer(bool boundedMaterials = true);
     ~SpriteRenderer();
     bool initialize(QRhi* rhi, QRhiRenderPassDescriptor* pass, int samples);
-    // Returns uploaded texture bytes. Positions/tints use a separate dynamic vertex buffer.
+    // Returns uploaded texture bytes. Positions/tints use a separate dynamic vertex buffer. worldClip, in the source's
+    // own pixels (its top left at 0,0), is where world sprites are drawn (mapWorldClip); screen objects are not cut.
     uint64_t prepare(QRhiResourceUpdateBatch* updates, const MapSprites& sprites,
-                     QRect source);
+                     QRect source, std::optional<QRect> worldClip = {});
     // Consumes the updates, then records dependency-ordered plane/target passes.
     void renderOffscreen(QRhiCommandBuffer* cb, QRhiResourceUpdateBatch* updates);
     // Draws into the pass in progress, over the whole of viewport. The viewport is set here, after a pipeline is

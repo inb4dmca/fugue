@@ -1470,7 +1470,9 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
             if (!part.master && !part.renderSource.isEmpty() && part.planeEffects && !part.planeEffects->relayFilters() &&
                 !atomTarget(part.renderSource)) return;
         const bool localCapture = !rootAppearance.master && !rootAppearance.renderTarget.isEmpty();
-        if (shape.bounds.isEmpty() || (!screen && !localCapture && rootAppearance.renderSource.isEmpty() && !shape.bounds.translated(origin).intersects(worldInner))) { // the map ends at the view
+        // The map ends at the scene: the view and the tiles a screen object outside it adds, where stock draws the
+        // world too, turfs and objects of any plane (516.1689, master-screen-loc-world "8,1|obj|wide").
+        if (shape.bounds.isEmpty() || (!screen && !localCapture && rootAppearance.renderSource.isEmpty() && !shape.bounds.translated(origin).intersects(worldView))) {
             if (diagnostic) diagnostic->placement = shape.bounds.isEmpty() ? TraceReason::EmptyBounds : TraceReason::OffView;
             if (stats) ++stats->culled;
             return;

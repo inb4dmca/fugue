@@ -94,7 +94,11 @@ Object `client.screen` supports bounded edge/corner screen locations, ranges and
 repetition. Named MAPs have separate HUD/image/vis scenes, masters, targets,
 publication and picking. Browser-embedded runtime MAPs support lifecycle and
 positive numeric views. Remote-turf/camera/cross-z scenes and general automatic
-view expansion are not supported.
+view expansion are not supported. A screen object outside the view enlarges the
+map; the world is drawn in it only where stock's clip reaches (`mapWorldClip`:
+the view's shown part, moved by what the control cuts off), which can add a black
+strip at the control's left and top. Colour-matrix atoms are not yet stretched as
+stock draws them there.
 
 `client.images` and `vis_contents` support selected world/HUD attachment forms,
 sharing and nesting. Mob vis holders, general vis flags, grouped/transformed

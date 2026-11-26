@@ -2,6 +2,7 @@
 #include <QtTest>
 #include "tests/testmain.h"
 #include "shell/compositionplan.h"
+#include "shell/mappresentation.h"
 #include "shell/tests/compositionfixture.h"
 #include "shell/tests/gpucomparison.h"
 #include "shell/tests/replayfixture.h"
@@ -277,6 +278,95 @@ private slots:
         }
         if (!off) return;
         const QString saved = QDir::temp().filePath("fugue-plane-relay-" + set + ".png");   // to look at beside stock's
+        drawn.save(saved);
+        QFAIL(qPrintable(QString("%1 pixels differ from stock (worst %2), the first at %3,%4; drawn: %5")
+                             .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved)));
+    }
+    // tests/data/master-screen-loc-world/replay: a screen object outside a 7x7 view (8,1, 0,4, 9,1 or 1,9) enlarges the
+    // map on a level whose turfs and objects lie past the view, in a control of 224 pixels or the size the set's name
+    // ends with. Replayed through the real scene assembly (with the margins the scene asks for) from what DreamDaemon
+    // 516.1689 sent, drawn with mapWorldClip and placed in the control as the presentation places it, then compared
+    // with stock's grab of the control: no channel of any pixel more than 8 levels from stock's. Not compared: the two
+    // atoms coloured by a colour matrix, which stock draws scaled into the clip and not on their own tile (README).
+    void masterLocWideReplay_data() {
+        QTest::addColumn<QString>("set");
+        const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-screen-loc-world/replay");
+        QFile recorded(directory.filePath("recorded.tsv"));
+        QVERIFY2(recorded.open(QIODevice::ReadOnly),qPrintable(recorded.fileName()));
+        QStringList sets;
+        for (const auto& raw:recorded.readAll().split('\n')) {
+            const auto line=QString::fromUtf8(raw).trimmed();
+            if (!line.isEmpty() && !line.startsWith('#')) sets.push_back(line.section('\t',0,0));
+        }
+        QCOMPARE(sets.size(),6);
+        for (const auto& set:sets) QTest::newRow(qPrintable(set)) << set;
+    }
+    void masterLocWideReplay() {
+        QFETCH(QString, set);
+        const QString dir = QString(FUGUE_TEST_DATA_DIR) + "/master-screen-loc-world/replay/";
+        const int64_t login = 1'000'000'000'000'000'000, grabbed = login + 6'000'000'000;
+        test::ReplayFixture fixture;
+        fixture.session.setIngestClockNs(login);
+        QVERIFY2(fixture.load(set + ".txt", "master-screen-loc-world/replay", {}, grabbed), qPrintable(fixture.error));
+        // The frame after the one that learns of the screen object holds the larger map.
+        const auto reader = [&](uint32_t id, QByteArray& out) { return fixture.read(id, out); };
+        const QMargins hud = fixture.entities.hudMargins();
+        QVERIFY2(!hud.isNull(), "the screen object enlarges the map");
+        fixture.frame = fixture.terrain.prepare(fixture.session.world(), reader, grabbed, false, hud);
+        fixture.sprites = fixture.entities.prepare(fixture.session.world(), fixture.frame, reader, grabbed, nullptr, true);
+        const QRect source = fixture.frame.source;
+        const int tile = fixture.frame.geometry.tile;
+        QCOMPARE(source.size(), QSize(224, 224) + QSize(tile*(hud.left()+hud.right()), tile*(hud.top()+hud.bottom())));
+        const auto size = set.section('_', 3, 3);
+        const int side = size.isEmpty() ? 224 : size.section('x', 0, 0).toInt();
+        const QSize control(side, side);
+        MapPresentationSettings normal; normal.iconSize = tile;   // the skin's icon-size = 32
+        const auto placement = mapPresentation(control, source.size(), tile, normal);
+        QCOMPARE(placement.scale, 1.0);
+        const auto clip = mapWorldClip(placement, control, source.size(), hud, tile);
+        QVERIFY(clip);
+        GpuComparison gpu;
+        QVERIFY2(gpu.initialize(source.size()), "Required GPU backend could not be initialized");
+        const QImage scene = gpu.render(gpu.bounded, fixture.sprites, source, Qt::black, clip);
+        QVERIFY(!scene.isNull());
+        QImage drawn(control, QImage::Format_RGBA8888); drawn.fill(Qt::black);
+        const QPoint at = placement.destination.topLeft().toPoint();
+        for (int y = 0; y < scene.height(); ++y) for (int x = 0; x < scene.width(); ++x)
+            if (QRect({}, control).contains(at + QPoint(x, y))) drawn.setPixel(at + QPoint(x, y), scene.pixel(x, y));
+        QImage stock(dir + set + ".png"); stock = stock.convertToFormat(QImage::Format_RGBA8888);
+        QVERIFY(stock.width() >= side && stock.height() >= side);
+        stock = stock.copy(QRect({}, control));
+        // Left out: each colour-matrix atom's own tile and where stock draws it, its view-sized surface stretched
+        // from the view in the control onto the clip.
+        const QRect view = QRect(QPoint(tile*hud.left(), tile*hud.top()), QPoint(source.width()-1-tile*hud.right(),
+                                 source.height()-1-tile*hud.bottom()));
+        std::vector<QRect> skipped;
+        int coloured = 0;
+        for (const auto& s : fixture.sprites) {
+            if (s.color == identityColor || s.kind == MapSprite::Screen || s.kind == MapSprite::Master) continue;
+            ++coloured;
+            const QRect own = s.rect().translated(-source.topLeft());
+            const auto stretch = [&](int v, int from, int length, int to, int span) { return to + (v - from) * span / length; };
+            const QRect scaled(QPoint(stretch(own.left(), view.left(), view.width(), clip->left(), clip->width()),
+                                      stretch(own.top(), view.top(), view.height(), clip->top(), clip->height())),
+                               QPoint(stretch(own.right()+1, view.left(), view.width(), clip->left(), clip->width()),
+                                      stretch(own.bottom()+1, view.top(), view.height(), clip->top(), clip->height())));
+            skipped.push_back(own.translated(at).adjusted(-1, -1, 1, 1));
+            skipped.push_back(scaled.translated(at).adjusted(-2, -2, 2, 2));
+        }
+        QCOMPARE(coloured, 2);
+        int off = 0, worst = 0, compared = 0; QPoint first;
+        for (int y = 0; y < side; ++y) for (int x = 0; x < side; ++x) {
+            if (std::any_of(skipped.begin(), skipped.end(), [&](const QRect& r) { return r.contains(x, y); })) continue;
+            ++compared;
+            const QRgb a = drawn.pixel(x, y), b = stock.pixel(x, y);
+            const int d = std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
+            worst = std::max(worst, d);
+            if (d > 8 && !off++) first = {x, y};
+        }
+        QVERIFY(compared > side * side * 3 / 4);
+        if (!off) return;
+        const QString saved = QDir::temp().filePath("fugue-wide-map-" + QString(set).replace(',', '-') + ".png");
         drawn.save(saved);
         QFAIL(qPrintable(QString("%1 pixels differ from stock (worst %2), the first at %3,%4; drawn: %5")
                              .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved)));

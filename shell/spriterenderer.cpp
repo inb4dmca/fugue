@@ -50,6 +50,7 @@ struct SpriteRenderer::Impl {
     std::vector<std::vector<Draw>> passDraws;
     std::vector<Draw> finalDraws;
     bool prepared = false, dirty = false;
+    std::optional<QRect> worldClip; // the prepared one, in scene coordinates
     Stats stats;
 
     std::unique_ptr<QRhiShaderResourceBindings> bindings(QRhiTexture* texture, bool smooth = false) {
@@ -148,8 +149,9 @@ bool SpriteRenderer::initialize(QRhi* rhi, QRhiRenderPassDescriptor* pass, int s
     return d.layout && d.pipeline(0, 0, pass);
 }
 uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSprites& sprites,
-                                 QRect source) {
+                                 QRect source, std::optional<QRect> worldClip) {
     auto& d = *d_;
+    if (worldClip) worldClip->translate(source.topLeft());
     struct Measure {
         Stats& stats;
         std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
@@ -157,7 +159,8 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
     } measure{d.stats};
     ++d.stats.preparations;
     if (d.prepared && d.plan->sprites.constData() == sprites.constData() && d.plan->sprites.size() == sprites.size() &&
-        d.plan->source == source) { d.dirty = false; ++d.stats.replays; return 0; }
+        d.plan->source == source && d.worldClip == worldClip) { d.dirty = false; ++d.stats.replays; return 0; }
+    d.worldClip = worldClip;
     d.stats.draws = d.stats.surfaces = d.stats.passes = d.stats.surfaceBytes = d.stats.workPixels = d.stats.ignoredFilters = 0;
     d.stats.rejection = {}; d.stats.composition = {};
     d.stats.requestedSurfaces = d.stats.candidatePasses = d.stats.reachablePasses = 0;
@@ -283,7 +286,12 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
             bindings = selected.get();
         }
         if (!bindings) return false;
-        const QRect clipped = rect.intersected(capture);
+        QRect clipped = rect.intersected(capture);
+        // World sprites end where stock draws the world (mapWorldClip); screen objects and surfaces do not. A turned
+        // world sprite is not cut.
+        const bool world = sprite.kind == MapSprite::Turf || sprite.kind == MapSprite::Entity ||
+                           sprite.kind == MapSprite::Image || sprite.kind == MapSprite::Vis || sprite.kind == MapSprite::Blackness;
+        if (worldClip && world && !premultiplied && !sprite.affine) clipped &= *worldClip;
         if (clipped.isEmpty()) return true;
         const QSize output = capture.size();
         const float x0 = 2.0f*(clipped.x()-capture.x())/output.width()-1;

@@ -51,12 +51,13 @@ mob/player/Login()
 		O = new(locate(5,10,2)); O.icon = 'z.dmi'; O.icon_state = "nst"; O.pixel_x = 16; O.plane = 1
 	note("READY login")
 	spawn() phases()
-// The phase comes from phase.txt (collect.py), or once from world.params "case" (stockprobe.py pair), where "_" stands
+// The phase comes from phase.txt (collect.py), or once from world.params "case" (stockprobe.py pair) or "set"
+// (stockprobe.py record), where "_" stands
 // for "|" and "~" for ":" so that the case name can be a file name.
 mob/player/proc/phases()
 	var/phase = ""
 	var/obj/master/M
-	var/given = world.params["case"]
+	var/given = world.params["case"] || world.params["set"]
 	if(given) given = replacetext(replacetext(given, "_", "|"), "~", ":")
 	while(client)
 		var/p = given ? given : file2text("phase.txt")
@@ -75,6 +76,8 @@ mob/player/proc/phases()
 				var/fx = w[2]
 				var/turf/where = (w.len >= 3 && w[3] == "wide") ? locate(8,8,2) : locate(4,4,1)
 				if(src.loc != where) src.loc = where
+				// a fourth field resizes the window and its map control, e.g. "8,1|obj|wide|288x288"
+				if(w.len >= 4) winset(src, null, "main.size=[w[4]];map.size=[w[4]]")
 				if(fx == "outline") M.filters = filter(type="outline", size=1, color="#ffffff")
 				if(fx == "blur") M.filters = filter(type="blur", size=2)
 				if(fx == "shadow") M.filters = filter(type="drop_shadow", x=4, y=-4, size=0, offset=0, color="#00ff00")

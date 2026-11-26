@@ -135,12 +135,33 @@ for `8,1|obj|wide`, 32 for `9,1`, 16 right and up for `0,0`, 32 down for `1,9`; 
   magenta turf at 10,10 is 29 pixels wide at 165..193 for `8,1` instead of 32 at 144..175, which stays black; the same
   at 13/14 of a tile for one added column or row and 6/7 for two.
 
-Fugue differs in all three (`stockprobe.py pair` of `8,1_obj_wide`, `0,4_obj_wide`, `9,1_obj_wide`, `1,9_obj_wide`
-and `8,1_obj`): the added tiles are black, there is no strip (the world shows to the control's edge), and the
-colour-matrix atoms stand at their own tiles. Not changed: the rule was measured only with a control the size of the
-view and 32 pixel tiles, and the strip clips the world but not screen objects, which Fugue's compositing cannot yet
-express.
+The first two are one rule, which holds for controls of other sizes too. A fourth field in the phase resizes the
+window and its map control (`8,1|obj|wide|288x288`, by `winset`), and stock was grabbed with controls of 192, 240 and
+288 pixels (`stockprobe.py --map 288x288 pair` of `8,1`, `0,4`, `9,1` and `null|none`, `wide`, at each size). On each
+axis take the view's place in the control (the larger map is centred, so the view stands where the added tiles put
+it), keep the part the control shows, and when the map is larger than the control and so starts before it, move that
+part right (down) by what is cut off. The world is drawn only in that part; screen objects everywhere.
 
+- 224 pixels: the map starts 16 pixels left for one added column, so the part of the view shown, 0..208 for `8,1`,
+  moves to 16..224, which takes in the new column and leaves the 16 pixel strip; for `0,4` the view shown, 16..224,
+  moves to 32..240 (a 32 pixel strip). The formula above is this.
+- 240 pixels: world 8..224 for `8,1` (the new column shows 216..224, the control's last 16 pixels are black), 32..240
+  for `0,4`, 24..224 for `9,1`; the 224 pixel view stands 8 pixels down, with no strip on top.
+- 288 pixels: the map fits, nothing moves and the world fills only the view: 16..240 for `8,1`, 48..272 for `0,4`,
+  0..224 for `9,1`. The added tiles are black but for the screen object.
+- 192 pixels, `8,1`: world 32..192 across and 16..192 down. The strip is on top too, where nothing was added, because
+  the map is cut there as well. With no screen object outside the view (`null|none|wide|192x192`) the map is centred
+  and cut with no strip at all: the rule belongs to the enlarged map only.
+
+A colour-matrix atom is the view-sized picture of it stretched from the view's place onto that part (the magenta turf
+at 169..191 and 43..47 for `8,1` at 192 pixels: 6/7 of a tile both ways), and its own tile stays black.
+
+Fugue draws the world in the added tiles and only in that part (`mapWorldClip` in `shell/mappresentation.h`, applied by
+`SpriteRenderer` to world sprites; `EntityMapTest::worldInTheLargerMap` has the strip and edge each capture shows,
+and `CompositionGpuTest::masterLocWideReplay` replays six recorded cases, at 192, 224, 240 and 288 pixels, against
+stock's grab of the control). Still different: the colour-matrix atoms stand on their own tiles (the replay leaves
+them out), a turned world sprite is not cut, and a click in the strip or in a black added tile can still reach the
+world there; what stock does with such a click was not measured, nor the rule with a scaled map.
 ## Reproduction
 
 Requires BYOND and Python/Pillow. Stage icons, then this world:
@@ -162,3 +183,6 @@ described above; it does not count `blurred`) and copies its captures here under
 --add-copies` gave the older entries their copies. The world also takes its phase from `world.params` `case`, with
 `_` for `|` and `~` for `:`, so `tools/stockprobe/stockprobe.py --world tests/data/master-screen-loc-world --params
 case={} pair 8,1_obj_wide` grabs stock and Fugue side by side.
+The replay set came from `stockprobe.py --world tests/data/master-screen-loc-world --map 288x288 record
+8,1_obj_wide 0,4_obj_wide 1,9_obj_wide 8,1_obj_wide_288x288 9,1_obj_wide_240x240 8,1_obj_wide_192x192` (the world reads
+`set` as it reads `case`), which writes `replay/` (frames, resources, stock's map at the top left of the window).
