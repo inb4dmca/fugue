@@ -57,6 +57,19 @@ bool filteredInputPart(const MapSprite& s) {
 }
 }
 namespace {
+// The alpha of one part of a render target at a scene pixel: its own pixel there, through its own matrix, times its
+// own alpha.
+double targetPartAlpha(const MapSprite& s, QPoint pixel) {
+    if (s.image.isNull() || s.maptext || !s.rect().contains(pixel)) return 0;
+    const QPoint local = pixel - s.position;
+    QPoint sample(local.x() * s.image.width() / s.rect().width(), local.y() * s.image.height() / s.rect().height());
+    if (s.affine) {
+        const QPointF p = s.affine->inverse.map(QPointF(local) + QPointF(.5,.5));
+        if (p.x() < 0 || p.y() < 0 || p.x() >= s.image.width() || p.y() >= s.image.height()) return 0;
+        sample = {int(std::floor(p.x())), int(std::floor(p.y()))};
+    }
+    return s.image.pixelColor(sample).alphaF() * std::clamp(double(s.tint[3]), 0.0, 1.0);
+}
 std::vector<CompositionPlan::InputMask> inputMasks(const PlaneEffects& effects, QRect content) {
     std::vector<CompositionPlan::InputMask> out;
     for (const auto& f : effects.filters)
@@ -65,6 +78,38 @@ std::vector<CompositionPlan::InputMask> inputMasks(const PlaneEffects& effects, 
                                QPoint((content.width() - f.image->width()) / 2, (content.height() - f.image->height()) / 2),
                            (f.flags & 1) != 0});
     return out;
+}
+// An alpha mask on an atom's own filters whose mask is an atom's render target hides from clicks what it masks out, as
+// a mask from an icon does, and the right-click menu still lists the atom: the target centred on the atom's icon and
+// moved by the filter's x, y; MASK_INVERSE hides what it keeps (stock 516.1689, plane-click-world selfmask,
+// selfmask-inverse). The target's alpha is its parts' own pixels, their own matrix included; filters on the target's
+// source are not applied, as for a plane's mask (rtalpha-rtoutline).
+void targetMasks(std::vector<CompositionPlan::InputMask>& out, const PlaneEffects& effects, QRect content,
+                 const LocalTargets& local, const MapSprites& sprites) {
+    for (const auto& f : effects.filters) {
+        if (f.kind != PlaneFilter::AlphaMask || f.icon != UINT32_MAX || f.source.isEmpty()) continue;
+        const int index = local.find(f.source);
+        QImage alpha;
+        QPoint origin;
+        if (index >= 0 && local.groups[size_t(index)].valid) {
+            const auto& g = local.groups[size_t(index)];
+            if (g.bounds.isEmpty() || g.bounds.width() > 1024 || g.bounds.height() > 1024) continue;
+            alpha = QImage(g.bounds.size(), QImage::Format_ARGB32);
+            alpha.fill(Qt::transparent);
+            for (int y = 0; y < g.bounds.height(); ++y)
+                for (int x = 0; x < g.bounds.width(); ++x) {
+                    const QPoint pixel = g.bounds.topLeft() + QPoint(x, y);
+                    double a = 0;
+                    for (auto i : g.parts) a += targetPartAlpha(sprites[i], pixel) * (1 - a);
+                    alpha.setPixelColor(x, y, QColor(0, 0, 0, int(std::lround(a * 255))));
+                }
+            origin = content.topLeft() + QPoint((content.width() - alpha.width()) / 2, (content.height() - alpha.height()) / 2);
+        } else {   // a target that is not there is an empty mask
+            alpha = QImage(1, 1, QImage::Format_ARGB32); alpha.fill(Qt::transparent);
+            origin = content.topLeft();
+        }
+        out.push_back({alpha, origin + QPoint(int(std::lround(f.x)), int(std::lround(f.y))), (f.flags & 1) != 0});
+    }
 }
 }
 CompositionPlan::CompositionPlan(const MapSprites& scene, QRect viewport, CompositionBackend capabilities)
@@ -527,8 +572,11 @@ void CompositionPlan::plan() {
                 const PlaneEffects* effects=g->effects && !g->effects->filters.empty() && backend.floatSurfaces ?
                     g->effects.get() : nullptr;
                 const QRect content=bounds;
-                if (g->effects)
-                    if (auto masks=inputMasks(*g->effects,content); !masks.empty()) groupMasks[{key.first,key.second}]=std::move(masks);
+                if (g->effects) {
+                    auto masks=inputMasks(*g->effects,content);
+                    targetMasks(masks,*g->effects,content,local,sprites);
+                    if (!masks.empty()) groupMasks[{key.first,key.second}]=std::move(masks);
+                }
                 if (effects) bounds=bounds.adjusted(-filterReach(*effects),-filterReach(*effects),
                                                     filterReach(*effects),filterReach(*effects));
                 if (!transformed && !capture) bounds=bounds.intersected(source.adjusted(-256,-256,256,256));
