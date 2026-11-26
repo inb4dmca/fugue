@@ -4372,6 +4372,42 @@
     }
    ],
    "date": "2026-11-26"
+  },
+  {
+   "case": "locpbare-mark",
+   "clicks": [
+    {
+     "at": [
+      84,
+      124
+     ],
+     "over": "mark",
+     "iconX": 9,
+     "iconY": 24
+    },
+    {
+     "at": [
+      212,
+      28
+     ],
+     "over": "part",
+     "iconX": 9,
+     "iconY": 24
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      84,
+      124
+     ],
+     "entries": [
+      "mark",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
   }
  ]
 }
