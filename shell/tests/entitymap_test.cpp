@@ -213,6 +213,16 @@ bool readStockCase(const QString& path, const QString& set, const QString& name,
 bool visStockCase(const QString& set, const QString& name, QJsonObject& out, QString& error) {
     return readStockCase(QString(FUGUE_TEST_DATA_DIR) + "/vis-world/stock.json", set, name, out, error, set == "c" ? 12 : 0);
 }
+bool masterMatrixIs(const shell::MapSprite& s, std::array<double,6> m) {
+    if (!s.planeEffects || !s.planeEffects->matrix) return false;
+    for (int i = 0; i < 6; ++i) if (std::abs((*s.planeEffects->matrix)[i] - m[i]) > 1e-6) return false;
+    return true;
+}
+std::optional<shell::MapSprite> masterSprite(const shell::MapSprites& sprites) {
+    const auto it = std::find_if(sprites.begin(), sprites.end(), [](const auto& s) { return s.kind == shell::MapSprite::Master; });
+    if (it == sprites.end()) return std::nullopt;
+    return *it;
+}
 }
 class EntityMapTest : public QObject {
     Q_OBJECT
@@ -1304,6 +1314,37 @@ private slots:
         check(1500, 2.5, half);
         check(2500, 4, {0,1,0,-1,0,0});
     }
+    // Filters set on an animating master after its animate() calls are drawn at once while the animation plays on, the
+    // list added to or cleared, with the matrix still tweening (stock 516.1689, master-transform-world ax-outline1-lateadd,
+    // -lateclear; on an atom, ax-pline-lateadd, which animatedMasterReplay draws).
+    void animatedMasterLateFilters() {
+        auto w = world(); shell::TurfMap terrain; shell::EntityMap scene;
+        w.hudOrder = {100}; w.hudIdentity[100] = {2,7,11};
+        const std::string outline = R"({"type":2,"paramMask":35,"flags":1,"params":"0000803f00ff00ff0000"})";
+        const std::string blur = R"({"type":1,"flags":1,"paramMask":1,"params":{"bstr":"0000803f"}})";
+        auto master = [](std::array<float,6> matrix, const std::string& extra) {
+            return affinefixture::fields(matrix, R"(,"appearanceFlags":268435456,"hasPlane":true,"plane":1,"screenLoc":"1,1")" + extra);
+        };
+        const std::array<float,6> plain{1,0,0,0,1,0}, turn{0,1,0,-1,0,0};
+        const auto half = shell::animation::interpolate({1,0,0,0,1,0}, {0,1,0,-1,0,0}, .5, false);
+        const auto map = terrain.prepare(w, {}, 0, false);
+        auto sprite = [&](int64_t now) { return masterSprite(scene.prepare(w, map, reader(), now, nullptr, true)); };
+        auto matrixIs = masterMatrixIs;
+        auto& atom = w.atoms[100];
+        // A turn from an outlined master; the settled master then gains a blur after the outline, or loses its list.
+        setFields(w.appearances[10], master(plain, R"(,"filters":[)" + outline + "]"));
+        setFields(w.appearances[11], master(turn, R"(,"filters":[)" + outline + "]"));
+        setFields(w.appearances[12], master(turn, R"(,"filters":[)" + outline + "," + blur + "]"));
+        setFields(w.appearances[13], master(turn, ""));
+        atom.chain = {1000, 100, {{10, 11, std::bit_cast<uint32_t>(10.f), 0, 0, 1, 1000}}};
+        for (const uint32_t live : {12u, 13u}) {
+            w.hudAppid[100] = atom.appid = live;
+            const auto s = sprite(1500);
+            QVERIFY2(s && s->planeEffects && s->planeEffects->supported && matrixIs(*s, half), qPrintable(QString::number(live)));
+            QCOMPARE(s->planeEffects->filters.size(), live == 12 ? size_t(2) : size_t(0));
+            if (live == 12) QCOMPARE(s->planeEffects->filters[1].kind, shell::PlaneFilter::Blur);
+        }
+    }
     void hudMasterMaterialAnimation() {
         auto w=world(); shell::TurfMap terrain; shell::EntityMap scene; shell::EntityMap::Stats stats;
         w.hudOrder={100}; w.hudAppid[100]=11; w.hudIdentity[100]={2,7,11};
@@ -1359,7 +1400,9 @@ private slots:
             auto json=scalar(255); json.insert(json.size()-1,addition); setFields(w.appearances[10], json);
             QCOMPARE(draw(1500).size(),1);
         }
-        // A filter list that is not the same at both ends switches at the step's midpoint, as on an atom.
+        // A filter list that is not the same at both ends switches at the step's midpoint, as on an atom. DreamDaemon
+        // 516.1689 never sends such a step for a DM animate() (both ends carry the filters the atom has when animate() is
+        // called), so this is Fugue's own rule, not a measured one.
         {
             auto json=scalar(255);
             json.insert(json.size()-1,",\"filters\":[{\"type\":1,\"flags\":1,\"paramMask\":1,\"params\":{\"bstr\":\"0000803f\"}}]");

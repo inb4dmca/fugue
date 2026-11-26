@@ -14,7 +14,7 @@
 namespace fugue::shell {
 namespace {
 // An animated filter's numeric parameters and colours move with the eased factor when both ends carry the same filter
-// list (kinds and flags); any other change switches at the step's midpoint like other appearance fields. Out is
+// list (kinds and flags); any other change is not a tween (see the sampler's lerp and withFilters below). Out is
 // a + (b - c) * f per parameter: a tween is (from, to, from), a parallel step adds its change (ap, step, base).
 std::shared_ptr<const PlaneEffects> tweenFilters(const std::shared_ptr<const PlaneEffects>& a,
                                                  const std::shared_ptr<const PlaneEffects>& b,
@@ -36,6 +36,21 @@ std::shared_ptr<const PlaneEffects> tweenFilters(const std::shared_ptr<const Pla
     }
     // Eased overshoot can leave the decoded envelope; keep the step's own end instead of an invalid list.
     if (!out->valid({32,32})) return nullptr;
+    return out;
+}
+// Filters changed on an animating atom after its animate() calls (the settled appearance's list differs in structure
+// from the chain's last end) are drawn at once, with their own parameters and no fade, while the animation plays on,
+// on a plane master and on an atom alike (stock 516.1689, tests/data/master-transform-world ax-outline1-lateadd,
+// -lateclear, ax-pline-lateadd). A parallel step whose list differs from its base takes it the same way, which is
+// inferred, not measured. The rest of the surface operation (a master's matrix) stays with `base`.
+std::shared_ptr<const PlaneEffects> withFilters(const std::shared_ptr<const PlaneEffects>& base,
+                                                std::shared_ptr<const PlaneEffects> tweened,
+                                                const std::shared_ptr<const PlaneEffects>& end) {
+    if (tweened) return tweened;
+    if (!base || !end) return base;
+    auto out = std::make_shared<PlaneEffects>(*base);
+    out->filters = end->filters;
+    out->ignoredFilters = end->ignoredFilters;
     return out;
 }
 // The model's cell tables are ordered by (x,y,z), while the turf pass visits
@@ -210,6 +225,10 @@ bool EntityMap::AnimationSampler::sample(const model::Atom::Chain& chain, uint32
         for (int i = 0; i < 4; ++i) // clamped: BACK/ELASTIC easing overshoots
             ap.tint[i] = float(std::clamp(mix(int(std::lround(from.tint[i] * 255)), int(std::lround(to.tint[i] * 255))), 0, 255)) / 255;
         ap.matrix = animation::interpolate(from.matrix, to.matrix, f, (flags & 0x2u) != 0);
+        // Ends whose lists differ in structure switch at the midpoint with the rest of the appearance. DreamDaemon 516.1689
+        // never sends such a step for a DM animate(): both ends carry the atom's filters when animate() is called, and
+        // filters is not an animated var (master-transform-world ax-outline1-toshadow sends no animation at all), so
+        // this rule is unmeasured.
         if (from.atomFilters != to.atomFilters)
             if (auto filters = tweenFilters(from.atomFilters, to.atomFilters, from.atomFilters, f)) ap.atomFilters = filters;
         if (from.planeEffects && to.planeEffects && from.planeEffects->filters != to.planeEffects->filters)
@@ -244,10 +263,13 @@ bool EntityMap::AnimationSampler::sample(const model::Atom::Chain& chain, uint32
             ap.state = to.state;
         }
         if (from.blend != to.blend || base.blend != to.blend) ap.blend = to.blend;
-        if (step.atomFilters != base.atomFilters)
-            if (auto filters = tweenFilters(ap.atomFilters, step.atomFilters, base.atomFilters, 1)) ap.atomFilters = filters;
+        if (step.atomFilters != base.atomFilters) {
+            auto filters = tweenFilters(ap.atomFilters, step.atomFilters, base.atomFilters, 1);
+            ap.atomFilters = filters ? filters : step.atomFilters;
+        }
         if (ap.planeEffects && step.planeEffects && base.planeEffects && step.planeEffects->filters != base.planeEffects->filters)
-            if (auto filters = tweenFilters(ap.planeEffects, step.planeEffects, base.planeEffects, 1)) ap.planeEffects = filters;
+            ap.planeEffects = withFilters(ap.planeEffects, tweenFilters(ap.planeEffects, step.planeEffects, base.planeEffects, 1),
+                                          step.planeEffects);
     };
     uint32_t lastTo = 0;
     composing = animation::composeChain(chain, nowNs, get, lerp, add, out, lastTo);

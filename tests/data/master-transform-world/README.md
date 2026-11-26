@@ -167,6 +167,35 @@ its tweened matrix in its plane effects. Every `ax-*` case matches stock within 
 every pixel with stock's grab (at most 8 levels per channel); `entitymap_test::animatedMasterKeepsFiltersAndMatrix`
 holds the tweened values mid-flight, in one step and in a parallel one.
 
+### A filter list that changes structure (`-add`, `-clear`, `addclear`, `late*`, `pline` cases)
+
+Stock **516.1689**, 2026-11-26. `restructure()` in `world.dm` changes the master's list (an outline of 1) by adding a
+drop shadow after it (`x = 6`, white) or clearing it, between or after `animate()` calls that animate nothing but
+alpha, so that only the filters differ; `pline` does the same to the red box, with the outline on the box and a plain
+master. Each such step takes ten minutes, so a grab six seconds after login lies 1 % into it. Each grab was compared
+with stock's settled grab of the start and the end list (`fx-outline1`, `fx-outline1-shadow6`, `fx-plain`, and for
+the box `ax-pline-still`, `ax-pline-pdrop-still`), grabbed the same day with `stockprobe.py --stock-only pair` and not kept.
+
+- **DreamDaemon never sends a step whose two ends differ in their filters.** A step's start is the atom's appearance
+  when `animate()` is called and its end is that with the animated vars changed; `filters` is not one of them
+  (`animate(M, filters = ...)` sends no animation at all, `ax-outline1-toshadow`). Filters changed between two
+  `animate()` calls go into both ends of the later step (`ax-outline1-addclear`: steps outline -> outline, outline and
+  shadow -> outline and shadow, none -> none). So whether a list that differs within one step switches at its start,
+  midpoint or end, or fades, cannot be produced from DM and was not measured. Fugue keeps its atom rule (the midpoint).
+- **Each step draws its own list from its start**, with no fade from the step before: 1 % into the second step,
+  `ax-outline1-addclear` is pixel-identical to `fx-outline1-shadow6` (not to `fx-outline1`, nor to `fx-plain`, the
+  list the master has by then); so are `-add` (to `fx-outline1-shadow6`) and `-clear` (to `fx-plain`), which were
+  grabbed and not kept. The box does the same (`ax-pline-addclear` = `ax-pline-pdrop-still`).
+- **Filters set after the last `animate()` call show at once**, while the animation plays on: `ax-outline1-lateadd`
+  (one ten-minute step, then the shadow added) = `fx-outline1-shadow6`, `ax-outline1-lateclear` = `fx-plain`, and on the
+  box `ax-pline-lateadd` = `ax-pline-pdrop-still`.
+
+Fugue already drew the first two; it kept the step's list in the `late` cases (110, 68 and 110 pixels off) and now
+takes the settled list at once when it differs in structure from the chain's last end. A parallel step whose list
+differs from its base takes it the same way, which is not measured. The box is shared by both clients of a
+`stockprobe` run, so it is set up once. `entitymap_test::animatedMasterLateFilters` holds the rule on the master;
+`animatedMasterReplay` draws all the cases above.
+
 ## Clicks (`clicks.json`)
 
 Every atom logs `Click()` with its name and icon-x/y; `stockprobe.py click` clicks the same MAP pixels in stock and in
@@ -201,5 +230,6 @@ masters with a matrix (still refused), and non-32 px worlds. For filters with a 
 turns that are not quarter turns, and a master with a render target (whether the view-edge limit of an enlarged plane
 applies to its target or to a relay with a matrix was not grabbed; Fugue does not limit either). For clicks: mouse-opacity 2. Right-click menus, images and vis_contents members on a turned or
 filtered plane, and render-target masks are in `tests/data/plane-click-world`. For animation: no mid-flight frame is
-kept or compared pixel for pixel (only the holds are), clicks on an animating master were not taken, and a
+kept or compared pixel for pixel (only the holds are), clicks on an animating master were not taken, and a filter
+list that differs within one step cannot be produced from DM (see above), and a
 KEEP_TOGETHER master with an animating matrix is still refused.

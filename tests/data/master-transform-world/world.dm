@@ -110,6 +110,9 @@ world
 // (a second step to the same value), so a grab taken seconds after login sees the end of the first step while the
 // animation is still running. With "mid" the first step takes a minute instead and there is no hold.
 /proc/animate_master(obj/master/M, kind)
+    if(findtext(kind, "-add") || findtext(kind, "-clear") || findtext(kind, "pline") || findtext(kind, "late"))
+        restructure(M, kind)
+        return
     var/time = findtext(kind, "mid") ? 600 : 5
     var/hold = !findtext(kind, "mid")
     var/parallel = 0
@@ -134,6 +137,35 @@ world
     if(findtext(kind, "phase"))
         animate(f, offset = 0.5, time = time, flags = parallel)
         if(hold) animate(offset = 0.5, time = 6000)
+// A filter list that changes structure during an animation that animates nothing but alpha: a tenth-of-a-second step,
+// then the filters change ("-add": a drop shadow after the outline, "-clear": no filter), then a ten-minute step.
+// "addclear" adds the shadow before a ten-minute step and clears the list before a second one, so the step being drawn
+// carries filters the atom no longer has. "late" changes the filters after a single ten-minute step ("lateadd" adds
+// the shadow, otherwise the list is cleared). "pline" does it to the red box (an outline on it) in place of the
+// master; "still" only sets the box's filters, as a settled reference.
+/proc/restructure(obj/master/M, kind)
+    var/atom/movable/A = M
+    var/obj/part/P = locate() in world
+    if(findtext(kind, "pline"))
+        // The box is shared by every client that logs in (stockprobe runs two): set it up once.
+        if(length(P.filters)) return
+        A = P
+        A.filters += filter(type = "outline", size = 1, color = "#00ff00")
+        if(findtext(kind, "pdrop")) A.filters += filter(type = "drop_shadow", x = 6, y = 0, size = 0, color = "#ffffff")
+        if(findtext(kind, "still")) return
+    if(findtext(kind, "late"))
+        animate(A, alpha = 255, time = 6000)
+        if(findtext(kind, "lateadd")) A.filters += filter(type = "drop_shadow", x = 6, y = 0, size = 0, color = "#ffffff")
+        else A.filters = null
+        return
+    animate(A, alpha = 255, time = 1)
+    if(findtext(kind, "-add") || findtext(kind, "addclear"))
+        A.filters += filter(type = "drop_shadow", x = 6, y = 0, size = 0, color = "#ffffff")
+    if(findtext(kind, "-clear")) A.filters = null
+    animate(alpha = 255, time = 6000)
+    if(findtext(kind, "addclear"))
+        A.filters = null
+        animate(alpha = 255, time = 6000)
 world/New()
     ..()
     world.log = file("events.log")
