@@ -45,14 +45,8 @@ endfunction()
 # Metal.
 # The machine's own adapter is used; FUGUE_GPU_SOFTWARE=1 in the caller's environment asks for a software one.
 #
-# Which backends get entries is FUGUE_TEST_GPU_BACKENDS: "default" is the one the client itself uses on this
-# platform (Vulkan on Windows), "all" is every backend the platform has, and a list names them (d3d11;opengl).
-# The off-screen suites can use Vulkan only where its headers are installed (vcpkg's vulkan-headers, not a
-# dependency of the build): Qt declares its Vulkan types only with them. fugue_shell_vulkan_headers(<target>)
-# tells an off-screen suite. Without them the default on Windows falls back to Direct3D 11.
-set(FUGUE_TEST_GPU_BACKENDS "default" CACHE STRING
-  "graphics backends the GPU and native test entries run on: default, all, or a list of d3d11;opengl;vulkan;metal")
-find_package(VulkanHeaders CONFIG QUIET)
+# Which backends get entries is FUGUE_TEST_GPU_BACKENDS (cmake/FugueTests.cmake). Qt declares its Vulkan types only
+# where the Vulkan headers are installed: fugue_shell_vulkan_headers(<target>) tells an off-screen suite.
 if(WIN32)
   set(_shell_native_platform windows)
   set(_shell_gpu_all d3d11 opengl)
@@ -102,7 +96,8 @@ else()
   endforeach()
 endif()
 message(STATUS "GPU test backends: off-screen ${_shell_gpu_backends}; native ${_shell_native_backends}")
-set(_shell_profile_env "FUGUE_AUDIO=none;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox")
+# The headless backend comes first: a GPU or native entry names its own after it, and the later one counts.
+set(_shell_profile_env "FUGUE_AUDIO=none;FUGUE_GPU_BACKEND=${FUGUE_TEST_BACKEND};QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox")
 function(fugue_shell_vulkan_headers target)
   if(TARGET Vulkan::Headers)
     target_link_libraries(${target} PRIVATE Vulkan::Headers)

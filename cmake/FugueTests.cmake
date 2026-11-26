@@ -4,13 +4,34 @@ add_executable(fugue_tests ${PROJECT_SOURCE_DIR}/tests/runner.cpp)
 target_include_directories(fugue_tests PRIVATE ${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR})
 target_link_libraries(fugue_tests PRIVATE Qt6::Core Qt6::Test)
 
+# Which graphics backends the GPU and native entries run on (shell/CMakeLists.txt registers them): "default" is the
+# one the client itself uses on this platform (Vulkan on Windows), "all" is every backend the platform has, and a
+# list names them (d3d11;opengl). The off-screen suites can use Vulkan only where its headers are installed
+# (vcpkg's vulkan-headers, not a dependency of the build): without them the default on Windows is Direct3D 11.
+set(FUGUE_TEST_GPU_BACKENDS "default" CACHE STRING
+  "graphics backends the GPU and native test entries run on: default, all, or a list of d3d11;opengl;vulkan;metal")
+find_package(VulkanHeaders CONFIG QUIET)
+# Every entry names a backend in its environment, so that no test process has to ask the machine which one it has
+# (shell/gpubackend.h: about a tenth of a second each). Headless entries draw nothing with it.
+if(NOT FUGUE_TEST_GPU_BACKENDS MATCHES "^(default|all)$")
+  list(GET FUGUE_TEST_GPU_BACKENDS 0 FUGUE_TEST_BACKEND)
+elseif(WIN32 AND TARGET Vulkan::Headers)
+  set(FUGUE_TEST_BACKEND vulkan)
+elseif(WIN32)
+  set(FUGUE_TEST_BACKEND d3d11)
+elseif(APPLE)
+  set(FUGUE_TEST_BACKEND metal)
+else()
+  set(FUGUE_TEST_BACKEND opengl)
+endif()
+
 # Entries start as portable and fast: headless checks that take a few seconds each, the inner-loop selection
 # (`ctest -L fast`). An entry that needs a GPU device, a window, a device or WebEngine replaces these labels.
 function(fugue_add_test name)
   add_test(NAME ${name} COMMAND ${ARGN})
   set_tests_properties(${name} PROPERTIES LABELS "portable;fast" TIMEOUT 120
     FAIL_REGULAR_EXPRESSION "SKIP[ \t]*:"
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;FUGUE_AUDIO=none;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;FUGUE_AUDIO=none;FUGUE_GPU_BACKEND=${FUGUE_TEST_BACKEND};QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
 endfunction()
 
 # fugue_add_sharded_test(<name> <count> <command...>): <count> entries, <name>_1of<count> and so on, that

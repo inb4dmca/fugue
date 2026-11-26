@@ -4,6 +4,7 @@
 #include <QAction>
 #include <QLabel>
 #include <QMenu>
+#include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QScopeGuard>
 #include <QStyleFactory>
@@ -80,7 +81,9 @@ private slots:
         const auto ours=qgetenv("FUGUE_GPU_BACKEND"),qts=qgetenv("QSG_RHI_BACKEND");
         const auto restore=qScopeGuard([&] {qputenv("FUGUE_GPU_BACKEND",ours);qputenv("QSG_RHI_BACKEND",qts);});
 #if defined(Q_OS_WIN)
-        const QByteArray usual=vulkanAvailable() ? "vulkan" : "d3d11"; // Vulkan where the machine has it
+        QElapsedTimer probe; probe.start(); const bool vulkan=vulkanAvailable();
+        qInfo("Vulkan usable: %d (asked in %lld ms)",int(vulkan),probe.elapsed());
+        const QByteArray usual=vulkan ? "vulkan" : "d3d11"; // Vulkan where the machine can open a device with it
 #elif defined(Q_OS_MACOS)
         const QByteArray usual="metal";
 #else
