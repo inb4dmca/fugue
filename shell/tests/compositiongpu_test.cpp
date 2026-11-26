@@ -165,7 +165,9 @@ private slots:
     // through the real scene assembly from what DreamDaemon 516.1689 sent (stockprobe.py record, as for
     // stock-parity-world) and drawn six seconds after login, inside the ten-minute hold that follows each half-second
     // first step (world.dm, animate_master()). Stock draws the plane with the filters at their animated values and
-    // turned by the animated matrix; no channel of any pixel may be more than 8 levels from stock's grab.
+    // turned by the animated matrix. The filter-list cases (README) change the list between steps or after animate(),
+    // on the master and on an atom; the group cases put KEEP_TOGETHER on the master, settled and animating, with and
+    // without an overlay. No channel of any pixel may be more than 8 levels from stock's grab.
     void animatedMasterReplay_data() {
         QTest::addColumn<QString>("set");
         const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-transform-world/replay");
@@ -177,7 +179,7 @@ private slots:
             if (!line.isEmpty() && !line.startsWith('#')) sets.push_back(line.section('\t',0,0));
         }
         sets.sort();
-        QCOMPARE(sets.size(),10);
+        QCOMPARE(sets.size(),20);
         for (const auto& suffix:{QString(".png"),QString(".txt")}) {
             QStringList expected;
             for (const auto& set:sets) expected.push_back(set+suffix);
@@ -194,8 +196,11 @@ private slots:
         QVERIFY2(fixture.load(set + ".txt", "master-transform-world/replay", {}, grabbed), qPrintable(fixture.error));
         const auto master = std::find_if(fixture.sprites.begin(), fixture.sprites.end(),
                                          [](const auto& s) { return s.kind == MapSprite::Master; });
-        QVERIFY2(master != fixture.sprites.end() && master->planeEffects && !master->planeEffects->filters.empty(),
-                 "the animating master and its filter reach the scene");
+        // The cases that clear the list, or whose master has neither a filter nor (tree-group) anything stock draws,
+        // are checked by their pixels alone.
+        if (!set.contains("clear") && !set.contains("group") && !set.contains("pline"))
+            QVERIFY2(master != fixture.sprites.end() && master->planeEffects && !master->planeEffects->filters.empty(),
+                     "the animating master and its filter reach the scene");
         QImage stock(dir + set + ".png"); stock = stock.convertToFormat(QImage::Format_RGBA8888);
         QCOMPARE(fixture.frame.source.size(), stock.size());
         auto& gpu = transformGpu_;
