@@ -685,7 +685,8 @@ bool mapPointerCurrent(const MapPointer& p, const model::World& w, uint64_t sess
     if (p.session != session || (p.surface && p.surface->expired())) return false;
     if (p.kind == MapPointer::Leave) return true;
     if (p.masterFallback && p.kind != MapPointer::Down && p.kind != MapPointer::Up && p.kind != MapPointer::Click) return false;
-    // An unrendered pixel names nothing: a hover there (no atom, as over the letterbox), or a gesture's destination.
+    // An unrendered pixel names nothing: a hover there (no atom, as over the letterbox: stock 516.1689 names no turf
+    // without an icon, tests/data/hover-world extra void1), or a gesture's destination.
     if (p.backgroundHidden && p.kind != MapPointer::Hover &&
         (!p.source || (p.kind!=MapPointer::Drag && p.kind!=MapPointer::Drop && p.kind!=MapPointer::Up))) return false;
     if (p.z != w.viewZ) return false;
@@ -958,13 +959,14 @@ void MapHover::update(const MapPointer& p, bool current, const Gate& g, int64_t 
     // Stock 516.1689 (tests/data/hover-world): appearance flag 0x800 comes with MouseEntered, MouseExited, MouseMove or
     // MouseWheel, 0x80000 with MouseMove alone (0x100000 with MouseMove or MouseWheel).
     constexpr uint32_t kHoverProcs = 0x800, kMoveProc = 0x80000;
-    const bool replacing = pending_.has_value(); // a report still waiting is replaced whatever the gate says
+    // A pick still waiting is replaced whatever the gate says.
+    const bool replacing = !waiting_.empty() && waiting_.back().kind == MapPointer::Hover;
     if (p.kind == MapPointer::Leave) {
         // Off the map: an over report naming nothing, null control and no params, then the record is gone. With no
-        // record (nothing picked since a release) nothing is sent.
+        // record (nothing picked since a release) nothing is sent. It goes out after a report still waiting.
         if (!record_) return;
         record_.reset();
-        if (g.clientHover || (g.sentFlags & kHoverProcs) || replacing) {
+        if (g.clientHover || (g.sentFlags & kHoverProcs)) {
             auto leave = p;
             leave.click.over = leave.click.loc = proto::enc::nullRef();
             queue(leave, nowNs);
@@ -988,17 +990,24 @@ void MapHover::update(const MapPointer& p, bool current, const Gate& g, int64_t 
         queue(p, nowNs);
 }
 void MapHover::queue(const MapPointer& p, int64_t nowNs) {
-    if (!pending_) dueNs_ = (nowNs / kPeriodNs + 1) * kPeriodNs;
-    pending_ = p;
-    pending_->source.reset();
+    if (waiting_.empty()) dueNs_ = (nowNs / kPeriodNs + 1) * kPeriodNs;
+    if (p.kind == MapPointer::Hover && !waiting_.empty() && waiting_.back().kind == MapPointer::Hover) waiting_.back() = p;
+    else waiting_.push_back(p);
+    waiting_.back().source.reset();
 }
 Bytes MapHover::due(int64_t nowNs) {
-    if (!pending_ || nowNs < dueNs_) return {};
-    auto body = mapPointerBody(*pending_);
-    if (pending_->kind == MapPointer::Hover && pending_->click.over.kind != proto::enc::RefNull) sent_ = std::move(pending_);
+    if (waiting_.empty() || nowNs < dueNs_) return {};
+    MapPointer next = std::move(waiting_.front());
+    waiting_.erase(waiting_.begin());
+    auto body = mapPointerBody(next);
+    if (next.kind == MapPointer::Hover && next.click.over.kind != proto::enc::RefNull) sent_ = std::move(next);
     else sent_.reset();
-    pending_.reset();
     return body;
+}
+const MapPointer* MapHover::last() const {
+    if (waiting_.empty()) return sent();
+    const auto& newest = waiting_.back();
+    return newest.kind == MapPointer::Hover && newest.click.over.kind != proto::enc::RefNull ? &newest : nullptr;
 }
 Bytes mapPointerBody(const MapPointer& pointer) {
     // A turf shown from another z (a vis_contents member) is named by its id, since a cell names the turf on the map's

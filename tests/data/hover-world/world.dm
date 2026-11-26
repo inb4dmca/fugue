@@ -184,3 +184,66 @@ proc/hoverlog(what, atom/A, location, control, params)
     hoverlog("C-MOVE", object, location, control, params)
     ..()
 #endif
+
+#ifdef EXTRA
+// Second round (prepare.py <dir> EXTRA): empty space in the map, a second map, a stat panel and a grid, modifiers and
+// right-click menus. Four turfs at 6,6 6,7 7,6 7,7 have no icon (with all three procs, to show whether stock names
+// them); island, with all three, stands on the one at 7,6. Every obj has the verb poke, and right-click menus are on.
+/turf/void
+    name = "void"
+    icon = null
+    MouseEntered(location, control, params)
+        hoverlog("ENTER", src, location, control, params)
+    MouseExited(location, control, params)
+        hoverlog("EXIT", src, location, control, params)
+    MouseMove(location, control, params)
+        hoverlog("MOVE", src, location, control, params)
+/obj/island
+    parent_type = /obj/both
+    name = "island"
+    icon = 'white.png'
+/obj/verb/poke()
+    set src in view()
+    hoverlog("POKE", src, null, null, "")
+// map2: hud2 (all three) at 1,1, nothing at 2,1, and at 3,1 a holder without icon showing the world's `both` through
+// vis_contents. The stat panel "Probe" lists statrow (all three) and `both`; the grid lists gridrow (all three) and `both`.
+/obj/hud2
+    parent_type = /obj/both
+    name = "hud2"
+    icon = 'red.png'
+    screen_loc = "map2:1,1"
+/obj/holder
+    name = "holder"
+    screen_loc = "map2:3,1"
+/obj/statrow
+    parent_type = /obj/both
+    name = "statrow"
+    icon = 'orange.png'
+/obj/gridrow
+    parent_type = /obj/both
+    name = "gridrow"
+    icon = 'magenta.png'
+var/obj/statrow/statrow = new
+var/obj/gridrow/gridrow = new   // referenced, so that it outlives being shown
+proc/theboth()
+    for(var/obj/both/B in locate(3,7,1)) return B
+/world/New()
+    ..()
+    for(var/xy in list("6,6", "6,7", "7,6", "7,7"))
+        var/list/p = splittext(xy, ",")
+        new /turf/void(locate(text2num(p[1]), text2num(p[2]), 1))
+    new /obj/island(locate(7,6,1))
+/mob/observer/Login()
+    ..()
+    client.show_popup_menus = 1
+    client.screen += new /obj/hud2
+    var/obj/holder/h = new
+    h.vis_contents += theboth()
+    client.screen += h
+    src << output(gridrow, "grid:1,1")
+    src << output(theboth(), "grid:1,2")
+/client/Stat()
+    if(statpanel("Probe"))
+        stat("row", statrow)
+        stat(theboth())
+#endif

@@ -2,9 +2,18 @@
 
 Independent DreamSeeker/DreamDaemon **516.1689**, 2026-11-26, Windows 11 with the display at 144 dpi; stock drew the
 map one screen pixel per icon pixel, so map pixels below are window pixels. No game assets in Git.
-`prepare.py <dir> [CLIENT_ENTER] [CLIENT_MOVE]` writes the world, a 288x224 skin (a 7x7 view of 32 px tiles between
-32 px of letterbox left and right) and solid full-tile icons. `CLIENT_ENTER` adds client/MouseEntered and
+`prepare.py <dir> [CLIENT_ENTER] [CLIENT_MOVE] [EXTRA]` writes the world, a 288x224 skin (a 7x7 view of 32 px tiles
+between 32 px of letterbox left and right) and solid full-tile icons. `CLIENT_ENTER` adds client/MouseEntered and
 client/MouseExited, `CLIENT_MOVE` client/MouseMove; each calls `..()`. `world.params` `lag=<ds>` sets `world.tick_lag`.
+
+`EXTRA` (the second round, below) widens the window to 610x336 and adds, at window pixels: a second map `map2`
+(300..395 x 0..31) showing `hud2` (all three procs) at 1,1, nothing at 2,1 and the world's `both` at 3,1 through the
+vis_contents of an iconless holder; the stat panel `info` (300..599 x 40..223) whose tab "Probe" lists `statrow` (all
+three; its icon at 338..370 x 63..95, the row's label "row" at 320,75) and `both` (icon at 338..370 x 96..128); and a
+grid (0..287 x 232..327) with `gridrow` (all three) in cell 1,1 and `both` in 1,2. Turfs 6,6 6,7 7,6 7,7 have no icon
+(type `void`, all three procs, so that a report naming one would show), and `island` (all three) stands on 7,6. Every
+obj has the verb poke and right-click menus are on (`client.show_popup_menus`), so a right click on an obj opens a menu
+whose corner is at the pointer.
 
 Every mouse proc logs `world.time`, the proc, the atom, its location, control and params; presses, releases, clicks and
 drops are logged by the client procs, so that no atom gets flags from them. The map shows the whole 7x7 world: tile
@@ -34,10 +43,19 @@ keeps the runs in `hover.json`: `base` and `base2` (the plain world), `lag10` (t
 288x224 --settle 4 record base` (with `HOVER_SWITCHES=CLIENT_ENTER` and so on for `center`, `cmove`, `cboth`) wrote
 `replay/<name>.txt`, what DreamDaemon sent Fugue for each compile, and `replay/<name>.png`, stock's map.
 
-`mapinput_test::hoverLikeStock` replays the runs in order through the real hit test, `MapHover` and a model of the
-server (below) and compares the procs with stock's, action by action (216 actions, 162 procs); cases with posted moves,
-sweeps or a moving scene are left out of it. `hoverPaceLikeStock` replays the sweeps; `hoverTransitionsAndStaleIdentities`
-and `releaseForgetsHover` hold the rules below on hand-made picks.
+Second round, same day and version: `hoverprobe.py` also presses keys (`kdown:ctrl`, `key:esc`, ..). `extra` (empty
+space, map2, the stat panel, the grid, modifiers) and `extramenu` (right-click menus) are the `EXTRA` compile, `xboth`
+the same with both client switches; their replays are `replay/extra.txt` and `replay/xboth.txt`. The `extra` cases
+were run twice, with the same procs both times. The menu cases were first tried with the menu opened at 112,16, where
+some of the probe's own moves and presses landed on the open menu; they were rewritten (menu at 100,10, the other
+points clear of it) and only the rewritten run is kept. `xboth` was run once.
+
+`mapinput_test::hoverLikeStock` replays the runs in order through the real hit test (a second `NamedMap` for map2),
+`MapHover`, the rules of `mapMenuClosed` and `mapReleaseForgetsHover`, and a model of the server (below), and compares
+the procs with stock's, action by action (496 actions, 329 procs); cases with posted moves, sweeps or a moving scene are
+left out of it, and so are those over the stat panel and the grid (`st1`..`st3`, `grid1`), on which Fugue reports no
+hover. `hoverPaceLikeStock` replays the sweeps; `hoverTransitionsAndStaleIdentities` and `releaseForgetsHover` hold the
+rules below on hand-made picks.
 
 ## What stock does
 
@@ -67,13 +85,14 @@ Each point says whether it confirms or contradicts the static reading of the cli
   with. Over the letterbox no client/MouseEntered runs (no object). Going from `enter` to `move` or `none` names the new
   atom; the old one is exited either way.
 - **Releases** (confirmed for clicks, contradicts the old Fugue rule for drops): any release, click or drop, clears the
-  record. After a click the next step on the same atom is an over report, which the server, getting the same atom,
+  record (with menus off; for a right release with menus on see the second round). After a click the next step on
+  the same atom is an over report, which the server, getting the same atom,
   turns into MouseMove; leaving the window before any move sends nothing (`clickleave`: no MouseExited; back on the same
   pixel, MouseMove). A drop makes the server enter the atom dropped on, with the drop's params and without exiting the
   last one; leaving right after it sends nothing (`dropleave`), after a move it exits with the drop's params
   (`dropmoveleave`).
 - **Button held** (confirmed): no hover at all while a left or right button is down (`held`, `rheld`); the drag path
-  takes the moves.
+  takes the moves. (With menus on, a right press that closes a menu is the exception: second round.)
 - **Posted moves** (contradicts the plane-click-world note): a WM_MOUSEMOVE posted to the window is taken at its own
   point (`posted`, `parkpost`, `parkpost2`). With the real pointer outside the window the leave follows at once
   (MouseEntered then MouseExited); with it parked over the map, the next map change picks the real pointer again
@@ -86,6 +105,43 @@ Each point says whether it confirms or contradicts the static reading of the cli
   whether a replacing report goes out where its own gate would not let it (Fugue sends it, as the static reading has
   it).
 
+### Second round
+
+- **Empty space** (`extra` void1, void2; `xboth` void1, void3): a pixel of the map where nothing is drawn (a turf
+  without an icon) is what the letterbox is: no turf is named (the `void` turfs' procs never run, and
+  client/MouseEntered gets no object), the atom left is exited with the params it entered with, steps within it report nothing, and
+  stepping back onto an atom enters it. From `island` (standing on such a turf) onto empty space and back is the same.
+- **One record for every control** (`extra` m2jump, m2gap, m2vis, m2out, st1..st3, grid1): the second map, the stat
+  panel and the grid share the main map's record. Their reports name the control and, as location, `map2`, the stat
+  tab's name ("Probe") or the grid cell ("1,2"); stat params are `icon-x=13;icon-y=16` alone, grid params
+  `icon-x=17;icon-y=17;vis-x=0;vis-y=0;cell=1,2`. Pixel steps within a stat row or a grid cell report nothing, nor does
+  moving from a row's icon onto its name text (it is the same row); the stat label "row" and map2's empty tile are empty
+  space. The same atom shown in two controls is one atom: from `both` in map2 onto `both` in the map the server gets the
+  same atom and runs MouseMove.
+- **A control's leave comes late**: going straight from one control onto another (the probe's jump; any adjacent
+  controls), the control reached reports first and the control left behind then sends its leave, which clears the
+  shared record whatever control it names: `EXIT both, ENTER hud2, EXIT hud2`, and the next pixel step enters `hud2`
+  again. Across window background between the two (m2gap) the leave comes at the background, as it should.
+- **Modifiers** (`extra` mod1..mod3): pressing or releasing ctrl or shift with the pointer at rest reports nothing; the
+  record does not hold them. A report made while one is held carries it (`icon-x=18;icon-y=16;ctrl=1;screen-loc=..`),
+  and MouseExited gets those the atom was entered with. Alt was tried once (not kept): its release put stock's window
+  into Windows' keyboard menu mode, and no hover was reported until the run ended.
+- **Menus** (`extramenu`, `xboth` mescsame, mescvoid, rfloor*): the press pixel itself is covered by the menu's corner,
+  so a menu cannot be closed by a press there. When the menu closes the pointer is picked again at once: after Escape
+  at the press pixel nothing (mescsame), elsewhere on the same atom MouseMove, over another atom EXIT and ENTER, over
+  empty space EXIT; after picking an entry the same, at the pointer (mpick: POKE, then EXIT, the entry lay over the
+  letterbox). A right press off the menu closes it with that report carrying `right=1` (mrother, mrpix, mrvoid; it
+  opens a new menu at its release when there is an obj). A left press off the menu closes it with no report: the press
+  reaches the map (DOWN, UP, CLICK; on empty space only an UP naming nothing) and the next move reports after the
+  release cleared the record (mclickother, mclickpix, mclickvoid).
+- **Presses and the record**: a right release with menus on does not clear the record, whether a menu opens or not
+  (mescleave and mescsame: the pre-menu record survives; xboth rfloorleave: a right click on the verbless floor, no
+  DOWN/UP/CLICK, and leaving afterwards exits the floor; a left click there clears it, lfloorleave). A press does not
+  write the record: after a drop cleared it, a right click and Escape at the same pixel report the atom again (mdrop:
+  MouseMove), where without the drop nothing is reported. This agrees with popupmenu-world part C (516.1684, wine): the
+  stale atom is exited and the one under the pointer entered as soon as the menu closes, with right=1 while the right
+  button is held.
+
 ## Fugue
 
 Before: the pick was redone after every frame and any change of the whole report (icon-x/y, the tile, modifiers, the
@@ -97,9 +153,19 @@ gates, clears it at every release, paces reports to 1/64 s with replacement; `Ma
 after the pointer has moved since the last release, and names nothing (with control and screen-loc) over an unrendered
 pixel instead of leaving. The replay matches stock in every compared action; the sweeps within one MouseMove.
 
+Second round. Already as stock: empty space (with the live map's visibility frame a turf without an icon is not hit),
+one record for the session's maps, modifiers, a press not writing the record, re-picking when a menu closes. Changed:
+a leave replaced a report still waiting, so the posted cases' MouseEntered and the second map's ENTER/EXIT pair were
+lost; now it goes out after it (`MapHover::queue`, `due` returns the waiting reports one by one, `last()` gates the
+leave). A map's leave reached the session before the pick of the map the pointer went to; `MapWidget::leaveEvent` now
+sends it after the event in hand. The right release of a menu gesture cleared the record, so Escape at the press pixel
+gave MouseMove; `mapReleaseForgetsHover` keeps it for a release the menu path takes. A menu closed by a left press was
+re-picked; `mapMenuClosed` reports nothing then (`MapWidget::popupClosed`), and only the map under the pointer reports
+for all the maps told of the close. Not done: Fugue has no hover on stat panel rows, and no grid control at all.
+
 ## Not measured
 
-A secondary map and info grids (the record is said to be shared with them), modifiers during hover, what stock sends
-over a pixel inside the view where nothing is drawn (taken to be the letterbox's report), whether a press writes the
-record, the server's handling of a drop over nothing beyond "no MouseEntered", `right=1` in a hover report, and the
-pacing on a machine whose timer runs faster than 1/64 s.
+The server's handling of a drop over nothing beyond "no MouseEntered", the pacing on a machine whose timer runs faster
+than 1/64 s, a middle button held when a menu closes (Fugue reports nothing, as for the left), a menu closed with the
+pointer outside every map, hover reports over a stat panel with a client/MouseMove (whether its pixel steps report),
+and alt, whose release stock's window took as Windows' menu key.

@@ -8,6 +8,7 @@
 #include <QVector>
 #include <cstdint>
 #include <optional>
+#include <vector>
 #include "proto/enc_c2s_0002_input.h"
 #include "shell/mapsprite.h"
 
@@ -156,6 +157,20 @@ enum class MapPopupAction { None, Open, Consume };
 // client.show_popup_menus is read at the right press and again at its release. pressSent: this gesture's press went to
 // the wire, so its release finishes as MouseUp and Click whatever the flag is by then.
 MapPopupAction mapPopupAction(const MapPointer&, bool popupMenus, bool pressSent = false);
+// Whether a button release clears the hover record (MapHover::released), given what mapPopupAction made of it. Any
+// release does, a click's, a drop's or a cancelled gesture's, but not a right release the verb-menu path takes: with
+// client.show_popup_menus on, the record outlives a right click, whether a menu opens or not (stock 516.1689,
+// tests/data/hover-world extramenu mescsame, xboth rfloorleave).
+inline bool mapReleaseForgetsHover(MapPopupAction popup) { return popup == MapPopupAction::None; }
+// What a verb menu closing reports (stock 516.1689, tests/data/hover-world extramenu; 516.1684 popupmenu-world part
+// C). The pointer is picked again at once, after Escape and after a pick from the menu alike: nothing if it is where
+// the record has it, a move report elsewhere on the same atom, an over report anywhere else. While the right button
+// is held (a right press elsewhere closed the menu) the report carries right=1. While another button is held (a left
+// press closed it) nothing: that press reaches the map as a press, and its release clears the record.
+enum class MapMenuClosed { Pick, PickRight, Nothing };
+inline MapMenuClosed mapMenuClosed(bool rightHeld, bool otherHeld) {
+    return otherHeld ? MapMenuClosed::Nothing : rightHeld ? MapMenuClosed::PickRight : MapMenuClosed::Pick;
+}
 
 // Worker-only validation and hover subscription state. No model access in the presenter.
 bool mapPointerCurrent(const MapPointer&, const model::World&, uint64_t session);
@@ -189,17 +204,21 @@ public:
         uint32_t flags = 0;      // appearance flags of what the pick names
         uint32_t sentFlags = 0;  // of what the last report that went out named
     };
-    // A pick of the pointer over the map (Hover) or the pointer leaving it (Leave), at nowNs on any steady clock.
-    // A stale pick (current false) changes nothing.
+    // A pick of the pointer over a map (Hover) or the pointer leaving one (Leave), at nowNs on any steady clock. Every
+    // map control of the session shares the record, and any control's leave clears it, whichever control the record
+    // names. A stale pick (current false) changes nothing. Gate::sentFlags are those of last().
     void update(const MapPointer&, bool current, const Gate&, int64_t nowNs);
     // A button released, by a click, a drop or a cancelled gesture: the record is cleared, so the next pick is an over
     // report even on the same atom, and a leave before any pick sends nothing.
     void released() { record_.reset(); }
-    // The waiting report once its time has come (empty before, or when none waits).
+    // The next waiting report once its time has come (empty before, or when none waits). Reports that wait together
+    // are due together: call again until it returns nothing.
     Bytes due(int64_t nowNs);
-    std::optional<int64_t> dueAt() const { return pending_ ? std::optional<int64_t>(dueNs_) : std::nullopt; }
+    std::optional<int64_t> dueAt() const { return waiting_.empty() ? std::nullopt : std::optional<int64_t>(dueNs_); }
     // What the last report that went out named (a Hover pointer), or null before any and after one naming no atom.
     const MapPointer* sent() const { return sent_ ? &*sent_ : nullptr; }
+    // The same for the newest report, waiting or gone out: what the server will have been told last.
+    const MapPointer* last() const;
 private:
     struct Record {
         proto::enc::AtomRef over;
@@ -208,7 +227,11 @@ private:
     };
     void queue(const MapPointer&, int64_t nowNs);
     std::optional<Record> record_;
-    std::optional<MapPointer> pending_, sent_;
+    // In order. A later pick replaces a waiting pick, but not a waiting leave: stock sends the leave after the report
+    // still waiting (tests/data/hover-world posted, and extra m2jump, where the map left behind says so after the
+    // second map has named its atom).
+    std::vector<MapPointer> waiting_;
+    std::optional<MapPointer> sent_;
     int64_t dueNs_ = 0;
 };
 struct MapMenuItem { int group = 0; QString atom, label; };

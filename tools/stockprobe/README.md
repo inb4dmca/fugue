@@ -27,8 +27,9 @@ processes started by the tool are stopped. Capture failures retain partial
 observations and logs with `complete: false` and an error in `capture.json`.
 
 `hoverprobe.py` drives stock alone with the real pointer for hover: it keeps stock's window on top, moves the
-pointer (SetCursorPos), presses real buttons and posts moves, and keeps per action what the world logged
-(`tests/data/hover-world`). It moves the user's pointer and puts it back at the end.
+pointer (SetCursorPos), presses real buttons and keys (ctrl, shift, alt, Escape), posts moves, grabs the screen
+around the window on request, and keeps per action what the world logged (`tests/data/hover-world`). It moves the
+user's pointer and presses keys in the foreground, puts the pointer back at the end and leaves no key or button held.
 
 The fixture supplies `prepare.py` when its assets or skin need special setup.
 It logs `READY <key>` to `events.log` once for each client. After two READY lines

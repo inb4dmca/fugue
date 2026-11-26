@@ -3728,6 +3728,2278 @@
      ]
     }
    ]
+  },
+  {
+   "run": "extra",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [
+    "EXTRA"
+   ],
+   "params": "",
+   "replay": "extra.txt",
+   "cases": [
+    {
+     "case": "void1",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "57 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "200,16",
+       "at": 0.351,
+       "logged": [
+        "60.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "201,16",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "210,20",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.403,
+       "logged": [
+        "71 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 1.753,
+       "logged": [
+        "74.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "200,16",
+       "at": 2.104,
+       "logged": [
+        "78 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.455,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "void2",
+     "actions": [
+      {
+       "action": "200,40",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "230,40",
+       "at": 0.351,
+       "logged": [
+        "98.5 ENTER island loc=the void ctl=main.map icon-x=7;icon-y=24;screen-loc=7:7,6:24"
+       ]
+      },
+      {
+       "action": "231,40",
+       "at": 0.701,
+       "logged": [
+        "102 MOVE island loc=the void ctl=main.map icon-x=8;icon-y=24;screen-loc=7:8,6:24"
+       ]
+      },
+      {
+       "action": "200,40",
+       "at": 1.052,
+       "logged": [
+        "105.5 EXIT island loc=the void ctl=main.map icon-x=7;icon-y=24;screen-loc=7:7,6:24"
+       ]
+      },
+      {
+       "action": "201,40",
+       "at": 1.403,
+       "logged": []
+      },
+      {
+       "action": "270,40",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "271,40",
+       "at": 2.104,
+       "logged": []
+      },
+      {
+       "action": "200,40",
+       "at": 2.454,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 2.805,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "m2jump",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "136.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "330,16",
+       "at": 0.351,
+       "logged": [
+        "140 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "140 ENTER hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16",
+        "140 EXIT hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16"
+       ]
+      },
+      {
+       "action": "331,16",
+       "at": 0.701,
+       "logged": [
+        "143.5 ENTER hud2 loc=map2 ctl=main.map2 icon-x=32;icon-y=16;screen-loc=map2:1:32,1:16"
+       ]
+      },
+      {
+       "action": "340,16",
+       "at": 1.052,
+       "logged": [
+        "147 EXIT hud2 loc=map2 ctl=main.map2 icon-x=32;icon-y=16;screen-loc=map2:1:32,1:16"
+       ]
+      },
+      {
+       "action": "341,16",
+       "at": 1.403,
+       "logged": []
+      },
+      {
+       "action": "380,16",
+       "at": 1.753,
+       "logged": [
+        "154 ENTER both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16"
+       ]
+      },
+      {
+       "action": "381,16",
+       "at": 2.103,
+       "logged": [
+        "157.5 MOVE both loc=map2 ctl=main.map2 icon-x=18;icon-y=16;screen-loc=map2:3:18,1:16"
+       ]
+      },
+      {
+       "action": "330,16",
+       "at": 2.454,
+       "logged": [
+        "161 EXIT both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16",
+        "161 ENTER hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 2.804,
+       "logged": [
+        "164.5 EXIT hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16",
+        "164.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "164.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 3.155,
+       "logged": [
+        "168 ENTER both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 3.506,
+       "logged": [
+        "171.5 EXIT both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "m2gap",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "185 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "294,16",
+       "at": 0.351,
+       "logged": [
+        "188.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "316,16",
+       "at": 0.701,
+       "logged": [
+        "192 ENTER hud2 loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:1:17,1:16"
+       ]
+      },
+      {
+       "action": "317,16",
+       "at": 1.052,
+       "logged": [
+        "195.5 MOVE hud2 loc=map2 ctl=main.map2 icon-x=18;icon-y=16;screen-loc=map2:1:18,1:16"
+       ]
+      },
+      {
+       "action": "294,16",
+       "at": 1.403,
+       "logged": [
+        "199 EXIT hud2 loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:1:17,1:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 1.753,
+       "logged": [
+        "202.5 ENTER both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.104,
+       "logged": [
+        "206 EXIT both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "m2vis",
+     "actions": [
+      {
+       "action": "380,16",
+       "at": 0.0,
+       "logged": [
+        "219.5 ENTER both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16"
+       ]
+      },
+      {
+       "action": "381,16",
+       "at": 0.351,
+       "logged": [
+        "223 MOVE both loc=map2 ctl=main.map2 icon-x=18;icon-y=16;screen-loc=map2:3:18,1:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 0.701,
+       "logged": [
+        "226.5 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "226.5 EXIT both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 1.052,
+       "logged": [
+        "230 ENTER both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "380,16",
+       "at": 1.402,
+       "logged": [
+        "233.5 MOVE both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16",
+        "233.5 EXIT both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "381,16",
+       "at": 1.753,
+       "logged": [
+        "237 ENTER both loc=map2 ctl=main.map2 icon-x=18;icon-y=16;screen-loc=map2:3:18,1:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.103,
+       "logged": [
+        "240.5 EXIT both loc=map2 ctl=main.map2 icon-x=18;icon-y=16;screen-loc=map2:3:18,1:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "m2out",
+     "actions": [
+      {
+       "action": "316,16",
+       "at": 0.0,
+       "logged": [
+        "254 ENTER hud2 loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:1:17,1:16"
+       ]
+      },
+      {
+       "action": "316,-60",
+       "at": 0.351,
+       "logged": [
+        "257.5 EXIT hud2 loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:1:17,1:16"
+       ]
+      },
+      {
+       "action": "316,16",
+       "at": 0.702,
+       "logged": [
+        "261 ENTER hud2 loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:1:17,1:16"
+       ]
+      },
+      {
+       "action": "317,16",
+       "at": 1.053,
+       "logged": [
+        "264.5 MOVE hud2 loc=map2 ctl=main.map2 icon-x=18;icon-y=16;screen-loc=map2:1:18,1:16"
+       ]
+      },
+      {
+       "action": "340,16",
+       "at": 1.403,
+       "logged": [
+        "268 EXIT hud2 loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:1:17,1:16"
+       ]
+      },
+      {
+       "action": "316,-60",
+       "at": 1.754,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "st1",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "285 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "350,80",
+       "at": 0.351,
+       "logged": [
+        "288.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "288.5 ENTER statrow loc=Probe ctl=main.info icon-x=13;icon-y=16",
+        "288.5 EXIT statrow loc=Probe ctl=main.info icon-x=13;icon-y=16"
+       ]
+      },
+      {
+       "action": "351,80",
+       "at": 0.702,
+       "logged": [
+        "292 ENTER statrow loc=Probe ctl=main.info icon-x=14;icon-y=16"
+       ]
+      },
+      {
+       "action": "390,75",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "350,112",
+       "at": 1.403,
+       "logged": [
+        "299 EXIT statrow loc=Probe ctl=main.info icon-x=14;icon-y=16",
+        "299 ENTER both loc=Probe ctl=main.info icon-x=13;icon-y=17"
+       ]
+      },
+      {
+       "action": "351,112",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "320,75",
+       "at": 2.104,
+       "logged": [
+        "306 EXIT both loc=Probe ctl=main.info icon-x=13;icon-y=17"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 2.455,
+       "logged": [
+        "309.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "309.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.805,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "st2",
+     "actions": [
+      {
+       "action": "350,112",
+       "at": 0.0,
+       "logged": [
+        "326.5 ENTER both loc=Probe ctl=main.info icon-x=13;icon-y=17"
+       ]
+      },
+      {
+       "action": "351,112",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 0.701,
+       "logged": [
+        "333.5 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "333.5 EXIT both loc=Probe ctl=main.info icon-x=13;icon-y=17"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 1.052,
+       "logged": [
+        "337.5 ENTER both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "350,112",
+       "at": 1.403,
+       "logged": [
+        "341 MOVE both loc=Probe ctl=main.info icon-x=13;icon-y=17",
+        "341 EXIT both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 1.754,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "st3",
+     "actions": [
+      {
+       "action": "350,80",
+       "at": 0.0,
+       "logged": [
+        "358 ENTER statrow loc=Probe ctl=main.info icon-x=13;icon-y=16"
+       ]
+      },
+      {
+       "action": "330,16",
+       "at": 0.351,
+       "logged": [
+        "361.5 EXIT statrow loc=Probe ctl=main.info icon-x=13;icon-y=16",
+        "361.5 ENTER hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16",
+        "361.5 EXIT hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16"
+       ]
+      },
+      {
+       "action": "331,16",
+       "at": 0.701,
+       "logged": [
+        "365 ENTER hud2 loc=map2 ctl=main.map2 icon-x=32;icon-y=16;screen-loc=map2:1:32,1:16"
+       ]
+      },
+      {
+       "action": "350,80",
+       "at": 1.052,
+       "logged": [
+        "368.5 EXIT hud2 loc=map2 ctl=main.map2 icon-x=32;icon-y=16;screen-loc=map2:1:32,1:16",
+        "368.5 ENTER statrow loc=Probe ctl=main.info icon-x=13;icon-y=16",
+        "368.5 EXIT statrow loc=Probe ctl=main.info icon-x=13;icon-y=16"
+       ]
+      },
+      {
+       "action": "351,80",
+       "at": 1.402,
+       "logged": [
+        "372 ENTER statrow loc=Probe ctl=main.info icon-x=14;icon-y=16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 1.753,
+       "logged": [
+        "375.5 EXIT statrow loc=Probe ctl=main.info icon-x=14;icon-y=16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "grid1",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "389 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "20,248",
+       "at": 0.351,
+       "logged": [
+        "392.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "392.5 ENTER gridrow loc=1,1 ctl=main.grid icon-x=17;icon-y=16;vis-x=0;vis-y=0;cell=1,1",
+        "392.5 EXIT gridrow loc=1,1 ctl=main.grid icon-x=17;icon-y=16;vis-x=0;vis-y=0;cell=1,1"
+       ]
+      },
+      {
+       "action": "21,248",
+       "at": 0.701,
+       "logged": [
+        "396 ENTER gridrow loc=1,1 ctl=main.grid icon-x=18;icon-y=16;vis-x=0;vis-y=0;cell=1,1"
+       ]
+      },
+      {
+       "action": "60,248",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "20,280",
+       "at": 1.402,
+       "logged": [
+        "403 EXIT gridrow loc=1,1 ctl=main.grid icon-x=18;icon-y=16;vis-x=0;vis-y=0;cell=1,1",
+        "403 ENTER both loc=1,2 ctl=main.grid icon-x=17;icon-y=17;vis-x=0;vis-y=0;cell=1,2"
+       ]
+      },
+      {
+       "action": "21,280",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 2.103,
+       "logged": [
+        "410 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "410 EXIT both loc=1,2 ctl=main.grid icon-x=17;icon-y=17;vis-x=0;vis-y=0;cell=1,2"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.454,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "mod1",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "427 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "kdown:ctrl",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "113,16",
+       "at": 0.701,
+       "logged": [
+        "434 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;ctrl=1;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "kup:ctrl",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "114,16",
+       "at": 1.403,
+       "logged": [
+        "441 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16"
+       ]
+      },
+      {
+       "action": "kdown:shift",
+       "at": 1.754,
+       "logged": []
+      },
+      {
+       "action": "kup:shift",
+       "at": 2.105,
+       "logged": []
+      },
+      {
+       "action": "115,16",
+       "at": 2.455,
+       "logged": [
+        "451.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.806,
+       "logged": [
+        "455 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mod2",
+     "actions": [
+      {
+       "action": "kdown:shift",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 0.351,
+       "logged": [
+        "472 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;shift=1;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 0.702,
+       "logged": [
+        "475.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;shift=1;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "40,16",
+       "at": 1.052,
+       "logged": [
+        "479 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;shift=1;screen-loc=3:17,7:16",
+        "479 ENTER enter loc=the floor ctl=main.map icon-x=9;icon-y=16;shift=1;screen-loc=1:9,7:16"
+       ]
+      },
+      {
+       "action": "kup:shift",
+       "at": 1.403,
+       "logged": []
+      },
+      {
+       "action": "41,16",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 2.104,
+       "logged": [
+        "489.5 EXIT enter loc=the floor ctl=main.map icon-x=9;icon-y=16;shift=1;screen-loc=1:9,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mod3",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "503 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "kdown:ctrl",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "kup:ctrl",
+       "at": 1.203,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.553,
+       "logged": []
+      },
+      {
+       "action": "kdown:shift",
+       "at": 2.054,
+       "logged": []
+      },
+      {
+       "action": "40,16",
+       "at": 2.404,
+       "logged": [
+        "527 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "527 ENTER enter loc=the floor ctl=main.map icon-x=9;icon-y=16;shift=1;screen-loc=1:9,7:16"
+       ]
+      },
+      {
+       "action": "kup:shift",
+       "at": 2.755,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 3.106,
+       "logged": [
+        "534 EXIT enter loc=the floor ctl=main.map icon-x=9;icon-y=16;shift=1;screen-loc=1:9,7:16"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "extramenu",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [
+    "EXTRA"
+   ],
+   "params": "",
+   "replay": "extra.txt",
+   "cases": [
+    {
+     "case": "mescleave",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "57 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.715,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.066,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 1.566,
+       "logged": []
+      },
+      {
+       "action": "wait:0.3",
+       "at": 1.917,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 2.218,
+       "logged": [
+        "79 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mescsame",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "92.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.712,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.063,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 1.563,
+       "logged": []
+      },
+      {
+       "action": "wait:0.3",
+       "at": 1.914,
+       "logged": []
+      },
+      {
+       "action": "101,10",
+       "at": 2.215,
+       "logged": [
+        "114.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=22;screen-loc=3:6,7:22"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.566,
+       "logged": [
+        "118 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mescpix",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "131.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.712,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.063,
+       "logged": []
+      },
+      {
+       "action": "110,5",
+       "at": 1.563,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 1.914,
+       "logged": [
+        "151 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=27;screen-loc=3:15,7:27"
+       ]
+      },
+      {
+       "action": "111,5",
+       "at": 2.264,
+       "logged": [
+        "154.5 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=27;screen-loc=3:16,7:27"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.615,
+       "logged": [
+        "158 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mescother",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "171.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.714,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.065,
+       "logged": []
+      },
+      {
+       "action": "40,16",
+       "at": 1.565,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 1.916,
+       "logged": [
+        "190.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22",
+        "190.5 ENTER enter loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,7:16"
+       ]
+      },
+      {
+       "action": "41,16",
+       "at": 2.267,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 2.617,
+       "logged": [
+        "197.5 EXIT enter loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mescvoid",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "211 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.712,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.063,
+       "logged": []
+      },
+      {
+       "action": "240,10",
+       "at": 1.564,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 1.914,
+       "logged": [
+        "230 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "241,10",
+       "at": 2.265,
+       "logged": []
+      },
+      {
+       "action": "100,10",
+       "at": 2.615,
+       "logged": [
+        "237 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.966,
+       "logged": [
+        "240.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mclickother",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "254 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.712,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.062,
+       "logged": []
+      },
+      {
+       "action": "40,16",
+       "at": 1.563,
+       "logged": []
+      },
+      {
+       "action": "down",
+       "at": 1.914,
+       "logged": [
+        "273.5 DOWN enter loc=the floor ctl=main.map icon-x=9;icon-y=16;left=1;button=left;screen-loc=1:9,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 2.278,
+       "logged": [
+        "277 UP enter loc=the floor ctl=main.map icon-x=9;icon-y=16;left=1;button=left;screen-loc=1:9,7:16",
+        "277 CLICK enter loc=the floor ctl=main.map icon-x=9;icon-y=16;left=1;button=left;screen-loc=1:9,7:16"
+       ]
+      },
+      {
+       "action": "41,16",
+       "at": 2.629,
+       "logged": [
+        "280.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22",
+        "280.5 ENTER enter loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=1:10,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.979,
+       "logged": [
+        "284 EXIT enter loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=1:10,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mclickpix",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "297.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.715,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.065,
+       "logged": []
+      },
+      {
+       "action": "110,5",
+       "at": 1.566,
+       "logged": []
+      },
+      {
+       "action": "down",
+       "at": 1.916,
+       "logged": [
+        "316.5 DOWN both loc=the floor ctl=main.map icon-x=15;icon-y=27;left=1;button=left;screen-loc=3:15,7:27"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 2.281,
+       "logged": [
+        "320 UP both loc=the floor ctl=main.map icon-x=15;icon-y=27;left=1;button=left;screen-loc=3:15,7:27",
+        "320 CLICK both loc=the floor ctl=main.map icon-x=15;icon-y=27;left=1;button=left;screen-loc=3:15,7:27"
+       ]
+      },
+      {
+       "action": "111,5",
+       "at": 2.632,
+       "logged": [
+        "324 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=27;screen-loc=3:16,7:27"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.983,
+       "logged": [
+        "327.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mclickvoid",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "341 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.715,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.066,
+       "logged": []
+      },
+      {
+       "action": "240,10",
+       "at": 1.566,
+       "logged": []
+      },
+      {
+       "action": "down",
+       "at": 1.916,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 2.281,
+       "logged": [
+        "363.5 UP null loc=map ctl=main.map left=1;button=left;screen-loc=map:7:17,7:22"
+       ]
+      },
+      {
+       "action": "241,10",
+       "at": 2.631,
+       "logged": [
+        "367 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "100,10",
+       "at": 2.982,
+       "logged": [
+        "370.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 3.332,
+       "logged": [
+        "374 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mrother",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "387.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.714,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.065,
+       "logged": []
+      },
+      {
+       "action": "40,16",
+       "at": 1.565,
+       "logged": []
+      },
+      {
+       "action": "rdown",
+       "at": 1.916,
+       "logged": [
+        "407 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22",
+        "407 ENTER enter loc=the floor ctl=main.map icon-x=9;icon-y=16;right=1;screen-loc=1:9,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.281,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 2.782,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 3.133,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 3.633,
+       "logged": []
+      },
+      {
+       "action": "41,16",
+       "at": 3.984,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 4.334,
+       "logged": [
+        "431 EXIT enter loc=the floor ctl=main.map icon-x=9;icon-y=16;right=1;screen-loc=1:9,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mrpix",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "444.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.712,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.063,
+       "logged": []
+      },
+      {
+       "action": "110,5",
+       "at": 1.563,
+       "logged": []
+      },
+      {
+       "action": "rdown",
+       "at": 1.914,
+       "logged": [
+        "464 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=27;right=1;screen-loc=3:15,7:27"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.279,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 2.779,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 3.13,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 3.63,
+       "logged": []
+      },
+      {
+       "action": "111,5",
+       "at": 3.981,
+       "logged": [
+        "484.5 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=27;screen-loc=3:16,7:27"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 4.332,
+       "logged": [
+        "488 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mrvoid",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "501.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.713,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.064,
+       "logged": []
+      },
+      {
+       "action": "240,10",
+       "at": 1.565,
+       "logged": []
+      },
+      {
+       "action": "rdown",
+       "at": 1.915,
+       "logged": [
+        "520.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.279,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 2.78,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 3.131,
+       "logged": []
+      },
+      {
+       "action": "241,10",
+       "at": 3.631,
+       "logged": []
+      },
+      {
+       "action": "100,10",
+       "at": 3.982,
+       "logged": [
+        "541 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 4.332,
+       "logged": [
+        "544.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mpick",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "558 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.713,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.064,
+       "logged": []
+      },
+      {
+       "action": "140,27",
+       "at": 1.564,
+       "logged": []
+      },
+      {
+       "action": "wait:0.6",
+       "at": 1.915,
+       "logged": []
+      },
+      {
+       "action": "270,30",
+       "at": 2.515,
+       "logged": []
+      },
+      {
+       "action": "wait:0.3",
+       "at": 2.866,
+       "logged": []
+      },
+      {
+       "action": "shot:pk",
+       "at": 3.166,
+       "logged": []
+      },
+      {
+       "action": "down",
+       "at": 3.246,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 3.613,
+       "logged": [
+        "594 POKE both loc= ctl= ",
+        "594.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "wait:0.3",
+       "at": 3.964,
+       "logged": []
+      },
+      {
+       "action": "100,10",
+       "at": 4.264,
+       "logged": [
+        "601 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "101,10",
+       "at": 4.614,
+       "logged": [
+        "604.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=22;screen-loc=3:6,7:22"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 4.965,
+       "logged": [
+        "608 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mpickleave",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "621.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.714,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.065,
+       "logged": []
+      },
+      {
+       "action": "140,27",
+       "at": 1.565,
+       "logged": []
+      },
+      {
+       "action": "wait:0.6",
+       "at": 1.916,
+       "logged": []
+      },
+      {
+       "action": "270,30",
+       "at": 2.516,
+       "logged": []
+      },
+      {
+       "action": "wait:0.3",
+       "at": 2.867,
+       "logged": []
+      },
+      {
+       "action": "down",
+       "at": 3.167,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 3.53,
+       "logged": [
+        "656.5 POKE both loc= ctl= ",
+        "656.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "wait:0.3",
+       "at": 3.881,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 4.181,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "mdrop",
+     "actions": [
+      {
+       "action": "40,16",
+       "at": 0.0,
+       "logged": [
+        "676.5 ENTER enter loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "680 DOWN enter loc=the floor ctl=main.map icon-x=9;icon-y=16;left=1;button=left;screen-loc=1:9,7:16"
+       ]
+      },
+      {
+       "action": "100,10",
+       "at": 0.715,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 1.065,
+       "logged": [
+        "687 UP both loc=the floor ctl=main.map icon-x=5;icon-y=22;left=1;button=left;screen-loc=3:5,7:22",
+        "687 DROP enter loc=the floor ctl=main.map over=the both icon-x=5;icon-y=22;left=1;button=left;screen-loc=3:5,7:22",
+        "687 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;left=1;button=left;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "wait:0.3",
+       "at": 1.416,
+       "logged": []
+      },
+      {
+       "action": "rdown",
+       "at": 1.717,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 2.069,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.419,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 2.92,
+       "logged": [
+        "706 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "wait:0.3",
+       "at": 3.271,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 3.572,
+       "logged": [
+        "712.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;left=1;button=left;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mvoidpress",
+     "actions": [
+      {
+       "action": "240,10",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.71,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.06,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 1.561,
+       "logged": []
+      },
+      {
+       "action": "100,10",
+       "at": 1.912,
+       "logged": [
+        "745 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.262,
+       "logged": [
+        "748.5 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "xboth",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [
+    "EXTRA",
+    "CLIENT_ENTER",
+    "CLIENT_MOVE"
+   ],
+   "params": "",
+   "replay": "xboth.txt",
+   "cases": [
+    {
+     "case": "void1",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "57 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "57 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "200,16",
+       "at": 0.351,
+       "logged": [
+        "60.5 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "60.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "201,16",
+       "at": 0.701,
+       "logged": []
+      },
+      {
+       "action": "210,20",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.402,
+       "logged": [
+        "71 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "71 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 1.753,
+       "logged": [
+        "74.5 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "74.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "void3",
+     "actions": [
+      {
+       "action": "150,112",
+       "at": 0.0,
+       "logged": [
+        "88 C-ENTER floor loc=the floor ctl=main.map icon-x=23;icon-y=16;screen-loc=4:23,4:16"
+       ]
+      },
+      {
+       "action": "200,16",
+       "at": 0.351,
+       "logged": [
+        "91.5 C-EXIT floor loc=the floor ctl=main.map icon-x=23;icon-y=16;screen-loc=4:23,4:16"
+       ]
+      },
+      {
+       "action": "201,16",
+       "at": 0.701,
+       "logged": []
+      },
+      {
+       "action": "150,112",
+       "at": 1.052,
+       "logged": [
+        "98.5 C-ENTER floor loc=the floor ctl=main.map icon-x=23;icon-y=16;screen-loc=4:23,4:16"
+       ]
+      },
+      {
+       "action": "151,112",
+       "at": 1.403,
+       "logged": [
+        "102 C-MOVE floor loc=the floor ctl=main.map icon-x=24;icon-y=16;screen-loc=4:24,4:16"
+       ]
+      },
+      {
+       "action": "200,16",
+       "at": 1.753,
+       "logged": [
+        "105.5 C-EXIT floor loc=the floor ctl=main.map icon-x=23;icon-y=16;screen-loc=4:23,4:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.104,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "letter",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "122.5 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "122.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "270,16",
+       "at": 0.351,
+       "logged": [
+        "126 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "126 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "271,16",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.052,
+       "logged": [
+        "133 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "133 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 1.402,
+       "logged": [
+        "136.5 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "136.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "m2jump",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "150 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "150 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "330,16",
+       "at": 0.351,
+       "logged": [
+        "153.5 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "153.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "153.5 C-ENTER hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16",
+        "153.5 ENTER hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16",
+        "153.5 C-EXIT hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16",
+        "153.5 EXIT hud2 loc=map2 ctl=main.map2 icon-x=31;icon-y=16;screen-loc=map2:1:31,1:16"
+       ]
+      },
+      {
+       "action": "331,16",
+       "at": 0.702,
+       "logged": [
+        "157 C-ENTER hud2 loc=map2 ctl=main.map2 icon-x=32;icon-y=16;screen-loc=map2:1:32,1:16",
+        "157 ENTER hud2 loc=map2 ctl=main.map2 icon-x=32;icon-y=16;screen-loc=map2:1:32,1:16"
+       ]
+      },
+      {
+       "action": "340,16",
+       "at": 1.052,
+       "logged": [
+        "160.5 C-EXIT hud2 loc=map2 ctl=main.map2 icon-x=32;icon-y=16;screen-loc=map2:1:32,1:16",
+        "160.5 EXIT hud2 loc=map2 ctl=main.map2 icon-x=32;icon-y=16;screen-loc=map2:1:32,1:16"
+       ]
+      },
+      {
+       "action": "341,16",
+       "at": 1.403,
+       "logged": []
+      },
+      {
+       "action": "380,16",
+       "at": 1.753,
+       "logged": [
+        "167.5 C-ENTER both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16",
+        "167.5 ENTER both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 2.104,
+       "logged": [
+        "171 C-MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "171 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "171 C-EXIT both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16",
+        "171 EXIT both loc=map2 ctl=main.map2 icon-x=17;icon-y=16;screen-loc=map2:3:17,1:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.455,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "st1",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "188 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "188 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "350,80",
+       "at": 0.351,
+       "logged": [
+        "191.5 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "191.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "191.5 C-ENTER statrow loc=Probe ctl=main.info icon-x=13;icon-y=16",
+        "191.5 ENTER statrow loc=Probe ctl=main.info icon-x=13;icon-y=16",
+        "191.5 C-EXIT statrow loc=Probe ctl=main.info icon-x=13;icon-y=16",
+        "191.5 EXIT statrow loc=Probe ctl=main.info icon-x=13;icon-y=16"
+       ]
+      },
+      {
+       "action": "351,80",
+       "at": 0.701,
+       "logged": [
+        "195 C-ENTER statrow loc=Probe ctl=main.info icon-x=14;icon-y=16",
+        "195 ENTER statrow loc=Probe ctl=main.info icon-x=14;icon-y=16"
+       ]
+      },
+      {
+       "action": "390,75",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "320,75",
+       "at": 1.402,
+       "logged": [
+        "202 C-EXIT statrow loc=Probe ctl=main.info icon-x=14;icon-y=16",
+        "202 EXIT statrow loc=Probe ctl=main.info icon-x=14;icon-y=16"
+       ]
+      },
+      {
+       "action": "321,75",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "350,112",
+       "at": 2.103,
+       "logged": [
+        "209 C-ENTER both loc=Probe ctl=main.info icon-x=13;icon-y=17",
+        "209 ENTER both loc=Probe ctl=main.info icon-x=13;icon-y=17"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 2.453,
+       "logged": [
+        "212.5 C-MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "212.5 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "212.5 C-EXIT both loc=Probe ctl=main.info icon-x=13;icon-y=17",
+        "212.5 EXIT both loc=Probe ctl=main.info icon-x=13;icon-y=17"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.804,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "grid1",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "229.5 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "229.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "20,248",
+       "at": 0.351,
+       "logged": [
+        "233 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "233 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "233 C-ENTER gridrow loc=1,1 ctl=main.grid icon-x=17;icon-y=16;vis-x=0;vis-y=0;cell=1,1",
+        "233 ENTER gridrow loc=1,1 ctl=main.grid icon-x=17;icon-y=16;vis-x=0;vis-y=0;cell=1,1",
+        "233 C-EXIT gridrow loc=1,1 ctl=main.grid icon-x=17;icon-y=16;vis-x=0;vis-y=0;cell=1,1",
+        "233 EXIT gridrow loc=1,1 ctl=main.grid icon-x=17;icon-y=16;vis-x=0;vis-y=0;cell=1,1"
+       ]
+      },
+      {
+       "action": "21,248",
+       "at": 0.702,
+       "logged": [
+        "236.5 C-ENTER gridrow loc=1,1 ctl=main.grid icon-x=18;icon-y=16;vis-x=0;vis-y=0;cell=1,1",
+        "236.5 ENTER gridrow loc=1,1 ctl=main.grid icon-x=18;icon-y=16;vis-x=0;vis-y=0;cell=1,1"
+       ]
+      },
+      {
+       "action": "60,248",
+       "at": 1.053,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.403,
+       "logged": [
+        "243.5 C-EXIT gridrow loc=1,1 ctl=main.grid icon-x=18;icon-y=16;vis-x=0;vis-y=0;cell=1,1",
+        "243.5 EXIT gridrow loc=1,1 ctl=main.grid icon-x=18;icon-y=16;vis-x=0;vis-y=0;cell=1,1",
+        "243.5 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "243.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "243.5 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "243.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 1.754,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "rfloorleave",
+     "actions": [
+      {
+       "action": "40,48",
+       "at": 0.0,
+       "logged": [
+        "260.5 C-ENTER floor loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,6:16"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.709,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.06,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 1.561,
+       "logged": [
+        "276.5 C-EXIT floor loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,6:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "rfloorstep",
+     "actions": [
+      {
+       "action": "40,48",
+       "at": 0.0,
+       "logged": [
+        "290 C-ENTER floor loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,6:16"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.053,
+       "logged": []
+      },
+      {
+       "action": "41,48",
+       "at": 1.553,
+       "logged": [
+        "305.5 C-MOVE floor loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=1:10,6:16"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 1.904,
+       "logged": [
+        "309 C-EXIT floor loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,6:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "lfloorleave",
+     "actions": [
+      {
+       "action": "40,48",
+       "at": 0.0,
+       "logged": [
+        "322.5 C-ENTER floor loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,6:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "326 DOWN floor loc=the floor ctl=main.map icon-x=9;icon-y=16;left=1;button=left;screen-loc=1:9,6:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 0.71,
+       "logged": [
+        "329.5 UP floor loc=the floor ctl=main.map icon-x=9;icon-y=16;left=1;button=left;screen-loc=1:9,6:16",
+        "329.5 CLICK floor loc=the floor ctl=main.map icon-x=9;icon-y=16;left=1;button=left;screen-loc=1:9,6:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.061,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 1.561,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "mescsame",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "351.5 C-EXIT floor loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=1:9,6:16",
+        "351.5 C-ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22",
+        "351.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.715,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.066,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 1.567,
+       "logged": []
+      },
+      {
+       "action": "wait:0.3",
+       "at": 1.918,
+       "logged": []
+      },
+      {
+       "action": "101,10",
+       "at": 2.218,
+       "logged": [
+        "373.5 C-MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=22;screen-loc=3:6,7:22",
+        "373.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=22;screen-loc=3:6,7:22"
+       ]
+      },
+      {
+       "action": "-80,112",
+       "at": 2.569,
+       "logged": [
+        "377 C-EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22",
+        "377 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "mescvoid",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "390.5 C-ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22",
+        "390.5 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 0.711,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.062,
+       "logged": []
+      },
+      {
+       "action": "240,10",
+       "at": 1.563,
+       "logged": []
+      },
+      {
+       "action": "key:esc",
+       "at": 1.914,
+       "logged": [
+        "410 C-EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22",
+        "410 EXIT both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "241,10",
+       "at": 2.265,
+       "logged": []
+      },
+      {
+       "action": "-80,112",
+       "at": 2.615,
+       "logged": []
+      }
+     ]
+    }
+   ]
   }
  ]
 }

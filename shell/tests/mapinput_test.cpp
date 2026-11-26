@@ -9,6 +9,7 @@
 #include "model/world.h"
 #include "net/input.h"
 #include "shell/entitymap.h"
+#include "shell/namedmap.h"
 #include "shell/tests/roottreefixture.h"
 #include "shell/tests/planesourcefixture.h"
 #include "shell/tests/hudrelayfixture.h"
@@ -554,14 +555,19 @@ private slots:
     // MouseSubs and appearance flags DreamDaemon sent, and the server's rule turns the reports into procs: MouseExited
     // (with the params it entered with) and MouseEntered when a report names another atom than the last one, MouseMove
     // when it names the same one, and a drop enters the atom it lands on. Those must be the procs stock's world logged,
-    // action by action. Cases that need moves posted to the window, fast sweeps or a scene that moves are left out.
+    // action by action. Cases that need moves posted to the window, fast sweeps or a scene that moves are left out, and
+    // so are those over the EXTRA compile's stat panel and grid, which Fugue does not report hover on.
+    // The EXTRA compile adds a second map (window pixels 300..395 x 0..31), modifiers, and right-click menus: a menu
+    // opened at the release of a right press on an obj (every obj has a verb, a turf none) takes the pointer until
+    // Escape, a press off it, or a pick from it (a press within its two levels, 258 x 40 pixels right of and below where
+    // it opened). Straight from one map onto another, the second map's pick comes before the first map's leave.
     void hoverLikeStock() {
         const QString path = QString(FUGUE_TEST_DATA_DIR) + "/hover-world/hover.json";
         QJsonDocument document; QString error;
         QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
-        const QSet<QString> entered{"enter", "enter2", "both", "big", "slider", "glider", "hopper", "enteronly"},
-            exited{"enter", "enter2", "both", "big", "slider", "glider", "hopper", "exitonly", "moveexit"},
-            moving{"move", "both", "big", "slider", "glider", "hopper", "moveexit"};
+        const QSet<QString> entered{"enter", "enter2", "both", "big", "slider", "glider", "hopper", "enteronly", "island", "hud2"},
+            exited{"enter", "enter2", "both", "big", "slider", "glider", "hopper", "exitonly", "moveexit", "island", "hud2"},
+            moving{"move", "both", "big", "slider", "glider", "hopper", "moveexit", "island", "hud2"};
         const QSet<QString> hoverProcs{"ENTER", "EXIT", "MOVE", "C-ENTER", "C-EXIT", "C-MOVE"};
         QSet<QString> runs; int actions = 0, reports = 0, lines = 0;
         for (const auto& runValue : document.object()["runs"].toArray()) {
@@ -571,22 +577,40 @@ private slots:
             const auto replay = run["replay"].toString();
             test::ReplayFixture f; net::InputModel im;
             QVERIFY2(f.load(replay, "hover-world/replay"), qPrintable(name + ": " + f.error));
+            // The live map publishes unified-scene visibility: a turf without an icon is empty space, named by nothing.
+            f.frame.geometry.visibility = std::make_shared<const VisibilityFrame>();
             QVERIFY(f.readFrames(replay, "hover-world/replay", [&](uint16_t type, const Bytes& body) { im.onFrame(type, body); }));
             QStringList switches; for (const auto& v : run["switches"].toArray()) switches.push_back(v.toString());
             const bool clientEnter = switches.contains("CLIENT_ENTER"), clientMove = switches.contains("CLIENT_MOVE");
             // Any client hover proc sets the hover subscription; client/MouseMove also the move bit.
             QCOMPARE(im.clientHover(), clientEnter || clientMove); QCOMPARE(im.clientMove(), clientMove);
+            QCOMPARE(im.showPopupMenus(), switches.contains("EXTRA"));
             const auto& world = f.session.world();
-            auto flagsOf = [&](const MapPointer& p) -> uint32_t {
-                const auto target = mapPointerTarget(p, world);
+            NamedMap second("map2");
+            const auto map2 = second.prepare(world, [&](uint32_t id, QByteArray& out) { return f.read(id, out); }, 0, 0);
+            auto flagsOf = [&](const MapPointer* p) -> uint32_t {
+                const auto target = p ? mapPointerTarget(*p, world) : std::nullopt;
                 if (!target || !target->appid) return 0;
                 const auto a = world.appearances.find(*target->appid);
                 return a == world.appearances.end() ? 0 : a->second.fields.appearanceFlags;
             };
-            auto inside = [](QPoint q) { return q.x() >= 0 && q.y() >= 0 && q.x() < 288 && q.y() < 224; };
+            // 1: the map, 2: map2, 0: anywhere else.
+            auto region = [](QPoint q) {
+                return q.x() >= 0 && q.y() >= 0 && q.x() < 288 && q.y() < 224 ? 1 :
+                       q.x() >= 300 && q.y() >= 0 && q.x() < 396 && q.y() < 32 ? 2 : 0;
+            };
+            proto::enc::Mods mods;
             auto pick = [&](QPoint q) {
-                auto p = mapPointerAt(QPointF(q), {288, 224}, {7, 7}, f.frame.source, f.frame.geometry, "map", true, f.sprites);
-                return p ? *p : MapPointer{};
+                std::optional<MapPointer> p;
+                if (region(q) == 1)
+                    p = mapPointerAt(QPointF(q), {288, 224}, {7, 7}, f.frame.source, f.frame.geometry, "map", true, f.sprites);
+                else if (region(q) == 2)
+                    p = mapPointerAt(QPointF(q - QPoint(300, 0)), {96, 32}, map2.terrain.geometry.region.size(),
+                                     map2.terrain.source, map2.terrain.geometry, "main.map2", false, map2.sprites);
+                auto picked = p ? *p : MapPointer{};
+                picked.click.mods = mods;
+                picked.click.button.clear();
+                return picked;
             };
             // The server: what it was last told the pointer is over, and the params it entered with.
             struct Stored { QString name, params; proto::enc::AtomRef over; };
@@ -610,33 +634,81 @@ private slots:
             MapHover hover; int64_t now = 0;
             auto flush = [&](int64_t ns) {
                 now += ns;
-                if (hover.due(now).empty()) return;
-                ++reports;
-                const auto* sent = hover.sent();
-                if (!sent) { exit(); return; }
-                const auto params = QString::fromStdString(proto::enc::hoverParams(sent->click));
-                if (same(*sent)) {
-                    const auto atom = stored->name;
-                    if (clientMove) logged << "C-MOVE " + atom + " " + params;
-                    if (moving.contains(atom)) logged << "MOVE " + atom + " " + params;
-                } else {
-                    exit();
-                    enter(*sent, params);
+                for (auto body = hover.due(now); !body.empty(); body = hover.due(now)) {
+                    ++reports;
+                    const auto* sent = hover.sent();
+                    if (!sent) { exit(); continue; }
+                    const auto params = QString::fromStdString(proto::enc::hoverParams(sent->click));
+                    if (same(*sent)) {
+                        const auto atom = stored->name;
+                        if (clientMove) logged << "C-MOVE " + atom + " " + params;
+                        if (moving.contains(atom)) logged << "MOVE " + atom + " " + params;
+                    } else {
+                        exit();
+                        enter(*sent, params);
+                    }
                 }
             };
+            auto report = [&](MapPointer p) {
+                p.kind = MapPointer::Hover;
+                const MapHover::Gate gate{im.clientHover(), im.clientMove(), flagsOf(&p), flagsOf(hover.last())};
+                hover.update(p, mapPointerCurrent(p, world, 0), gate, now);
+            };
+            auto leave = [&] {
+                MapPointer p; p.kind = MapPointer::Leave;
+                hover.update(p, true, {im.clientHover(), im.clientMove(), 0, flagsOf(hover.last())}, now);
+            };
             QPoint at(-80, 112); bool held = false, dragged = false; MapPointer pressed;
+            std::optional<QPoint> menu; bool menuPick = false;
+            auto onMenu = [&](QPoint q) {
+                return menu && q.x() >= menu->x() && q.x() <= menu->x() + 258 && q.y() > menu->y() && q.y() <= menu->y() + 40;
+            };
+            auto menuClosed = [&](bool rightHeld, bool otherHeld) {
+                menu.reset();
+                const auto closed = mapMenuClosed(rightHeld, otherHeld);
+                if (closed == MapMenuClosed::Nothing) return;
+                if (!region(at)) { leave(); return; }
+                auto p = pick(at);
+                if (closed == MapMenuClosed::PickRight) p.click.button = "right";
+                report(p);
+            };
             auto moveTo = [&](QPoint q) {
                 if (q == at) return;   // no real move: Windows sends none
+                const int from = region(at), to = region(q);
                 at = q;
+                if (menu) return;      // the menu has the pointer
                 if (held) {
-                    if (inside(q) && !sameMapTarget(pick(q), pressed)) dragged = true;
+                    if (to && !sameMapTarget(pick(q), pressed)) dragged = true;
                     return;   // a held button drags: no hover
                 }
-                auto p = inside(q) ? pick(q) : MapPointer{};
-                p.kind = inside(q) ? MapPointer::Hover : MapPointer::Leave;
-                MapHover::Gate gate{im.clientHover(), im.clientMove(), inside(q) ? flagsOf(p) : 0};
-                if (const auto* sent = hover.sent()) gate.sentFlags = flagsOf(*sent);
-                hover.update(p, p.kind == MapPointer::Leave || mapPointerCurrent(p, world, 0), gate, now);
+                if (to) report(pick(q));
+                if (from && from != to) leave();   // after the map reached has reported
+            };
+            auto press = [&](const char* button) {
+                held = true; dragged = false; pressed = pick(at);
+                pressed.click.button = button;
+            };
+            auto release = [&](const char* button) {
+                held = false;
+                auto up = pick(at); up.kind = MapPointer::Up; up.click.button = button;
+                if (!mapReleaseForgetsHover(mapPopupAction(up, im.showPopupMenus()))) {
+                    if (pressed.click.over.kind == proto::enc::RefObj) menu = at;
+                    return;
+                }
+                hover.released();
+                auto drop = region(at) ? pick(at) : MapPointer{};
+                if (region(at) && (dragged || !sameMapTarget(drop, pressed)) &&
+                    drop.click.over.kind != proto::enc::RefNull && !same(drop)) {
+                    drop.click.button = pressed.click.button;
+                    enter(drop, QString::fromStdString(proto::enc::clickParams(drop.click)));
+                }
+            };
+            // The stat panel and the grid of the EXTRA compile.
+            auto unreported = [](QPoint q) { return (q.x() >= 300 && q.y() >= 40 && q.y() < 224) || (q.y() >= 232 && q.x() < 288); };
+            auto point = [](const QString& action) -> std::optional<QPoint> {
+                const auto xy = action.split(',');
+                if (xy.size() != 2 || action.contains(':')) return {};
+                return QPoint(xy[0].toInt(), xy[1].toInt());
             };
             for (const auto& caseValue : run["cases"].toArray()) {
                 const auto row = caseValue.toObject(); const auto label = name + "/" + row["case"].toString();
@@ -644,33 +716,42 @@ private slots:
                 for (const auto& entry : row["actions"].toArray()) {
                     const auto action = entry.toObject()["action"].toString();
                     skip |= action.startsWith("post:") || action.startsWith("sweep:") || action.startsWith("tap");
+                    if (const auto q = point(action)) skip |= unreported(*q);
                 }
                 if (skip) {   // what it leaves behind is not modelled: start the next case afresh, the pointer outside
-                    hover = MapHover{}; stored.reset(); at = QPoint(-80, 112); held = false;
+                    hover = MapHover{}; stored.reset(); at = QPoint(-80, 112); held = false; menu.reset();
                     continue;
                 }
                 moveTo(QPoint(-80, 112)); flush(1'000'000'000); logged.clear();   // not kept by the probe
                 for (const auto& entry : row["actions"].toArray()) {
                     const auto action = entry.toObject()["action"].toString();
-                    if (action.contains(',')) {
-                        const auto xy = action.split(',');
-                        moveTo(QPoint(xy[0].toInt(), xy[1].toInt()));
+                    if (const auto q = point(action)) {
+                        moveTo(*q);
                     } else if (action == "down" || action == "rdown") {
-                        held = true; dragged = false; pressed = pick(at);
-                        pressed.click.button = action == "down" ? "left" : "right";
-                    } else if (action == "up" || action == "rup") {
-                        held = false;
-                        hover.released();
-                        auto drop = inside(at) ? pick(at) : MapPointer{};
-                        if (inside(at) && (dragged || !sameMapTarget(drop, pressed)) &&
-                            drop.click.over.kind != proto::enc::RefNull && !same(drop)) {
-                            drop.click.button = pressed.click.button;
-                            enter(drop, QString::fromStdString(proto::enc::clickParams(drop.click)));
+                        if (menu && action == "down" && onMenu(at)) {
+                            menuPick = true;   // an entry of the menu
+                        } else {
+                            if (menu) menuClosed(action == "rdown", action == "down");
+                            press(action == "down" ? "left" : "right");
                         }
+                    } else if (action == "up" || action == "rup") {
+                        if (menuPick) {
+                            menuPick = false;
+                            menuClosed(false, false);
+                        } else {
+                            release(action == "up" ? "left" : "right");
+                        }
+                    } else if (action == "key:esc") {
+                        if (menu) menuClosed(false, false);
+                    } else if (action.startsWith("kdown:") || action.startsWith("kup:")) {
+                        const auto key = action.section(':', 1);
+                        (key == "ctrl" ? mods.ctrl : key == "shift" ? mods.shift : mods.alt) = action.startsWith("kdown:");
                     } else if (action.startsWith("wait:")) {
                         now += int64_t(action.mid(5).toDouble() * 1e9);
+                    } else {
+                        QVERIFY2(action.startsWith("shot:"), qPrintable(label + ": not modelled: " + action));
                     }
-                    flush(350'000'000);
+                    flush(action.startsWith("shot:") ? 50'000'000 : 350'000'000);
                     QStringList stock;
                     for (const auto& line : entry.toObject()["logged"].toArray()) {
                         const auto words = line.toString().split(' ');
@@ -682,8 +763,8 @@ private slots:
                 }
             }
         }
-        QCOMPARE(runs, (QSet<QString>{"base", "base2", "lag10", "center", "cmove", "cboth"}));
-        QVERIFY2(actions == 216 && reports == 144 && lines == 162,
+        QCOMPARE(runs, (QSet<QString>{"base", "base2", "lag10", "center", "cmove", "cboth", "extra", "extramenu", "xboth"}));
+        QVERIFY2(actions == 496 && reports == 283 && lines == 329,
                  qPrintable(QString("%1 actions, %2 reports, %3 procs").arg(actions).arg(reports).arg(lines)));
     }
     // tests/data/hover-world pace runs (stock 516.1689, tick_lag 0.25, 0.5 and 10 ds): 20 one-pixel steps over one atom
