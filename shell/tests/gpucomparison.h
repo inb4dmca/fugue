@@ -73,10 +73,10 @@ struct GpuComparison {
         return target->create() && reference.initialize(rhi.get(),descriptor.get(),1) && bounded.initialize(rhi.get(),descriptor.get(),1);
     }
     QImage render(SpriteRenderer& renderer, const MapSprites& scene, QRect source, QColor clear = Qt::transparent,
-                  std::optional<QRect> worldClip = {}) {
+                  std::optional<QRect> worldClip = {}, QRect worldView = {}) {
         QRhiCommandBuffer* cb=nullptr;
         if (rhi->beginOffscreenFrame(&cb)!=QRhi::FrameOpSuccess) return {};
-        auto* updates=rhi->nextResourceUpdateBatch();uploaded=renderer.prepare(updates,scene,source,worldClip);
+        auto* updates=rhi->nextResourceUpdateBatch();uploaded=renderer.prepare(updates,scene,source,worldClip,worldView);
         renderer.renderOffscreen(cb,updates);
         cb->beginPass(target.get(),clear,{1,0});
         renderer.draw(cb,QRhiViewport(0,0,float(texture->pixelSize().width()),float(texture->pixelSize().height())));cb->endPass();

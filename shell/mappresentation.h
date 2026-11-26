@@ -51,8 +51,9 @@ inline MapPresentation mapPresentation(QSizeF widget, QSize scene, int tile,
 // that part right (down) by what is cut off. So the world past the view shows only where that part reaches, and the
 // control's left (top) edge has a black strip as wide as the cut, on an axis without added tiles too. A map that is
 // not enlarged is drawn whole, centred and cut by the control, with no strip. (master-screen-loc-world "|wide"
-// phases in controls of 192, 224, 240 and 288 pixels with 32 pixel tiles.) No result is no clip. Measured without
-// scaling (the map's icon-size equal to the tile) only.
+// phases in controls of 192, 224, 240 and 288 pixels with 32 pixel tiles.) No result is no clip. In a scaled map the
+// rule holds in scene pixels (icon-size 48 in a control of 336 pixels: the 224 pixel case magnified 1.5 times). A turned
+// world sprite is cut by it too.
 inline std::optional<QRect> mapWorldClip(const MapPresentation& p, QSizeF widget, QSize scene, QMargins hud, int tile) {
     if (hud.isNull() || p.destination.isEmpty() || !(p.scale > 0) || scene.isEmpty() || tile <= 0) return {};
     const auto axis = [&](double offset, double control, int size, int nearTiles, int farTiles, int& from, int& to) {
@@ -68,5 +69,11 @@ inline std::optional<QRect> mapWorldClip(const MapPresentation& p, QSizeF widget
     axis(p.destination.y(), widget.height(), scene.height(), hud.top(), hud.bottom(), y0, y1);
     if (x0 <= 0 && y0 <= 0 && x1 >= scene.width() && y1 >= scene.height()) return {}; // all of the scene
     return QRect(x0, y0, std::max(0, x1 - x0), std::max(0, y1 - y0));
+}
+// The view in the scene, in the scene's own pixels: the scene less the tiles screen objects outside the view added.
+// Stock 516.1689 draws a world atom coloured by a colour matrix as a view-sized picture of it stretched from this
+// rectangle onto mapWorldClip's (master-screen-loc-world "|wide-fx" phases).
+inline QRect mapWorldView(QSize scene, QMargins hud, int tile) {
+    return QRect(QPoint(), scene) - hud * tile;
 }
 }

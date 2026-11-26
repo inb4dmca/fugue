@@ -121,6 +121,15 @@ bool renderMaskedOut(const CompositionPlan& plan, const MapSprite& s, QPoint pla
     }
     return false;
 }
+// In a map enlarged by screen objects outside the view, stock 516.1689 takes the pointer to the world only in the view:
+// a world atom in the added tiles is neither clicked nor listed in the right-click menu, drawn there or not, while one in
+// the view is, also where the black strip at the control's left or top hides it, and a colour-matrix atom is taken on
+// its own tile, not where it is drawn stretched. Screen objects are taken anywhere (master-screen-loc-world clicks.json).
+bool outsideWorldView(const MapSprite& s, const MapPointer& pointer) {
+    const bool world = s.kind == MapSprite::Turf || s.kind == MapSprite::Entity || s.kind == MapSprite::Image ||
+                       s.kind == MapSprite::Vis;
+    return world && !pointer.worldView.isNull() && !pointer.worldView.contains(pointer.scenePixel);
+}
 bool mouseCandidate(const MapSprite& s, QPoint pixel, const std::set<int>& hidden) {
     return s.kind != MapSprite::Blackness && s.kind != MapSprite::Master &&
         (!s.mouseTransparent || s.maptext) && s.mouseOpacity > 0 && s.mouseOpacity <= 2 && !hidden.count(s.plane) &&
@@ -433,7 +442,8 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
                 hit = *relay;
             }
         } else {
-            if ((transforms.count(it->plane) && (!source.contains(pixel) || (!planeInputPart(*it) && !turnedPlanePart(*it)))) ||
+            if (outsideWorldView(*it, pointer) ||
+                (transforms.count(it->plane) && (!source.contains(pixel) || (!planeInputPart(*it) && !turnedPlanePart(*it)))) ||
                 !binding.localVisible || !mouseCandidate(*it, pixel, hiddenHere) ||
                 (it->affine && !it->image.isNull() &&
                  !turnedIconPixel(*it, scenePixel, pixel, source, transforms))) return;
@@ -480,6 +490,9 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
     out.boundedFilterInput = defaultMap;
     out.visibility=g.visibility;
     out.renderedScene=sprites; out.renderedSource=source; out.composition=std::move(composition);
+    if (!g.hud.isNull()) out.worldView = worldSource;
+    const bool inView = out.worldView.isNull() ||
+        out.worldView.contains(QPoint(int(std::floor(source.x() + x)), int(std::floor(source.y() + y))));
     auto& c = out.click;
     c.control = control.toStdString();
     c.screenTileSize = g.tile;
@@ -490,7 +503,7 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
     c.screenPY = g.tile - (int(std::floor(y)) - row * g.tile);
     c.over = c.loc = proto::enc::nullRef();
     bool hiddenBackground=false, picked=false;
-    if (x >= 0 && y >= 0 && x < view.width() * g.tile && y < view.height() * g.tile &&
+    if (x >= 0 && y >= 0 && x < view.width() * g.tile && y < view.height() * g.tile && inView &&
         wx >= 0 && wy >= 0 && wx < g.world.width() && wy < g.world.height()) {
         // A worker visibility frame accompanies the unified scene, including
         // admitted turf parts. Lighting/LOS admission is not evidence of a hit:
@@ -538,7 +551,8 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
                 continue;
             }
             // Stock blackness is presentation-only: covered admitted atoms still hit.
-            if (!binding.localVisible || !mouseCandidate(*it, samplePixel, hidden) || it->footprint || it->image.isNull() ||
+            if (outsideWorldView(*it, out) ||
+                !binding.localVisible || !mouseCandidate(*it, samplePixel, hidden) || it->footprint || it->image.isNull() ||
                 plan.maskedOut(*it, partPixel, samplePixel) || renderMaskedOut(plan, *it, samplePixel) ||
                 ((!it->inkInteractive || it->maptext) && it->mouseOpacity < 2) ||
                 // Images extending a parent's opacity-2 rectangle are unsupported.

@@ -474,6 +474,87 @@ private slots:
         QVERIFY2(over == (QSet<QString>{"floor", "part", "holder", "child", "master", "leaner"}), qPrintable(QStringList(over.values()).join(", ")));
         QVERIFY2(clicks >= 60 && menus >= 30, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
     }
+    // tests/data/master-screen-loc-world (stock 516.1689, README "Clicks in the larger map"): a screen object outside the
+    // 7x7 view enlarges the map, in controls of 192, 224 and 288 pixels. Stock takes the pointer to the world only in
+    // the view: in the black strip at the control's left or top the world hidden there is clicked and listed as if it
+    // were shown, and in the added tiles nothing of the world is, drawn or not; screen objects are clicked anywhere. A
+    // colour-matrix atom is clicked on its own tile, not where stock draws it stretched. replay/<case>.txt is what
+    // DreamDaemon sent; clicks.json what stock named for left clicks and listed in right-click menus.
+    void largerMapClicksLikeStock() {
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/master-screen-loc-world/clicks.json";
+        QJsonDocument document; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
+        QSet<QString> remaining{"8,1_obj_wide", "1,9_obj_wide", "0,4_obj_wide", "8,1_obj_wide_288x288", "8,1_obj_wide_192x192"};
+        int clicks = 0, none = 0, menus = 0;
+        for (const auto& value : document.object()["cases"].toArray()) {
+            const auto row = value.toObject(); const auto name = row["case"].toString();
+            QVERIFY2(remaining.remove(name), qPrintable(path + ": unknown or duplicate case " + name));
+            test::ReplayFixture f;
+            QVERIFY2(f.load(name + ".txt", "master-screen-loc-world/replay"), qPrintable(name + ": " + f.error));
+            // The frame after the one that learns of the screen object holds the larger map.
+            const auto reader = [&](uint32_t id, QByteArray& out) { return f.read(id, out); };
+            const QMargins hud = f.entities.hudMargins();
+            QVERIFY2(!hud.isNull(), qPrintable(name));
+            f.frame = f.terrain.prepare(f.session.world(), reader, 0, false, hud);
+            f.sprites = f.entities.prepare(f.session.world(), f.frame, reader, 0, nullptr, true);
+            const int tile = f.frame.geometry.tile;
+            const auto size = name.section('_', 3, 3);
+            const int side = size.isEmpty() ? 224 : size.section('x', 0, 0).toInt();
+            MapPresentationSettings normal; normal.iconSize = tile;   // the skin's icon-size = 32: the map is not scaled
+            const auto placement = mapPresentation(QSizeF(side, side), f.frame.source.size(), tile, normal);
+            QCOMPARE(placement.scale, 1.0);
+            auto pick = [&](const QJsonValue& at, QString& context) -> std::optional<MapPointer> {
+                context = QString("%1 at %2,%3").arg(name).arg(at[0].toInt()).arg(at[1].toInt());
+                if (!testinput::isIntegerTuple(at, 2, 0, side - 1)) return {};
+                return mapPointerAtPresentation(QPointF(at[0].toInt(), at[1].toInt()), placement.destination,
+                                                f.frame.source.size() / tile, f.frame.source, f.frame.geometry, "map", true,
+                                                f.sprites);
+            };
+            // A menu entry is known by its verb: poke_<kind>, the icon state of a plain object, else the atom's name.
+            auto kind = [&](const MapPointer& p) {
+                const auto& ref = p.click.over; const auto& loc = p.click.loc;
+                const auto target = model::targetFromHit(f.session.world(), ref.kind, ref.ref, int(loc.x) + 1, int(loc.y) + 1, p.screen);
+                const auto ap = f.session.world().appearances.find(target.appid);
+                const auto named = QString::fromStdString(f.targetName(p));
+                return named == "obj" && ap != f.session.world().appearances.end() ?
+                    QString::fromStdString(ap->second.fields.iconState) : named;
+            };
+            for (const auto& entry : row["clicks"].toArray()) {
+                const auto click = entry.toObject(); QString context;
+                const auto hit = pick(click["at"], context);
+                QVERIFY2(hit, qPrintable(context));
+                if (click["over"].isNull()) {
+                    QVERIFY2(hit->click.over.kind == proto::enc::RefNull,
+                             qPrintable(context + ": stock clicked nothing, got " + QString::fromStdString(f.targetName(*hit))));
+                    ++none; continue;
+                }
+                const auto named = QString::fromStdString(f.targetName(*hit));
+                const QPoint place = hit->screen ? QPoint() : QPoint(int(hit->click.loc.x) + 1, int(hit->click.loc.y) + 1);
+                const auto expected = click["place"].toArray();
+                QVERIFY2(named == click["over"].toString() && hit->click.iconX == click["iconX"].toInt() &&
+                         hit->click.iconY == click["iconY"].toInt() && place == QPoint(expected[0].toInt(), expected[1].toInt()),
+                         qPrintable(QString("%1: stock %2 x=%3 y=%4 at %5,%6, got %7 x=%8 y=%9 at %10,%11").arg(context,
+                                    click["over"].toString()).arg(click["iconX"].toInt()).arg(click["iconY"].toInt())
+                                    .arg(expected[0].toInt()).arg(expected[1].toInt()).arg(named).arg(hit->click.iconX)
+                                    .arg(hit->click.iconY).arg(place.x()).arg(place.y())));
+                ++clicks;
+            }
+            for (const auto& entry : row["menus"].toArray()) {
+                const auto menu = entry.toObject(); QString context;
+                const auto hit = pick(menu["at"], context);
+                QVERIFY2(hit, qPrintable(context));
+                QStringList stock, listed;
+                for (const auto& atom : menu["entries"].toArray()) stock.push_back(atom.toString());
+                for (const auto& candidate : mapPointerStack(*hit)) listed.push_back(kind(candidate));
+                QVERIFY2(listed == stock, qPrintable(QString("%1: stock menu [%2], got [%3]").arg(context, stock.join(", "),
+                                                                                              listed.join(", "))));
+                ++menus;
+            }
+        }
+        QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + QStringList(remaining.values()).join(", ")));
+        QVERIFY2(clicks >= 15 && none >= 5 && menus >= 10, qPrintable(QString("%1 clicks, %2 on nothing, %3 menus")
+                                                                       .arg(clicks).arg(none).arg(menus)));
+    }
     // tests/data/plane-relay-world (stock 516.1689): plane 1's master has the render target "*p1" and a screen object
     // draws it through render_source, standing elsewhere (numbers, edges, percents, a range), with pixel offsets or a
     // matrix of its own, without PASS_MOUSE, or over a master with a matrix (see its README). replay/<case>.txt is what DreamDaemon sent for the case; clicks.json what

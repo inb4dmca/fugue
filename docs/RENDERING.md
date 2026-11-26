@@ -96,9 +96,12 @@ publication and picking. Browser-embedded runtime MAPs support lifecycle and
 positive numeric views. Remote-turf/camera/cross-z scenes and general automatic
 view expansion are not supported. A screen object outside the view enlarges the
 map; the world is drawn in it only where stock's clip reaches (`mapWorldClip`:
-the view's shown part, moved by what the control cuts off), which can add a black
-strip at the control's left and top. Colour-matrix atoms are not yet stretched as
-stock draws them there.
+the view's shown part, moved by what the control cuts off, in scene pixels also
+when the map is scaled), which can add a black strip at the control's left and
+top. Turned world sprites are cut by it too, and an atom coloured by a colour
+matrix is drawn stretched from the view (`mapWorldView`) onto it, as stock does.
+The world takes the pointer only in the view, also under the strip; screen
+objects anywhere.
 
 `client.images` and `vis_contents` support selected world/HUD attachment forms,
 sharing and nesting. Mob vis holders, general vis flags, grouped/transformed

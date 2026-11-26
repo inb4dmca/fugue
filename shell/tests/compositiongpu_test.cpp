@@ -287,9 +287,11 @@ private slots:
     // tests/data/master-screen-loc-world/replay: a screen object outside a 7x7 view (8,1, 0,4, 9,1 or 1,9) enlarges the
     // map on a level whose turfs and objects lie past the view, in a control of 224 pixels or the size the set's name
     // ends with. Replayed through the real scene assembly (with the margins the scene asks for) from what DreamDaemon
-    // 516.1689 sent, drawn with mapWorldClip and placed in the control as the presentation places it, then compared
-    // with stock's grab of the control: no channel of any pixel more than 8 levels from stock's. Not compared: the two
-    // atoms coloured by a colour matrix, which stock draws scaled into the clip and not on their own tile (README).
+    // 516.1689 sent, drawn with mapWorldClip and mapWorldView and placed in the control as the presentation places it,
+    // then compared with stock's grab of the whole control: no channel of any pixel more than 8 levels from stock's.
+    // The atoms coloured by a colour matrix are drawn stretched from the view onto the clip, as stock draws them; the
+    // "wide-fx" sets add a channel swap, other kinds of drawing that stay on their tiles, and sprites turned by 45
+    // degrees that the clip cuts (README).
     void masterLocWideReplay_data() {
         QTest::addColumn<QString>("set");
         const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-screen-loc-world/replay");
@@ -300,7 +302,7 @@ private slots:
             const auto line=QString::fromUtf8(raw).trimmed();
             if (!line.isEmpty() && !line.startsWith('#')) sets.push_back(line.section('\t',0,0));
         }
-        QCOMPARE(sets.size(),6);
+        QCOMPARE(sets.size(),9);
         for (const auto& set:sets) QTest::newRow(qPrintable(set)) << set;
     }
     void masterLocWideReplay() {
@@ -329,7 +331,8 @@ private slots:
         QVERIFY(clip);
         GpuComparison gpu;
         QVERIFY2(gpu.initialize(source.size()), "Required GPU backend could not be initialized");
-        const QImage scene = gpu.render(gpu.bounded, fixture.sprites, source, Qt::black, clip);
+        const QImage scene = gpu.render(gpu.bounded, fixture.sprites, source, Qt::black, clip,
+                                        mapWorldView(source.size(), hud, tile));
         QVERIFY(!scene.isNull());
         QImage drawn(control, QImage::Format_RGBA8888); drawn.fill(Qt::black);
         const QPoint at = placement.destination.topLeft().toPoint();
@@ -338,35 +341,21 @@ private slots:
         QImage stock(dir + set + ".png"); stock = stock.convertToFormat(QImage::Format_RGBA8888);
         QVERIFY(stock.width() >= side && stock.height() >= side);
         stock = stock.copy(QRect({}, control));
-        // Left out: each colour-matrix atom's own tile and where stock draws it, its view-sized surface stretched
-        // from the view in the control onto the clip.
-        const QRect view = QRect(QPoint(tile*hud.left(), tile*hud.top()), QPoint(source.width()-1-tile*hud.right(),
-                                 source.height()-1-tile*hud.bottom()));
-        std::vector<QRect> skipped;
-        int coloured = 0;
-        for (const auto& s : fixture.sprites) {
-            if (s.color == identityColor || s.kind == MapSprite::Screen || s.kind == MapSprite::Master) continue;
-            ++coloured;
-            const QRect own = s.rect().translated(-source.topLeft());
-            const auto stretch = [&](int v, int from, int length, int to, int span) { return to + (v - from) * span / length; };
-            const QRect scaled(QPoint(stretch(own.left(), view.left(), view.width(), clip->left(), clip->width()),
-                                      stretch(own.top(), view.top(), view.height(), clip->top(), clip->height())),
-                               QPoint(stretch(own.right()+1, view.left(), view.width(), clip->left(), clip->width()),
-                                      stretch(own.bottom()+1, view.top(), view.height(), clip->top(), clip->height())));
-            skipped.push_back(own.translated(at).adjusted(-1, -1, 1, 1));
-            skipped.push_back(scaled.translated(at).adjusted(-2, -2, 2, 2));
-        }
-        QCOMPARE(coloured, 2);
+        // The atoms coloured by a colour matrix, which stock draws stretched from the view onto the clip, are compared
+        // too: two in every set, and in the "wide-fx" sets a channel swap among the other kinds of drawing.
+        QSet<QPoint> coloured;
+        for (const auto& s : fixture.sprites)
+            if (s.color != identityColor && s.kind != MapSprite::Screen && s.kind != MapSprite::Master) coloured.insert(s.cell);
+        QCOMPARE(coloured.size(), set.contains("wide-fx") ? 3 : 2);
         int off = 0, worst = 0, compared = 0; QPoint first;
         for (int y = 0; y < side; ++y) for (int x = 0; x < side; ++x) {
-            if (std::any_of(skipped.begin(), skipped.end(), [&](const QRect& r) { return r.contains(x, y); })) continue;
             ++compared;
             const QRgb a = drawn.pixel(x, y), b = stock.pixel(x, y);
             const int d = std::max({std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)), std::abs(qBlue(a) - qBlue(b))});
             worst = std::max(worst, d);
             if (d > 8 && !off++) first = {x, y};
         }
-        QVERIFY(compared > side * side * 3 / 4);
+        QCOMPARE(compared, side * side);
         if (!off) return;
         const QString saved = QDir::temp().filePath("fugue-wide-map-" + QString(set).replace(',', '-') + ".png");
         drawn.save(saved);

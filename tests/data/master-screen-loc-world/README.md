@@ -154,17 +154,82 @@ part right (down) by what is cut off. The world is drawn only in that part; scre
   and cut with no strip at all: the rule belongs to the enlarged map only.
 
 A colour-matrix atom is the view-sized picture of it stretched from the view's place onto that part (the magenta turf
-at 169..191 and 43..47 for `8,1` at 192 pixels: 6/7 of a tile both ways), and its own tile stays black.
+at 169..191 and 43..47 for `8,1` at 192 pixels: 6/7 of a tile both ways), and its own tile stays black (more in
+`|wide-fx` below).
 
 Fugue draws the world in the added tiles and only in that part (`mapWorldClip` in `shell/mappresentation.h`, applied by
 `SpriteRenderer` to world sprites; `EntityMapTest::worldInTheLargerMap` has the strip and edge each capture shows,
 and `CompositionGpuTest::masterLocWideReplay` replays six recorded cases, at 192, 224, 240 and 288 pixels, against
-stock's grab of the control). Still different: the colour-matrix atoms stand on their own tiles (the replay leaves
-them out), a turned world sprite is not cut, and a click in the strip or in a black added tile can still reach the
-world there; what stock does with such a click was not measured, nor the rule with a scaled map.
+stock's grab of the control).
+
+### Clicks in the larger map
+
+Every atom logs `Click()` with its name, icon-x/y and place (`at=x,y`; screen objects stand at 0,0), and each kind of
+atom has one verb, `poke_<kind>` (`floor` for turfs, `nst`, `rock` and `img` for the objects named `obj` by their icon
+state, `part`, `master`), so that a menu entry tells its kind; neither changes what is drawn. `clicks.json` holds what
+stock 516.1689 answered (2026-11-26, `stockprobe.py --stock-only --map <control> --params case={} click` with the
+script below; `clicks.py <output> 516.1689 2026-11-26` writes it), for `8,1`, `1,9` and `0,4` at 224 pixels, `8,1` at
+288 and at 192:
+
+- The world takes the pointer only in the view. In the added tiles nothing of the world is clicked or listed, whether
+  stock draws it there (`8,1` at 224: 216,100 over the yellow square at 12,8, 218,150, `1,9` at 100,16) or leaves the
+  tile black (`8,1` at 288: 248,135 and 256,180; `0,4` at 8,112 over the blue object at 4,8). The world logged no
+  `Click()` and no menu opened. A screen object is clicked there (`8,1` at 212,200 and 248,232) and listed by its
+  rectangle (`0,4` at 8,112, where its icon is off the control).
+- In the black strip the world of the view is clicked and listed as if it were drawn: `8,1` at 8,72 is the yellow
+  square at 5,9 hidden there (x=9 y=24) and the menu lists it over the floor; 8,112 is the floor at 5,8; `1,9` at 100,48
+  is 8,11, `0,4` at 24,112 is 5,8 (x=9), `8,1` at 192 pixels 100,8 is 9,11 and 16,100 is 6,8, with the icon
+  coordinates of where the larger map puts them.
+- A colour-matrix atom is clicked on its own tile, where stock leaves it black, and not where it draws it stretched:
+  `8,1` at 150,48 is the magenta turf 10,10, at 185,48 the turf 11,10 under the stretched picture; 148,165 is the
+  orange object at 10,6 (x=5 y=27) and 172,165 the floor under its picture.
+
+Fugue now does all of this (`MapInputTest::largerMapClicksLikeStock` replays each case's `replay/<case>.txt` and asks
+the real hit test and menu stack for every point): world sprites take the pointer only in the view
+(`MapPointer::worldView`), the turf under a pointer outside it is not named, and screen objects are unchanged. Not
+measured: whether stock sends a click on nothing there to `client.Click()` (Fugue sends it as a click on the map's empty
+area, as on the letterbox), hover and drags over the added tiles, and a turned client direction.
+
+```
+8,1_obj_wide 8,72 8,112 17,112 216,100 218,150 212,200 150,48 185,48 148,165 172,165 right:8,72 menu: right:8,112 menu: right:216,100 menu: right:185,48 menu:
+1,9_obj_wide 100,16 100,48 100,66 right:100,16 menu: right:100,48 menu:
+0,4_obj_wide 8,112 24,112 40,112 right:8,112 menu: right:24,112 menu:
+8,1_obj_wide_288x288 248,135 256,180 248,232 right:248,135 menu: right:256,180 menu:      (--map 288x288)
+8,1_obj_wide_192x192 100,8 16,100 100,30 right:100,8 menu: right:16,100 menu:             (--map 192x192)
+```
+
+### What takes the stretched path, turned sprites, a scaled map (`|wide-fx`)
+
+A third field `wide-fx` is `wide` with white squares (`w.dmi`, staged by `prepare.py`) added on level 2, each drawn
+one way (`extras()` in `world.dm`): a plain `color` at 7,6, a colour matrix that swaps red and blue on the red square
+at 6,10, an outline filter at 9,7, KEEP_TOGETHER with an overlay at 7,10, `alpha = 128` at 9,10, BLEND_ADD at 9,6, a
+matrix scaling by 2 at 7,8, and a whole tile turned by 45 degrees at 5,7 (the view's left column) and at 12,6 (the
+column `8,1` adds). A fifth field sets the map's `icon-size` (`8,1|obj|wide|336x336|48`). Grabbed on 2026-11-26 with
+`stockprobe.py --map <size> pair` (96 dpi):
+
+- Only the colour matrices take the stretched path: the swap moves with the magenta turf and the orange object (at
+  224 pixels 46..60 instead of 16..31 across, at 192 pixels 59..72 and 43..56), while the plain colour, alpha, the
+  outline, KEEP_TOGETHER, BLEND_ADD and the scale stay on their tiles. The picture of the view is mapped onto the
+  clip as a whole (at 192 pixels the view's 224 pixels go to 32..224 across and 16..208 down, cut by the control), a
+  pixel is covered when its centre is, and it is drawn in the atom's turn: the swap's picture covers the left of
+  KEEP_TOGETHER's square at 7,10, and at 192 pixels the turfs of the row below cover most of the magenta turf's.
+- A turned world sprite is cut like any other: at 224 pixels the one at 5,7 shows from x=16 only, at 288 pixels the
+  one at 12,6 shows its corner in the view up to x=240 and nothing in the black added column.
+- With icon-size 48 in a control of 336 pixels the picture is the 224 pixel case magnified 1.5 times: the strip is
+  0..23, the swap 69..90, the magenta turf 248..290, the orange object 248..267: the rule holds in scene pixels.
+
+Fugue now draws a world sprite coloured by a colour matrix stretched from the view (`mapWorldView`) onto the clip and
+not on its own tile, and cuts turned world sprites by the clip (`SpriteRenderer`). `replay/` gained `8,1_obj_wide-fx`
+at 224, 192 and 288 pixels (`stockprobe.py --map <size> record`); `CompositionGpuTest::masterLocWideReplay` now
+compares every pixel of all nine controls, colour-matrix atoms included, with no channel more than 8 levels off, and
+`stockprobe.py pair` of `8,1_obj_wide-fx` at 224 and of `8,1_obj_wide-fx_336x336_48` showed no differing pixel. The
+scaled case is checked by `EntityMapTest::worldInTheLargerMap`. Not measured: a turned or filtered atom with a colour
+matrix, a colour matrix on an image, a vis copy or a plane-1 atom, a colour from `client.color`, and maps scaled
+other than by icon-size 48.
 The live client applies the phase's `winset` of the window's and the map's size as stock does
 (`tests/data/winset-size-world`): `stockprobe.py --map 288x288 pair` of `8,1_obj_wide_288x288` gave no differing
-pixel (2026-11-26, 516.1689, 144 dpi), and at 240 and 192 pixels the map differs only in the colour-matrix atoms above.
+pixel (2026-11-26, 516.1689, 144 dpi), and at 240 and 192 pixels the map differed only in the colour-matrix atoms above,
+which Fugue now stretches too.
 ## Reproduction
 
 Requires BYOND and Python/Pillow. Stage icons, then this world:
@@ -188,4 +253,5 @@ described above; it does not count `blurred`) and copies its captures here under
 case={} pair 8,1_obj_wide` grabs stock and Fugue side by side.
 The replay set came from `stockprobe.py --world tests/data/master-screen-loc-world --map 288x288 record
 8,1_obj_wide 0,4_obj_wide 1,9_obj_wide 8,1_obj_wide_288x288 9,1_obj_wide_240x240 8,1_obj_wide_192x192` (the world reads
-`set` as it reads `case`), which writes `replay/` (frames, resources, stock's map at the top left of the window).
+`set` as it reads `case`), which writes `replay/` (frames, resources, stock's map at the top left of the window); the
+`8,1_obj_wide-fx` sets came from the same command with `--map 224x224`, `192x192` and `288x288`.

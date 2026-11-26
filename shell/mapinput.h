@@ -92,6 +92,8 @@ struct MapPointer {
     QSize turfDimensions;
     QPoint scenePixel;
     QRect renderedSource; // viewport pivot/clipping for plane-surface input
+    // The view in the scene: world atoms take the pointer only there, screen objects anywhere. Null: everywhere.
+    QRect worldView;
     bool insideScene = false;
     // Implicitly shared last-rendered evidence for bounded worker stacked menus.
     // Never consult a newer prepared scene when expanding a right-click.
