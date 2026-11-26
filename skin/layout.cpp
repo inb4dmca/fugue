@@ -62,6 +62,7 @@ void designSize(const Block& b, const Rect& box, int& dw, int& dh) {
 struct GeomOverride {
     long long px = 0, py = 0, sw = 0, sh = 0;
     bool hasPos = false, hasSz = false;
+    bool exact = false;  // a DesignGeometry: the extent is used as it is, never read as "fill"
 };
 
 Rect anchorRect(const Elem& e, const GeomOverride& ov, int dw, int dh, const Rect& box) {
@@ -83,8 +84,10 @@ Rect anchorRect(const Elem& e, const GeomOverride& ov, int dw, int dh, const Rec
         sh = ov.sh;
     }
     // `size = 0x0` is BYOND's "fill the rest of the design box".
-    if (sw <= 0) sw = dw - px;
-    if (sh <= 0) sh = dh - py;
+    if (!ov.exact) {
+        if (sw <= 0) sw = dw - px;
+        if (sh <= 0) sh = dh - py;
+    }
     int64_t a1x = 0, a1y = 0, a2x = 0, a2y = 0;
     bool ok1 = e.point("anchor1", a1x, a1y);
     bool ok2 = e.point("anchor2", a2x, a2y);
@@ -156,6 +159,26 @@ Rect runtimeRect(const File& f, const std::string& window, const Rect& box, cons
     return Rect{x1, y1, std::max(x1, x2), std::max(y1, y2)};
 }
 
+DesignGeometry designGeometry(const File& f, const Control& c, long long x, long long y, long long w, long long h) {
+    const Rect& box = c.box;
+    int dw = box.dx(), dh = box.dy();
+    if (const Block* b = f.window(c.window)) designSize(*b, box, dw, dh);
+    int64_t a1x = 0, a1y = 0, a2x = 0, a2y = 0;
+    bool ok1 = c.elem && c.elem->point("anchor1", a1x, a1y);
+    bool ok2 = c.elem && c.elem->point("anchor2", a2x, a2y);
+    // anchorAxis undone: the design coordinate that the anchor formula moves to `actual` in this box.
+    auto design = [](long long actual, int64_t pct, bool ok, int designExtent, int actualExtent) {
+        if (!ok || pct < 0) return actual;
+        return actual - int64_t(actualExtent) * pct / 100 + int64_t(designExtent) * pct / 100;
+    };
+    long long x1 = design(x, a1x, ok1, dw, box.dx()), y1 = design(y, a1y, ok1, dh, box.dy());
+    long long x2 = design(x + w, a2x, ok2, dw, box.dx()), y2 = design(y + h, a2y, ok2, dh, box.dy());
+    if (ok1 && ok2) return {x1, y1, x2 - x1, y2 - y1};
+    if (ok1) return {x1, y1, w, h};           // that corner pins and the extent is kept (anchorRect)
+    if (ok2) return {x2 - w, y2 - h, w, h};
+    return {x, y, w, h};
+}
+
 namespace {
 
 struct Ctx {
@@ -166,6 +189,7 @@ struct Ctx {
     bool infer;  // the empty-slot rule (layout.h layoutSkin inferSlots)
     std::set<std::string> seen;
     std::string top;  // the floating window being laid out ("" = the main window)
+    const GeometryOverrides* geometry = nullptr;
 };
 
 bool contains(const std::vector<std::string>& v, const std::string& s) {
@@ -333,6 +357,16 @@ void layoutWindow(Ctx& c, const Block& b, const Rect& box, const Rect& clip, int
             ov.hasPos = c.props->controlPoint(b.name, e->name, "pos", ov.px, ov.py);
             ov.hasSz = c.props->controlSize(b.name, e->name, "size", ov.sw, ov.sh);
         }
+        if (c.geometry) {
+            auto g = c.geometry->find(lowerAscii(b.name + "." + e->name));
+            if (g != c.geometry->end()) {
+                ov.px = g->second.x;
+                ov.py = g->second.y;
+                ov.sw = g->second.w;
+                ov.sh = g->second.h;
+                ov.hasPos = ov.hasSz = ov.exact = true;
+            }
+        }
         ctl.isDefault = e->boolv("is-default", false);
         ctl.depth = depth;
         ctl.side = side;
@@ -367,12 +401,12 @@ Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>&
 }
 
 Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>& splits, const PropStore* props,
-                bool inferSlots) {
+                bool inferSlots, const GeometryOverrides* geometry) {
     Tree t;
     t.client = client;
     const Block* mw = findMainWindow(f);
     if (!mw) return t;
-    Ctx c{f, t, splits, props, inferSlots, {}, {}};
+    Ctx c{f, t, splits, props, inferSlots, {}, {}, geometry};
     layoutWindow(c, *mw, client, client, 0, "");
     for (const Block& b : f.blocks) {
         if (b.kind != "window" || &b == mw || !isFloatingWindow(f, b) || c.seen.count(b.name)) continue;

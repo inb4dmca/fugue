@@ -5,6 +5,7 @@
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QtTest>
+#include <map>
 #include "tests/testmain.h"
 #include "shell/browserpane.h"
 #include "shell/focusfilter.h"
@@ -126,6 +127,74 @@ private slots:
         window.syncFromLive();
         QCOMPARE(browser->geometry(), QRect(0, 160, 420, 210));
         QVERIFY(window.splitterHandle("main.nested")->isHidden());
+        window.close();
+        win->activateWindow();
+        QVERIFY(QTest::qWaitFor([&] { return win->isActiveWindow(); }));
+    }
+    // Runtime winsets of the main window's size and of its controls' sizes, step by step as
+    // tests/data/winset-size-world/world.dm sends them, against what stock DreamSeeker 516.1689 answered (stock.log there)
+    // and the widgets those answers describe.
+    void runtimeSizeWinsets() {
+        QFile skin(QFINDTESTDATA("../../tests/data/winset-size-world/world.dmf"));
+        QFile log(QFINDTESTDATA("../../tests/data/winset-size-world/stock.log"));
+        QVERIFY(skin.open(QIODevice::ReadOnly) && log.open(QIODevice::ReadOnly));
+        std::map<QString, std::map<QString, QString>> stock;
+        for (const QString& line : QString::fromUtf8(log.readAll()).split('\n', Qt::SkipEmptyParts)) {
+            const QStringList words = line.trimmed().split(' ');
+            for (const QString& word : words.mid(1)) {
+                const auto eq = word.indexOf('=');
+                stock[words[0].chopped(1)][word.left(eq)] = word.mid(eq + 1);
+            }
+        }
+        SkinWindow window;
+        QVERIFY(window.loadSkin(skin.readAll().toStdString()).isEmpty());
+        window.resize(window.designSize());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const struct {
+            const char *label, *control, *params;
+        } steps[] = {{"start", "", ""},
+                     {"win288", "", "main.size=288x288"},
+                     {"map160", "", "map.size=160x160"},
+                     {"win224", "", "main.size=224x224"},
+                     {"win288b", "", "main.size=288x288"},
+                     {"children", "", "fixed.size=64x64;half.size=100x20"},
+                     {"map0x0", "", "map.size=0x0"},
+                     {"map100x0", "", "map.size=100x0"},
+                     {"reset", "", "main.size=224x224;map.size=224x224"},
+                     {"fixture", "", "main.size=288x288;map.size=288x288"},
+                     {"ctlwin", "main", "size=256x256"},
+                     {"ctlmap", "map", "size=128x128"}};
+        auto winget = [&](const char* id, const char* param) {
+            std::string out;
+            return window.live()->winget(id, param, out) ? QString::fromStdString(out) : QString();
+        };
+        auto size = [](const QSize& s) { return QString("%1x%2").arg(s.width()).arg(s.height()); };
+        for (const auto& step : steps) {
+            if (*step.params) window.live()->winset(step.control, step.params);
+            window.syncFromLive();
+            const auto& want = stock.at(step.label);
+            QCOMPARE(winget("main", "size"), want.at("main.size"));
+            QCOMPARE(winget("main", "inner-size"), want.at("main.inner-size"));
+            // the window's client area, the menu bar and status strip not counted
+            QTRY_COMPARE(size(QSize(window.width(), window.height() - window.statusBarHeight() - window.menuBarHeight())),
+                         want.at("main.size"));
+            QString mapSize = want.at("map.size");
+            // A zero height fills to the bottom of the window. Stock's fill also covers its 25-pixel status strip
+            // (288x313); this client's stops at the client area, above its own strip.
+            if (QString(step.label).startsWith("map") && QString(step.label).endsWith("x0"))
+                mapSize = mapSize.section('x', 0, 0) + "x" + want.at("main.size").section('x', 1);
+            for (const char* id : {"map", "fixed", "half"}) {
+                const QString key = id;
+                QCOMPARE(winget(id, "size"), key == "map" ? mapSize : want.at(key + ".size"));
+                QCOMPARE(winget(id, "pos"), want.at(key + ".pos"));
+                auto* widget = window.findChild<QWidget*>("main." + key);
+                QVERIFY(widget);
+                QCOMPARE(size(widget->size()), key == "map" ? mapSize : want.at(key + ".size"));
+                QCOMPARE(QString("%1,%2").arg(widget->x()).arg(widget->y() - window.menuBarHeight()),
+                         want.at(key + ".pos"));
+            }
+        }
         window.close();
         win->activateWindow();
         QVERIFY(QTest::qWaitFor([&] { return win->isActiveWindow(); }));

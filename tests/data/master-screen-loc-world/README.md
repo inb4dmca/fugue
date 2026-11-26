@@ -162,6 +162,9 @@ and `CompositionGpuTest::masterLocWideReplay` replays six recorded cases, at 192
 stock's grab of the control). Still different: the colour-matrix atoms stand on their own tiles (the replay leaves
 them out), a turned world sprite is not cut, and a click in the strip or in a black added tile can still reach the
 world there; what stock does with such a click was not measured, nor the rule with a scaled map.
+The live client applies the phase's `winset` of the window's and the map's size as stock does
+(`tests/data/winset-size-world`): `stockprobe.py --map 288x288 pair` of `8,1_obj_wide_288x288` gave no differing
+pixel (2026-11-26, 516.1689, 144 dpi), and at 240 and 192 pixels the map differs only in the colour-matrix atoms above.
 ## Reproduction
 
 Requires BYOND and Python/Pillow. Stage icons, then this world:

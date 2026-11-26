@@ -978,6 +978,21 @@ void SkinWindow::syncFromLive() {
         live_->setClient(width(), std::max(0, height() - chromeHeight()));
         s = live_->snapshot();
     }
+    // A winset of the main window's size names its client area; the menu bar and the status strip come on top, as they
+    // do in stock DreamSeeker 516 (a 224x224 window's frame grows by 64 both ways for main.size=288x288). The live
+    // layout has the new size already. A maximized or full-screen window keeps its size, and its real client area goes
+    // back to the layout.
+    if (s.windowSizeSeq != lastWindowSizeSeq_) {
+        lastWindowSizeSeq_ = s.windowSizeSeq;
+        if (isWindow() && s.windowWidth > 0 && s.windowHeight > 0) {
+            if (isMaximized() || isFullScreen()) {
+                live_->setClient(width(), std::max(0, height() - chromeHeight()));
+                s = live_->snapshot();
+            } else {
+                resize(s.windowWidth, s.windowHeight + chromeHeight());
+            }
+        }
+    }
     if (s.generation != lastGen_ || s.fileId != snap_.fileId) {
         apply(s);
         lastGen_ = s.generation;

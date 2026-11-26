@@ -199,6 +199,7 @@ private:
     std::shared_ptr<skin::LiveSkin> live_;
     skin::SkinSnapshot snap_;
     uint64_t builtFileId_ = 0, lastGen_ = ~0ull, lastFocusSeq_ = 0;
+    uint64_t lastWindowSizeSeq_ = 0;  // the last main-window size winset given to this window (SkinSnapshot)
     std::string lastMacro_;
     uint64_t lastMacroGen_ = 0;
     std::map<std::string, QWidget*> widgets_;  // "window.name" -> widget (created lazily)

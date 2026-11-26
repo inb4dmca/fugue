@@ -1,0 +1,12 @@
+start: main.size=224x224 main.pos=1168,652 map.size=224x224 map.pos=0,0 fixed.size=32x32 fixed.pos=0,0 half.size=64x32 half.pos=0,192 main.inner-size=224x224 main.outer-size=246x305 map.view-size=224x224
+win288: main.size=288x288 main.pos=1168,652 map.size=288x288 map.pos=0,0 fixed.size=32x32 fixed.pos=0,0 half.size=128x32 half.pos=0,256 main.inner-size=288x288 main.outer-size=310x369 map.view-size=224x224
+map160: main.size=288x288 main.pos=1168,652 map.size=160x160 map.pos=0,0 fixed.size=32x32 fixed.pos=0,0 half.size=128x32 half.pos=0,256 main.inner-size=288x288 main.outer-size=310x369 map.view-size=224x224
+win224: main.size=224x224 main.pos=1168,652 map.size=96x96 map.pos=0,0 fixed.size=32x32 fixed.pos=0,0 half.size=64x32 half.pos=0,192 main.inner-size=224x224 main.outer-size=246x305 map.view-size=224x224
+win288b: main.size=288x288 main.pos=1168,652 map.size=160x160 map.pos=0,0 fixed.size=32x32 fixed.pos=0,0 half.size=128x32 half.pos=0,256 main.inner-size=288x288 main.outer-size=310x369 map.view-size=224x224
+children: main.size=288x288 main.pos=1168,652 map.size=160x160 map.pos=0,0 fixed.size=64x64 fixed.pos=0,0 half.size=100x20 half.pos=0,256 main.inner-size=288x288 main.outer-size=310x369 map.view-size=224x224
+map0x0: main.size=288x288 main.pos=1168,652 map.size=288x313 map.pos=0,0 fixed.size=64x64 fixed.pos=0,0 half.size=100x20 half.pos=0,256 main.inner-size=288x288 main.outer-size=310x369 map.view-size=224x224
+map100x0: main.size=288x288 main.pos=1168,652 map.size=100x313 map.pos=0,0 fixed.size=64x64 fixed.pos=0,0 half.size=100x20 half.pos=0,256 main.inner-size=288x288 main.outer-size=310x369 map.view-size=224x224
+reset: main.size=224x224 main.pos=1168,652 map.size=224x224 map.pos=0,0 fixed.size=64x64 fixed.pos=0,0 half.size=36x20 half.pos=0,192 main.inner-size=224x224 main.outer-size=246x305 map.view-size=224x224
+fixture: main.size=288x288 main.pos=1168,652 map.size=288x288 map.pos=0,0 fixed.size=64x64 fixed.pos=0,0 half.size=100x20 half.pos=0,256 main.inner-size=288x288 main.outer-size=310x369 map.view-size=224x224
+ctlwin: main.size=256x256 main.pos=1168,652 map.size=256x256 map.pos=0,0 fixed.size=64x64 fixed.pos=0,0 half.size=68x20 half.pos=0,224 main.inner-size=256x256 main.outer-size=278x337 map.view-size=224x224
+ctlmap: main.size=256x256 main.pos=1168,652 map.size=128x128 map.pos=0,0 fixed.size=64x64 fixed.pos=0,0 half.size=68x20 half.pos=0,224 main.inner-size=256x256 main.outer-size=278x337 map.view-size=224x224

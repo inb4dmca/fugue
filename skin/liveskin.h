@@ -21,7 +21,9 @@
 //
 // Stock behaviour also modelled: the null-control globals, "<X>.*" wildcards, `id` everywhere, `pos` (pane-local for a
 // pane, the file pos for a hidden window or an unplaced control), every window's `dpi`, an unplaced control's file
-// `size`, window places, runtime-created controls and macros, and the GUI's focus. A side no window is stated for stays empty
+// `size`, a winset of the main window's `size` (its client area) and of a placed control's `pos` / `size` (where it is
+// now, its anchors moving it from there: skin/layout.h designGeometry), window places, runtime-created controls and
+// macros, and the GUI's focus. A side no window is stated for stays empty
 // until the GUI shows a pane whose on-show claims it (setPaneShown, skin/layout.h inferSlots).
 #pragma once
 #include <cstdint>
@@ -65,6 +67,10 @@ struct SkinSnapshot {
         std::string name, parent, type;
     };
     std::vector<RuntimeControl> runtime;
+    // A winset of the main window's `size` (mainwindow.size=WxH): the client area it asked for, which the GUI gives its
+    // window. `client` already has it; windowSizeSeq bumps on every such winset, even to the size the window has.
+    int windowWidth = 0, windowHeight = 0;
+    uint64_t windowSizeSeq = 0;
 };
 
 struct WinsetResult {
@@ -290,6 +296,10 @@ private:
     bool clientSet_ = false;
     Tree tree_;
     PropStore props_;
+    GeometryOverrides geometry_;  // placed controls' pos / size winsets (skin/layout.h designGeometry)
+    int windowWidth_ = 0, windowHeight_ = 0;  // the main window's size winset (SkinSnapshot::windowSizeSeq)
+    uint64_t windowSizeSeq_ = 0;
+    bool applyGeometryLocked(const WinsetPair& p);
     std::map<std::string, double> splits_;
     std::map<std::string, float> splitPct_;  // "window.elem" -> the splitter value as winset/a drag stored it (winget)
     MacroTable macros_;

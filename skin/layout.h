@@ -18,6 +18,7 @@
 // Live property overlays: the layoutSkin() overload taking a PropStore (skin/props.h) lets a winset override, per
 //   control, is-visible / is-disabled / pos / size (applied in the window's design coordinates so the anchors still
 //   compose), and a CHILD's left / right. An empty side leaves the other pane the whole box, with no splitter.
+//   LiveSkin turns a placed control's pos / size winset into a GeometryOverrides entry first (designGeometry).
 //   The overload without a PropStore lays out the file's own state, including optional slot inference.
 #pragma once
 #include <map>
@@ -102,14 +103,31 @@ struct Tree {
 // window, else nullptr.
 const Block* findMainWindow(const File& f);
 
+// A control's place and extent as a runtime winset of its `pos` or `size` left it, in its window's design coordinates:
+// the rect that, put through the anchor formula in the box the control had when the winset arrived, gives the rect the
+// winset asked for. Unlike a .dmf `size`, a zero or negative extent here is that extent, not "fill".
+struct DesignGeometry {
+    long long x = 0, y = 0, w = 0, h = 0;
+};
+// Keyed by the lower-case "window.elem".
+using GeometryOverrides = std::map<std::string, DesignGeometry>;
+
+// Stock DreamSeeker 516 reads a winset `size` (and, unmeasured, `pos`) of a placed control as where it is to be NOW,
+// in the box it is laid out in now, and its anchors move it from there when that box changes size later (516.1689,
+// tests/data/winset-size-world: a 0,0 -> 100,100 map set to 160x160 in a 288x288 window is 96x96 once the window is
+// 224x224 again). x, y are the box-relative corner and w, h the extent asked for (LiveSkin has already read a zero
+// `size` as "to the box's far edge"). Returns the design-coordinate rect that lays `c` out there (DesignGeometry).
+DesignGeometry designGeometry(const File& f, const Control& c, long long x, long long y, long long w, long long h);
+
 // splits: "window.elem" -> fraction (before clamping), the live splitter-drag overrides.
 Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>& splits = {});
 // Same, against a live property overlay (nullptr = the file's own state). inferSlots=false turns the empty-slot rule
 // OFF: a side no window is stated or set for stays empty and the other side takes the whole box (the clearing form).
 // That is what stock DreamSeeker does until it shows a pane whose on-show claims the side. LiveSkin lays out with
-// inferSlots=false and runs a pane's on-show when the GUI shows it (liveskin.h setPaneShown).
+// inferSlots=false and runs a pane's on-show when the GUI shows it (liveskin.h setPaneShown). `geometry`, when given,
+// places the controls it names and beats their `pos` / `size` props.
 Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>& splits, const PropStore* props,
-                bool inferSlots = true);
+                bool inferSlots = true, const GeometryOverrides* geometry = nullptr);
 
 // Where a control a winset created at runtime (`parent=<window>`) sits, in the coordinates `box` is in: `box` is the box
 // window `window` was laid out in, and pos / size / anchor1 / anchor2 are the control's winset values ("" = unset), in

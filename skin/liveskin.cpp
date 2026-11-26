@@ -255,9 +255,11 @@ bool LiveSkin::hasConsumerLocked(Kind kind, const WinsetPair& p) const {
         // A skin window's `pos` is consumed by winget only. The main window's is its real screen place, which the GUI
         // publishes, so a winset of it is not stored.
         if (k == "pos" && kind == Kind::Window) return file_ && windowLocked(p.target) != findMainWindow(*file_);
-        // A floating window (layout.h Tree::floats) is shown, hidden and sized by shell/skinwindow.
+        // A floating window (layout.h Tree::floats) is shown, hidden and sized by shell/skinwindow. The main window's
+        // `size` is its client area (applyPropLocked), which shell/skinwindow gives its window.
         if (kind == Kind::Window && file_)
-            if (const Block* w = windowLocked(p.target)) return isFloatingWindow(*file_, *w);
+            if (const Block* w = windowLocked(p.target))
+                return isFloatingWindow(*file_, *w) || (k == "size" && w == findMainWindow(*file_));
         return false;
     }
     // Runtime controls are queryable; supported BROWSERs also consume these in layout.
@@ -339,6 +341,21 @@ void LiveSkin::uncheckSiblingsLocked(const std::string& target) {
 bool LiveSkin::applyPropLocked(const WinsetPair& p) {
     Kind kind = resolveLocked(p.target);
     if (!hasConsumerLocked(kind, p)) return false;
+    // Stock DreamSeeker 516 sizes the main window's client area, the strip below it not counted: winget then answers
+    // the new size for `size` and `inner-size`, and the controls follow their anchors as for a drag of the frame
+    // (516.1689, tests/data/winset-size-world: main.size=288x288 makes a 224x224 window 288x288 and its 0,0 -> 100,100
+    // map 288x288). It is not stored as a prop, so a later resize by the player still answers.
+    if (p.key == "size" && kind == Kind::Window && file_ && windowLocked(p.target) == findMainWindow(*file_)) {
+        long long w = 0, h = 0;
+        if (!parsePair(p.value, "x,", w, h) || w <= 0 || h <= 0 || w > 65535 || h > 65535) return false;
+        client_ = Rect{0, 0, int(w), int(h)};
+        clientSet_ = true;
+        windowWidth_ = int(w);
+        windowHeight_ = int(h);
+        windowSizeSeq_++;
+        return true;
+    }
+    if ((p.key == "pos" || p.key == "size") && kind == Kind::Control) applyGeometryLocked(p);
     std::string target = p.target;
     bool mapKey = p.key == "icon-size" || p.key == "zoom" || p.key == "zoom-mode" || p.key == "letterbox";
     bool inputText = p.key == "text" && kind == Kind::Control && controlTypeLocked(p.target) == "INPUT";
@@ -377,6 +394,29 @@ bool LiveSkin::applyPropLocked(const WinsetPair& p) {
     return true;
 }
 
+// A placed .dmf control's pos / size, as stock DreamSeeker 516 reads a size: where the control is to be now, in the box
+// it is laid out in now, its anchors moving it from there later (skin/layout.h designGeometry). A pos is read the same
+// way, which was not measured. A zero extent fills to that
+// box's far edge (516.1689: map.size=0x0 in a 288x288 window answered 288 wide; stock's fill also covers the 25-pixel
+// status strip below the client area, 288x313, which this client's layout box does not include). A control the layout
+// does not place, a runtime one, or a value that does not parse keeps the stored prop's older reading.
+bool LiveSkin::applyGeometryLocked(const WinsetPair& p) {
+    const Control* c = tree_.byName(p.target);
+    if (!c || !c->elem || c->runtimeIdentity || !file_) return false;
+    long long a = 0, b = 0;
+    if (!parsePair(p.value, p.key == "pos" ? "," : "x,", a, b)) return false;
+    long long x = c->full.x0 - c->box.x0, y = c->full.y0 - c->box.y0, w = c->full.dx(), h = c->full.dy();
+    if (p.key == "pos") {
+        x = a;
+        y = b;
+    } else {
+        w = a > 0 ? a : std::max<long long>(0, c->box.dx() - x);
+        h = b > 0 ? b : std::max<long long>(0, c->box.dy() - y);
+    }
+    geometry_[lowerAscii(c->window + "." + c->name)] = designGeometry(*file_, *c, x, y, w, h);
+    return true;
+}
+
 // Only an INPUT or a MAP can hold focus here, placed or not.
 bool LiveSkin::setFocusLocked(const std::string& target, bool on) {
     const Control* c = tree_.byName(target);
@@ -407,7 +447,8 @@ void LiveSkin::relayoutLocked() {
             }
         cl = Rect{0, 0, w, h};
     }
-    tree_ = layoutSkin(*file_, cl, splits_, &props_, /*inferSlots=*/false);  // stock's empty sides (setPaneShown)
+    // inferSlots off: stock's empty sides (setPaneShown)
+    tree_ = layoutSkin(*file_, cl, splits_, &props_, /*inferSlots=*/false, &geometry_);
     for (const auto& r : runtime_) layoutRuntime(tree_, *file_, props_, r.name, r.parent, r.type, r.identity);
     gen_++;
 }
@@ -839,14 +880,15 @@ bool LiveSkin::wingetLocked(const std::string& id, const std::string& param, std
         out = boolParam(c->elem->boolv("is-vert", false));
         return true;
     }
-    // Second, what the world itself set.
-    if (props_.controlProp(c->window, c->name, param, out)) return true;
-    // pos is pane-local: the laid-out corner relative to the box its window was laid out in. A stored winset value
-    // answers verbatim; an empty (off-pane) rect falls through to the file.
+    // pos is pane-local: the laid-out corner relative to the box its window was laid out in, a winset's included (stock
+    // answers where its anchors have since moved it). An empty (off-pane) rect falls through to a stored value, then
+    // the file.
     if (param == "pos" && !c->rect.empty()) {
         out = std::to_string(c->full.x0 - c->box.x0) + "," + std::to_string(c->full.y0 - c->box.y0);
         return true;
     }
+    // Second, what the world itself set.
+    if (props_.controlProp(c->window, c->name, param, out)) return true;
     // (E3) THIRD, what the .dmf states for this control.
     if (c->elem)
         if (const std::string* v = c->elem->get(param)) {
@@ -1530,6 +1572,7 @@ std::string LiveSkin::load(const std::string& dmf) {
         text_ = dmf;
         fileId_++;
         props_.clear();
+        geometry_.clear();
         splits_.clear();
         splitPct_.clear();
         macros_ = resolveMacros(*file_);
@@ -1786,6 +1829,9 @@ SkinSnapshot LiveSkin::snapshot() const {
     if (file_)
         if (const Block* mw = findMainWindow(*file_)) s.mainWindow = mw->name;
     for (const RuntimeCtl& r : runtime_) s.runtime.push_back({r.name, r.parent, r.type});
+    s.windowWidth = windowWidth_;
+    s.windowHeight = windowHeight_;
+    s.windowSizeSeq = windowSizeSeq_;
     return s;
 }
 
