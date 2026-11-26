@@ -59,7 +59,7 @@ private slots:
         map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map));
         map.raise(); map.activateWindow(); QVERIFY(QTest::qWaitForWindowActive(&map));
         const QPoint local(160,120),sample=map.mapToGlobal(local);
-        QTRY_VERIFY(nativedesktopfixture::ownsPoint(map,sample));
+        FUGUE_OWN_DESKTOP_POINT(map,sample);
         map.requestMapFrame(); QTRY_VERIFY(!submitted.empty());
         nativedesktopfixture::Capture capture(map,map,{local},[&]{return submitted.size();});
         auto color=[&]{const auto pixels=capture.grab();return capture.color(pixels,local);};
@@ -122,7 +122,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(pane->isVisible() && pane->size()==QSize(100,100),5000);
         const auto sample=pane->mapToGlobal(QPoint(30,30));
         diagnosticSample=map->mapFromGlobal(sample);
-        QTRY_VERIFY_WITH_TIMEOUT(nativedesktopfixture::ownsPoint(window,sample),5000);
+        FUGUE_OWN_DESKTOP_POINT(window,sample);
         QTRY_COMPARE(QApplication::focusWidget(),map);
         QCOMPARE(QApplication::widgetAt(sample),map); // disabled overlay is pointer transparent
         // Capture the desktop compositor, not HWND GetDC (which can return a
@@ -207,7 +207,7 @@ private slots:
         QList<QPoint> samples{{128,160},{108,172},{340,172}};
         for(int x=116;x<=308;x+=32) samples.push_back({x,172});
         for(const auto& point:samples)
-            QTRY_VERIFY_WITH_TIMEOUT(nativedesktopfixture::ownsPoint(map,map.mapToGlobal(point)),5000);
+            FUGUE_OWN_DESKTOP_POINT(map,map.mapToGlobal(point));
         // Observe the desktop after normal submission, never grabFramebuffer().
         // Poll a fresh capture for readiness, then check all pixels in that same
         // desktop snapshot instead of recapturing the entire screen per pixel.

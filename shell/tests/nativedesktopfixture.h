@@ -26,6 +26,42 @@ inline bool ownsPoint(QWidget& window, QPoint global) {
     return window.isActiveWindow();
 }
 
+// What stands between the test window and its sample point when that is a window of ANOTHER program, or the
+// foreground belongs to one: someone is using the desktop. Empty when nothing foreign is in the way, so a window
+// that fails to own its point then is the code's own fault.
+inline QString foreignOwner(QWidget& window, QPoint global) {
+#ifdef Q_OS_WIN
+    const auto hwnd=reinterpret_cast<HWND>(window.winId());
+    const auto client=window.mapFromGlobal(global);
+    POINT physical{qRound(client.x()*window.devicePixelRatioF()),qRound(client.y()*window.devicePixelRatioF())};
+    if(!ClientToScreen(hwnd,&physical)) return {};
+    const std::pair<const char*,HWND> candidates[]={{"over the sample point",GetAncestor(WindowFromPoint(physical),GA_ROOT)},
+                                                     {"in the foreground",GetForegroundWindow()}};
+    for(const auto& [where,other]:candidates) {
+        DWORD pid=0;
+        if(!other || other==hwnd || !GetWindowThreadProcessId(other,&pid) || pid==GetCurrentProcessId()) continue;
+        wchar_t title[256]{}; GetWindowTextW(other,title,256);
+        return QStringLiteral("a window of another program is %1 (process %2, \"%3\")")
+            .arg(QLatin1String(where)).arg(pid).arg(QString::fromWCharArray(title));
+    }
+#else
+    Q_UNUSED(window); Q_UNUSED(global);
+#endif
+    return {};
+}
+// Before a desktop observation: the test window must own the point. When another program's window is in the way the
+// test function ends here and says so on a line CTest reports as a skip (shell/CMakeLists.txt); a desktop in use is
+// not a failure of the code, and the entry must not pass for it either. Otherwise not owning the point fails.
+#define FUGUE_OWN_DESKTOP_POINT(window, sample) \
+    do { \
+        if(!QTest::qWaitFor([&]{ return nativedesktopfixture::ownsPoint(window,sample); },5000)) { \
+            const QString other=nativedesktopfixture::foreignOwner(window,sample); \
+            if(other.isEmpty()) QFAIL("The test window does not own its sample point, and no other program is in the way"); \
+            qInfo().noquote() << "Desktop interference:" << other; \
+            return; \
+        } \
+    } while(false)
+
 inline void diagnose(QWidget& window, QWidget& surface, QPoint local, qsizetype submissions);
 
 // Once observation starts, obstruction or changed geometry invalidates the case.

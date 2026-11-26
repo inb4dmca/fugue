@@ -230,6 +230,10 @@ if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/mapdesktop_test.cpp)
   fugue_test_suite(mapdesktop_test tests/mapdesktop_test.cpp)
   target_link_libraries(mapdesktop_test PRIVATE fugue_shell Qt6::Test Qt6::Network)
   fugue_shell_native_test(shell_map_desktop "map;native;desktop" fugue_tests mapdesktop -o -,txt)
+  # Another program's window over the test's own is a desktop in use, not a failure: reported as not run.
+  foreach(backend IN LISTS _shell_native_backends)
+    set_tests_properties(shell_map_desktop_${backend} PROPERTIES SKIP_REGULAR_EXPRESSION "Desktop interference:")
+  endforeach()
 endif()
 fugue_shell_test(shell          shell_test)       # shell input routing
 fugue_shell_test(shell_skincolor skincolor_test)  # winset colours -> widgets
