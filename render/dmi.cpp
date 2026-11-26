@@ -11,7 +11,10 @@
 namespace fugue::assets {
 namespace {
 constexpr int64_t kMaxCellDim = 8192, kMaxDirs = 8, kMaxFrames = 65536;
-constexpr size_t kMaxGifAnimBytes = size_t(64) << 20;
+// An animated GIF's composited frames may fill the sheet every other icon may have, 64 million pixels (shell/dmiicon.cpp).
+// Stock BYOND 516 draws a 480x480 GIF of 138 frames (121 MiB of frames) as a game's lobby splash
+// (tests/data/splash-gif-world).
+constexpr size_t kMaxGifAnimBytes = size_t(256) << 20;
 ParseResult fail(const char* cls, std::string detail) {
     ParseResult r;
     r.errClass = cls;

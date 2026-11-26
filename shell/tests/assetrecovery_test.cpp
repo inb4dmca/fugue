@@ -13,6 +13,7 @@
 #include "model/world.h"
 #include "shell/iconcache.h"
 #include "shell/tests/iconfixture.h"
+#include "shell/tests/replayfixture.h"
 #include "render/gif.h"
 using namespace fugue;
 using namespace fugue::shell;
@@ -253,6 +254,33 @@ private slots:
         assets::GifAnimation anim; std::string error;
         QVERIFY(!assets::decodeGifAnimation(reinterpret_cast<const uint8_t*>(gif.constData()),size_t(gif.size()),anim,error,1024));
         auto jpeg=load("jpeg/base.jpg"); QVERIFY(DmiIcon::decode(jpeg.first(12)).sheet.isNull());
+    }
+    void splashGifTurf() {
+        // A lobby splash: a turf whose icon is a 480x480 GIF of 80 whole frames, read with file() at run time
+        // (tests/data/splash-gif-world). Stock BYOND 516 draws it over the whole view and plays it; its frames are
+        // more than 64 MiB once composited.
+        test::ReplayFixture replay;
+        QVERIFY2(replay.readFrames("frames.txt","splash-gif-world",[&](uint16_t type,const Bytes& body) {
+            replay.session.ingest(type,body); }), qPrintable(replay.error));
+        QVERIFY2(replay.loadResources("splash-gif-world"), qPrintable(replay.error));
+        replay.refresh(0);
+        const MapSprite* splash=nullptr;
+        for (const auto& sprite : replay.sprites)
+            if (sprite.kind==MapSprite::Turf && !sprite.image.isNull()) { QVERIFY(!splash); splash=&sprite; }
+        QVERIFY2(splash, "the splash turf draws nothing");
+        QCOMPARE(splash->cell, QPoint(1,1));
+        QCOMPARE(splash->image.size(), QSize(480,480));
+        // Frame 0 is (8, 240, 96) everywhere (mkgif.py).
+        for (const QPoint p : {QPoint(0,0),QPoint(240,240),QPoint(479,479)})
+            QCOMPARE(splash->image.pixelColor(p), QColor(8,240,96));
+        // The icon's bottom-left is turf 1,1's, so with the view of 15x15 about 8,8 it covers the view exactly.
+        const QRect view=replay.frame.source;
+        QCOMPARE(QRect(splash->position,splash->image.size()), view);
+        const auto icon=DmiIcon::decode(load("splash-gif-world/res/77795e41"));
+        QVERIFY(icon.state(""));
+        QCOMPARE(icon.state("")->frames,80);
+        QCOMPARE(icon.state("")->loop,0);
+        QCOMPARE(icon.frame("",2,79).pixelColor(100,100),QColor(245,3,96));
     }
 };
 FUGUE_TEST_MAIN(AssetRecoveryTest)

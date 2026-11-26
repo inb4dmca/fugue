@@ -261,7 +261,8 @@ bool walk(const uint8_t* d, size_t n, Screen& sc, std::string& why, F&& onFrame)
         }
         size_t npix = size_t(w) * size_t(h);
         decodedPixels += npix;
-        if (!npix || w > 8192 || h > 8192 || decodedPixels > 16 * 1024 * 1024 || ++frameCount > 65536) {
+        // The frames' own pixels are bounded like a composited animation (render/dmi.cpp): 64 million.
+        if (!npix || w > 8192 || h > 8192 || decodedPixels > 64 * 1024 * 1024 || ++frameCount > 65536) {
             why = "frame work cap";
             return false;
         }
