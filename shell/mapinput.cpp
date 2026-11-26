@@ -96,7 +96,8 @@ double partAlpha(const MapSprite& s, QPoint pixel) {
 // it masks out, as a mask from an icon does; MASK_INVERSE hides what it keeps (stock 516.1689, plane-click-world
 // rtalpha, ptalpha, rtalpha-inverse, turn90-rtalpha). An atom's target is centred on the plane, a plane's stays where
 // it is drawn, both moved by the filter's x, y, as the drawing places them. The mask's alpha here is its parts' own
-// pixels over one another; filters or a matrix on the mask's source are not applied (not measured).
+// pixels over one another, each through its own matrix, and a plane's through its master's; filters on the mask's source
+// are not applied, as stock does not (rtalpha-rtturn, ptalpha-ptturn, rtalpha-rtoutline, ptalpha-ptoutline).
 bool renderMaskedOut(const CompositionPlan& plan, const MapSprite& s, QPoint planePixel) {
     if (plan.hiddenTree.count(s.plane)) return false;
     const auto master = plan.masters.find(s.plane);
@@ -116,6 +117,10 @@ bool renderMaskedOut(const CompositionPlan& plan, const MapSprite& s, QPoint pla
             at = planePixel - topLeft + g.bounds.topLeft(); parts = &g.parts;
         } else if (const auto* surface = plan.planeSources.find(f.source)) {
             at = planePixel - offset; parts = &surface->parts;
+            // A plane's target is its picture under its own master's matrix: the point goes back through that too
+            // (stock 516.1689, plane-click-world ptalpha-ptturn).
+            if (surface->master >= 0 && surface->master < plan.sprites.size())
+                at = ::fugue::shell::planePixel(at, plan.sprites[surface->master].plane, plan.source, plan.transforms, false);
         }
         double alpha = 0;   // a target that is not there is an empty mask
         if (parts) for (auto i : *parts) alpha += partAlpha(plan.sprites[i], at) * (1 - alpha);
