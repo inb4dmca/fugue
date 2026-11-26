@@ -228,8 +228,10 @@ private slots:
                              .arg(off).arg(worst).arg(first.x()).arg(first.y()).arg(saved)));
     }
     // tests/data/plane-relay-world/replay: a plane drawn through a relay (render_source of the master's render target)
-    // that stands elsewhere (an edge, a percent, a range), carries pixel offsets or a matrix of its own, or relays a
-    // master with a matrix; the "grid" sets relay a view-sized icon whose pixels name themselves through a matrix, with
+    // that stands elsewhere (an edge, a percent, a range), carries pixel offsets, a matrix or filters of its own (a
+    // colour matrix included), relays a master with a matrix, has an overlay of its own, is an overlay of a screen
+    // object, or is relayed again by a second relay ("chain"); the "grid" sets relay a view-sized icon whose pixels
+    // name themselves through a matrix, with
     // PIXEL_SCALE on the relay for "rnear" (which texel each pixel takes), replayed through the real
     // scene assembly from what DreamDaemon 516.1689 sent (stockprobe.py record) and compared with stock's grab of the
     // same case: no channel of any pixel more than 8 levels from stock's.
@@ -244,7 +246,7 @@ private slots:
             if (!line.isEmpty() && !line.startsWith('#')) sets.push_back(line.section('\t',0,0));
         }
         sets.sort();
-        QCOMPARE(sets.size(),37);
+        QCOMPARE(sets.size(),59);
         for (const auto& suffix:{QString(".png"),QString(".txt")}) {
             QStringList expected;
             for (const auto& set:sets) expected.push_back(set+suffix);

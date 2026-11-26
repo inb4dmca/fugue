@@ -82,8 +82,10 @@ bool PlaneEffects::relayFilters() const {
     auto surface = *this;
     surface.matrix.reset();
     if (!supported || ignoredFilters || !surface.valid({32,32})) return false;
+    // A colour matrix runs on the relayed picture as on a master's (stock 516.1689, plane-relay-world fcolor-loc23).
     for (const auto& f : filters)
-        if (f.kind != PlaneFilter::Blur && f.kind != PlaneFilter::Shadow && !boundedOutline(f)) return false;
+        if (f.kind != PlaneFilter::Blur && f.kind != PlaneFilter::Shadow && f.kind != PlaneFilter::Color &&
+            !boundedOutline(f)) return false;
     return !matrix || StaticAffine::make(*matrix,{32,32}).has_value();
 }
 bool PlaneEffects::sourceCoverage(QSize viewport) const {

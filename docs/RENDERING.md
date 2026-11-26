@@ -141,7 +141,9 @@ compositions invalidate capture instead of exposing stale pixels.
 Picking uses the last successfully rendered frame, geometry and composition plan,
 never a newer pending scene. Source-ink hits, original-rectangle menus and generated
 effect pixels have distinct rules. Supported relay/PASS_MOUSE paths preserve source
-ownership and coordinates; they are not arbitrary composited-alpha picking.
+ownership and coordinates; they are not arbitrary composited-alpha picking. A plane relay passes clicks and menus
+on through a second relay of its own plane, moved or turned, and through its own filters, which add and remove no
+ink; a relay's own overlay is clicked as the relay (tests/data/plane-relay-world/README.md).
 
 The worker revalidates session, registry identity, local lifetime, HUD membership,
 turf revision and MAP scope as applicable before dispatch. Slot reuse or a reopened

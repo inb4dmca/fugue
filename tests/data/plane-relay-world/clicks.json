@@ -3627,6 +3627,843 @@
     }
    ],
    "date": "2026-11-26"
+  },
+  {
+   "case": "chain",
+   "clicks": [
+    {
+     "at": [
+      143,
+      111
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      143,
+      111
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      60,
+      60
+     ],
+     "entries": [
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "chain-loc23-bneg",
+   "clicks": [
+    {
+     "at": [
+      135,
+      119
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      148,
+      108
+     ],
+     "over": "floor",
+     "iconX": 21,
+     "iconY": 20
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      135,
+      119
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "chain-rhalf",
+   "clicks": [
+    {
+     "at": [
+      127,
+      111
+     ],
+     "over": "part",
+     "iconX": 15,
+     "iconY": 18
+    },
+    {
+     "at": [
+      183,
+      167
+     ],
+     "over": "floor",
+     "iconX": 24,
+     "iconY": 25
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      127,
+      111
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      183,
+      167
+     ],
+     "entries": [
+      "button",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "chain-bhalf",
+   "clicks": [
+    {
+     "at": [
+      127,
+      111
+     ],
+     "over": "part",
+     "iconX": 15,
+     "iconY": 18
+    },
+    {
+     "at": [
+      183,
+      167
+     ],
+     "over": "floor",
+     "iconX": 24,
+     "iconY": 25
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      127,
+      111
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      183,
+      167
+     ],
+     "entries": [
+      "button",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "chain-loc23-bturn90",
+   "clicks": [
+    {
+     "at": [
+      175,
+      175
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 15
+    },
+    {
+     "at": [
+      168,
+      168
+     ],
+     "over": "floor",
+     "iconX": 9,
+     "iconY": 24
+    },
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "floor",
+     "iconX": 16,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      175,
+      175
+     ],
+     "entries": [
+      "part",
+      "button",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "chain-bopaque-loc23",
+   "clicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "relay2",
+     "iconX": 176,
+     "iconY": 177
+    },
+    {
+     "at": [
+      100,
+      150
+     ],
+     "over": "floor",
+     "iconX": 5,
+     "iconY": 10
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "entries": [
+      "relay2",
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      100,
+      150
+     ],
+     "entries": [
+      "relay2",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "chain-m5turn90",
+   "clicks": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 15
+    },
+    {
+     "at": [
+      143,
+      111
+     ],
+     "over": "floor",
+     "iconX": 16,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "mcenter",
+   "clicks": [
+    {
+     "at": [
+      143,
+      111
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "fblur-loc23",
+   "clicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      166,
+      47
+     ],
+     "over": "floor",
+     "iconX": 7,
+     "iconY": 17
+    },
+    {
+     "at": [
+      169,
+      41
+     ],
+     "over": "part",
+     "iconX": 10,
+     "iconY": 23
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      166,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "foutline-loc23",
+   "clicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      167,
+      47
+     ],
+     "over": "floor",
+     "iconX": 8,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      167,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "foutline-rturn90",
+   "clicks": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 15
+    },
+    {
+     "at": [
+      103,
+      143
+     ],
+     "over": "floor",
+     "iconX": 8,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "fcolor-loc23",
+   "clicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "nokt-rov",
+   "clicks": [
+    {
+     "at": [
+      15,
+      207
+     ],
+     "over": "relay",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      143,
+      111
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      15,
+      207
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "nokt-rov-mturn90",
+   "clicks": [
+    {
+     "at": [
+      15,
+      207
+     ],
+     "over": "relay",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      111,
+      143
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 15
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      15,
+      207
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      111,
+      143
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "ovrelay-loc23",
+   "menus": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      60,
+      60
+     ],
+     "entries": [
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26",
+   "pendingClicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      60,
+      60
+     ],
+     "over": "floor",
+     "iconX": 29,
+     "iconY": 4
+    }
+   ],
+   "clicks": []
+  },
+  {
+   "case": "ovrelay-mturn90",
+   "menus": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26",
+   "pendingClicks": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 15
+    }
+   ],
+   "clicks": []
+  },
+  {
+   "case": "nopass-rhalf",
+   "clicks": [
+    {
+     "at": [
+      183,
+      167
+     ],
+     "over": "floor",
+     "iconX": 24,
+     "iconY": 25
+    },
+    {
+     "at": [
+      127,
+      111
+     ],
+     "over": "relay",
+     "iconX": 143,
+     "iconY": 114
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      60,
+      60
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      200,
+      200
+     ],
+     "entries": [
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      20,
+      20
+     ],
+     "entries": [
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "nopass-rt_45",
+   "clicks": [
+    {
+     "at": [
+      134,
+      201
+     ],
+     "over": "floor",
+     "iconX": 7,
+     "iconY": 23
+    },
+    {
+     "at": [
+      89,
+      110
+     ],
+     "over": "floor",
+     "iconX": 26,
+     "iconY": 18
+    },
+    {
+     "at": [
+      89,
+      44
+     ],
+     "over": "relay",
+     "iconX": 48,
+     "iconY": 144
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      5,
+      5
+     ],
+     "entries": [
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      5,
+      218
+     ],
+     "entries": [
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      112,
+      112
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      112,
+      10
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "locpbare-mark",
+   "clicks": [
+    {
+     "at": [
+      84,
+      124
+     ],
+     "over": "mark",
+     "iconX": 9,
+     "iconY": 24
+    },
+    {
+     "at": [
+      212,
+      28
+     ],
+     "over": "part",
+     "iconX": 9,
+     "iconY": 24
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      84,
+      124
+     ],
+     "entries": [
+      "mark",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "iv-loc23",
+   "clicks": [
+    {
+     "at": [
+      111,
+      79
+     ],
+     "over": "holder",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      207,
+      15
+     ],
+     "over": "child",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      75,
+      143
+     ],
+     "over": "floor",
+     "iconX": 12,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      111,
+      79
+     ],
+     "entries": [
+      "holder",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      207,
+      15
+     ],
+     "entries": [
+      "child",
+      "visholder",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
   }
  ]
 }

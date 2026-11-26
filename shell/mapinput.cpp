@@ -255,8 +255,10 @@ std::optional<QPoint> relayPixel(const MapSprite& relay, const CompositionPlan::
 }
 std::optional<MapPointer> planeRelayHit(const MapPointer& pointer, const MapSprite& consumer,
                                       const MapSprite& ink, const MapSprite& master, QPoint pixel,
-                                      const CompositionPlan::Binding& binding, std::optional<QPoint> picture = {}) {
-    if (consumer.kind != MapSprite::Screen || consumer.passMouse || consumer.mouseTransparent ||
+                                      const CompositionPlan::Binding& binding, std::optional<QPoint> picture = {},
+                                      bool own = false) {
+    // own: the consumer's own ink (an overlay of the relay), named as the relay whether or not it passes the mouse.
+    if (consumer.kind != MapSprite::Screen || (consumer.passMouse && !own) || consumer.mouseTransparent ||
         consumer.mouseOpacity != 1 || consumer.maptext || consumer.tint[3] <= 0 || consumer.blend > 4 ||
         (consumer.planeEffects && !consumer.planeEffects->relayFilters())) return {};
     auto hit=pointer;
@@ -315,9 +317,12 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
     };
     // The relay may stand anywhere and carry a matrix of its own; the master may carry one too. The pointer goes back
     // through the relay's, then the master's (stock 516.1689, plane-relay-world loc23, rturn90, rscalex2, mturn90).
+    // The relay's own filters add and take away no ink: a blurred, outlined or recoloured picture is clicked where
+    // its atoms' own pixels are (fblur-loc23 names part in the faded edge of its box, and floor in the blur beyond it;
+    // foutline-loc23, foutline-rturn90, fcolor-loc23).
     auto neutral = [&](const MapSprite& s) {
         return material(s) && s.tint == std::array<float,4>{1,1,1,1} && s.color == identityColor &&
-            (!s.planeEffects || (s.planeEffects->supported && !s.planeEffects->ignoredFilters && s.planeEffects->filters.empty()));
+            (!s.planeEffects || s.planeEffects->relayFilters());
     };
     auto endpoint = [&](const MapSprite& s) {
         auto p = pointer;
@@ -363,12 +368,18 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
             const bool hud = s.kind == MapSprite::Screen && s.screenInteractive;
             const bool world = s.kind == MapSprite::Turf ||
                 (s.kind == MapSprite::Entity && s.haveKey && s.targetIdentity);
-            if ((!hud && !world) || !s.inkInteractive || !material(s) || !unfiltered(s) ||
+            // A client image is clicked as its atom and a vis_contents member as itself, through the relay as where
+            // they stand (stock 516.1689, plane-relay-world iv-loc23; plane-click-world gestures.json relay).
+            const bool attached = s.screenInteractive && PlaneSources::material(s) && !s.localGroup &&
+                ((s.kind == MapSprite::Image && s.imageIdentity) || (s.kind == MapSprite::Vis && s.visHit));
+            if ((!hud && !world && !attached) || !s.inkInteractive || (!attached && !material(s)) || !unfiltered(s) ||
                 (s.kind != MapSprite::Turf && s.atom == master.atom) || s.image.isNull() || s.mouseOpacity > 2 ||
                 !s.renderTarget.isEmpty() || !s.planeSourceDependency.isEmpty() ||
                 (!s.size.isEmpty() && s.size != s.image.size())) continue;
             if (s.mouseOpacity == 1 && s.image.pixelColor(sample-s.position).alpha() == 0) continue;
             auto hit = pointer; nameSprite(hit,s,sample);
+            // An image or a member is checked by its own identity when the click is sent, not by the relay route.
+            if (attached) return hit;
             path->leafAppearance = s.appearanceId; hit.planeMousePath = path;
             return hit;
         }
@@ -376,6 +387,33 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
         return {};
     };
     return walk(walk,consumerIndex,pixel);
+}
+// The atom whose ink is at a point of a plane's own picture. Where a PASS_MOUSE relay of another plane stands on it, the
+// ink there is that plane's, found the same way (stock 516.1689, plane-relay-world chain-bopaque-loc23: a relay without
+// PASS_MOUSE of a plane that holds the first relay is clicked where the first plane's atoms are drawn).
+qsizetype relayedInk(const CompositionPlan& plan, int index, QPoint sample, uint64_t& work, int depth) {
+    const auto& surface = plan.planeSources.surfaces[size_t(index)];
+    if (surface.input) return PlaneSources::ink(surface, plan.sprites, sample, work);
+    if (!surface.relayInput || depth >= 8) return -1;
+    for (auto it = surface.parts.rbegin(); it != surface.parts.rend(); ++it) {
+        if (!work) return -1;
+        --work;
+        const auto& s = plan.sprites[*it];
+        if (s.renderSource.isEmpty()) {
+            if (s.rect().contains(sample) && s.image.pixelColor(sample - s.position).alpha()) return *it;
+            continue;
+        }
+        const auto& b = plan.bindings[size_t(*it)];
+        if (b.refused || b.localName || b.planeSource < 0 || !s.passMouse || s.mouseTransparent || s.mouseOpacity != 1)
+            return -1;
+        const auto local = relayPixel(s, b, sample, plan.source);
+        if (!local) continue;
+        const auto& inner = plan.sprites[plan.planeSources.surfaces[size_t(b.planeSource)].master];
+        const auto ink = relayedInk(plan, b.planeSource, planePixel(*local, inner.plane, plan.source, plan.transforms, false),
+                                    work, depth + 1);
+        if (ink >= 0) return ink;
+    }
+    return -1;
 }
 // A relay without PASS_MOUSE is clicked itself where the plane's picture has ink, its matrix and its master's taken
 // back (stock 516.1689, plane-relay-world nopass-loc23, nopass-rturn90, nopass-mturn90).
@@ -388,7 +426,7 @@ std::optional<MapPointer> planeRelayAt(const MapPointer& pointer, const MapSprit
     if (!local) return {};
     const auto& master = plan.sprites[surface->master];
     const QPoint sample = planePixel(*local, master.plane, plan.source, plan.transforms, false);
-    const auto ink=PlaneSources::ink(*surface,plan.sprites,sample,work);
+    const auto ink=relayedInk(plan,binding.planeSource,sample,work,0);
     if (ink<0) return {};
     return planeRelayHit(pointer,consumer,plan.sprites[ink],master,pixel,binding,local);
 }
@@ -405,7 +443,11 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
     // A plane hidden because a relay draws it is still listed where its atoms stand (stock 516.1689, plane-relay-world
     // loc23 and nopass-loc23 at 139,109), as well as through a PASS_MOUSE relay where the relay draws them (loc23 at
     // 171,45, rturn90, mturn90-loc23). A relay without PASS_MOUSE is listed itself wherever its picture's rectangle is,
-    // and lists nothing through it (nopass-loc23 at 171,45 and 100,150).
+    // and lists nothing through it (nopass-loc23 at 171,45 and 100,150). With a matrix that rectangle is the view taken
+    // through the matrix about the view's centre, without the move stock draws a neutral plane's picture with, and not
+    // its bounding box: nopass-rhalf lists the relay in the view's middle half and not where it draws the boxes,
+    // nopass-rt_45 in the turned square only (at 112,10 but not at 5,5 or 5,218). A relay standing on a plane that
+    // another relay draws is listed where it stands, and lists through it when it passes the mouse (chain-bopaque-loc23).
     std::set<int> menuHidden;
     std::set_difference(hidden.begin(), hidden.end(), plan.captured.begin(), plan.captured.end(),
                         std::inserter(menuHidden, menuHidden.end()));
@@ -427,19 +469,28 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
         const auto pixel = planePixel(scenePixel, it->plane, source, transforms, false);
         auto hit = pointer;
         if (outlines.count(it->plane) && !outlinedInputPart(*it)) return;
-        // A KEEP_TOGETHER relay is the root of its own appearance: it is listed like any relay. Menus through an
-        // overlay's relay are not established.
-        if (!it->planeSourceDependency.isEmpty() && it->renderSource != it->planeSourceDependency) return;
+        // A KEEP_TOGETHER relay is the root of its own appearance: it is listed like any relay. The relay's own overlays
+        // are listed as the relay where their icons are, under a master's matrix too (stock 516.1689, plane-relay-world
+        // nokt-rov, nokt-rov-mturn90). Another relay among its overlays is not established.
+        if (!it->planeSourceDependency.isEmpty() && !it->renderSource.isEmpty() && it->renderSource != it->planeSourceDependency)
+            return;
         if (!it->renderSource.isEmpty()) {
-            if (!it->renderTarget.isEmpty() || hiddenHere.count(it->plane) || transforms.count(it->plane)) return;
+            // A relay standing on a turned plane that another relay draws is reached through that plane's matrix
+            // (chain-m5turn90); one drawn on a turned plane directly is not established.
+            if (!it->renderTarget.isEmpty() || hiddenHere.count(it->plane) || (transforms.count(it->plane) && !through))
+                return;
             if (!binding.localName && binding.planeSource >= 0) {
                 if (it->kind != MapSprite::Screen || depth >= 8) return;
                 const auto local = relayPixel(*it, binding, pixel, source);
                 if (!local) return;
                 if (it->passMouse) {
+                    // Every atom of the plane, an iconless one by its rectangle too: a vis_contents holder is listed
+                    // after its member (stock 516.1689, plane-relay-world iv-loc23 at 207,15).
                     const auto& surface = plan.planeSources.surfaces[size_t(binding.planeSource)];
-                    for (auto part = surface.parts.rbegin(); part != surface.parts.rend(); ++part)
-                        self(self, *part, *local, depth + 1, true);
+                    const int plane = plan.sprites[surface.master].plane;
+                    for (qsizetype part = plan.sprites.size(); part-- > 0;)
+                        if (plan.sprites[part].plane == plane && plan.sprites[part].kind != MapSprite::Master)
+                            self(self, part, *local, depth + 1, true);
                     return;
                 }
                 if (it->mouseTransparent || it->mouseOpacity != 1) return;
@@ -577,9 +628,10 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF p, QRectF destination
             if (!it->planeSourceDependency.isEmpty()) {
                 if (binding.planeDependency < 0 || binding.localDependency) continue;
                 const auto* surface=&plan.planeSources.surfaces[binding.planeDependency];
-                if (!surface->input || outlines.count(it->plane) || transforms.count(it->plane) ||
-                    transforms.count(sprites[surface->master].plane)) continue;
-                const auto hit=planeRelayHit(out,*it,*it,sprites[surface->master],pixel,binding);
+                // The relay's own overlay is clicked as the relay, PASS_MOUSE or not, and under a master's matrix
+                // (stock 516.1689, plane-relay-world nokt-rov, nokt-rov-mturn90).
+                if (!surface->input || outlines.count(it->plane) || transforms.count(it->plane)) continue;
+                const auto hit=planeRelayHit(out,*it,*it,sprites[surface->master],pixel,binding,{},true);
                 if (!hit) continue;
                 out=*hit;
             } else namePlaneSprite(out, *it, partPixel, source, transforms);
