@@ -307,9 +307,12 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
     };
     // The relay may stand anywhere and carry a matrix of its own; the master may carry one too. The pointer goes back
     // through the relay's, then the master's (stock 516.1689, plane-relay-world loc23, rturn90, rscalex2, mturn90).
+    // The relay's own filters add and take away no ink: a blurred, outlined or recoloured picture is clicked where
+    // its atoms' own pixels are (fblur-loc23 names part in the faded edge of its box, and floor in the blur beyond it;
+    // foutline-loc23, foutline-rturn90, fcolor-loc23).
     auto neutral = [&](const MapSprite& s) {
         return material(s) && s.tint == std::array<float,4>{1,1,1,1} && s.color == identityColor &&
-            (!s.planeEffects || (s.planeEffects->supported && !s.planeEffects->ignoredFilters && s.planeEffects->filters.empty()));
+            (!s.planeEffects || s.planeEffects->relayFilters());
     };
     auto endpoint = [&](const MapSprite& s) {
         auto p = pointer;

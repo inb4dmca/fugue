@@ -335,7 +335,12 @@ private slots:
         for(int variant=1;variant<6;++variant) {
             test::HudRelayFixture refused("chain");
             for(auto& s:refused.sprites) if(s.atom==3) {
-                if(variant==1) {auto fx=std::make_shared<PlaneEffects>();fx->filters.push_back({});s.planeEffects=fx;}
+                // A filter a relay is not drawn with (a blur, outline, shadow or colour matrix passes: plane-relay-world
+                // fblur-loc23, foutline-loc23, fcolor-loc23).
+                if(variant==1) {
+                    auto fx=std::make_shared<PlaneEffects>();PlaneFilter wave;wave.kind=PlaneFilter::Wave;
+                    fx->filters.push_back(wave);s.planeEffects=fx;
+                }
                 if(variant==2) s.tint[3]=.5f;
                 if(variant==3) s.passMouse=false; // mixed ownership chain is not admitted
                 if(variant==4) s.renderSource="*middle"; // capture cycle
@@ -570,7 +575,7 @@ private slots:
                                 "norelay", "locleft", "locright", "locroff", "rpx", "rpw-loc23", "locpd-mark", "locpe",
                                 "locpf-mark", "locrange", "locrow", "chain", "chain-loc23-bneg", "chain-rhalf",
                                 "chain-bhalf", "chain-loc23-bturn90", "chain-bopaque-loc23", "chain-m5turn90",
-                                "mcenter"};
+                                "mcenter", "fblur-loc23", "foutline-loc23", "foutline-rturn90", "fcolor-loc23"};
         QSet<QString> over;
         int clicks = 0, menus = 0;
         for (const auto& value : document.object()["cases"].toArray()) {
@@ -612,7 +617,7 @@ private slots:
         QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + QStringList(remaining.values()).join(", ")));
         QVERIFY2(over == (QSet<QString>{"floor", "part", "other", "button", "relay", "relay2", "mark"}),
                  qPrintable(QStringList(over.values()).join(", ")));
-        QVERIFY2(clicks >= 205 && menus >= 180, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
+        QVERIFY2(clicks >= 213 && menus >= 185, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
     }
     void worldPassMouseLifetimeAndBounds() {
         test::PlaneSourceFixture f;

@@ -3935,6 +3935,160 @@
     }
    ],
    "date": "2026-11-26"
+  },
+  {
+   "case": "fblur-loc23",
+   "clicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      166,
+      47
+     ],
+     "over": "floor",
+     "iconX": 7,
+     "iconY": 17
+    },
+    {
+     "at": [
+      169,
+      41
+     ],
+     "over": "part",
+     "iconX": 10,
+     "iconY": 23
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      166,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "foutline-loc23",
+   "clicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      167,
+      47
+     ],
+     "over": "floor",
+     "iconX": 8,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      167,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "foutline-rturn90",
+   "clicks": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 15
+    },
+    {
+     "at": [
+      103,
+      143
+     ],
+     "over": "floor",
+     "iconX": 8,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      111,
+      143
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "fcolor-loc23",
+   "clicks": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "over": "part",
+     "iconX": 16,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      175,
+      47
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
   }
  ]
 }
