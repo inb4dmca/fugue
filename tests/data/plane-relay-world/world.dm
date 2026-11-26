@@ -93,6 +93,27 @@ world
     verb/poke_relay2()
         set src in world
         world.log << "VERB relay2"
+// A client image's atom and a vis_contents member on the relayed plane (case word `iv`): neither holder draws anything
+// of its own.
+/obj/holder
+    plane = 1
+    name = "holder"
+    verb/poke_holder()
+        set src in world
+        world.log << "VERB holder"
+/obj/visholder
+    plane = 1
+    name = "visholder"
+    verb/poke_visholder()
+        set src in world
+        world.log << "VERB visholder"
+/obj/child
+    icon = 'green.png'
+    plane = 1
+    name = "child"
+    verb/poke_child()
+        set src in world
+        world.log << "VERB child"
 /proc/turned(angle)
     var/matrix/M = matrix()
     M.Turn(angle)
@@ -106,6 +127,10 @@ world
     if(findtext(kind, "mcenter")) M.screen_loc = "CENTER"
     C.screen += M
     C.screen += new /obj/button
+    if(findtext(kind, "iv"))   // the image is this client's own; the atoms are made once, in world/New()
+        var/image/I = image('yellow.png', locate(/obj/holder))
+        I.plane = 1
+        C.images += I
     if(findtext(kind, "norelay"))
         new /obj/marker(locate(6, 6, 1))   // so that the map is not one colour (stockprobe waits for a drawn map)
         world.log << "CASE [kind]"
@@ -188,6 +213,10 @@ world
 world/New()
     ..()
     world.log = file("events.log")
+    if(findtext(world.params["set"], "iv"))
+        new /obj/holder(locate(3, 3, 1))
+        var/obj/visholder/V = new(locate(6, 5, 1))
+        V.vis_contents += new /obj/child
     if(findtext(world.params["set"], "grid"))
         new /obj/grid(locate(1, 1, 1))
     else

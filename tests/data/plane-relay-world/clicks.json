@@ -4408,6 +4408,62 @@
     }
    ],
    "date": "2026-11-26"
+  },
+  {
+   "case": "iv-loc23",
+   "clicks": [
+    {
+     "at": [
+      111,
+      79
+     ],
+     "over": "holder",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      207,
+      15
+     ],
+     "over": "child",
+     "iconX": 16,
+     "iconY": 17
+    },
+    {
+     "at": [
+      75,
+      143
+     ],
+     "over": "floor",
+     "iconX": 12,
+     "iconY": 17
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      111,
+      79
+     ],
+     "entries": [
+      "holder",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      207,
+      15
+     ],
+     "entries": [
+      "child",
+      "visholder",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
   }
  ]
 }

@@ -360,12 +360,18 @@ std::optional<MapPointer> planePassAt(const MapPointer& pointer, qsizetype consu
             const bool hud = s.kind == MapSprite::Screen && s.screenInteractive;
             const bool world = s.kind == MapSprite::Turf ||
                 (s.kind == MapSprite::Entity && s.haveKey && s.targetIdentity);
-            if ((!hud && !world) || !s.inkInteractive || !material(s) || !unfiltered(s) ||
+            // A client image is clicked as its atom and a vis_contents member as itself, through the relay as where
+            // they stand (stock 516.1689, plane-relay-world iv-loc23; plane-click-world gestures.json relay).
+            const bool attached = s.screenInteractive && PlaneSources::material(s) && !s.localGroup &&
+                ((s.kind == MapSprite::Image && s.imageIdentity) || (s.kind == MapSprite::Vis && s.visHit));
+            if ((!hud && !world && !attached) || !s.inkInteractive || (!attached && !material(s)) || !unfiltered(s) ||
                 (s.kind != MapSprite::Turf && s.atom == master.atom) || s.image.isNull() || s.mouseOpacity > 2 ||
                 !s.renderTarget.isEmpty() || !s.planeSourceDependency.isEmpty() ||
                 (!s.size.isEmpty() && s.size != s.image.size())) continue;
             if (s.mouseOpacity == 1 && s.image.pixelColor(sample-s.position).alpha() == 0) continue;
             auto hit = pointer; nameSprite(hit,s,sample);
+            // An image or a member is checked by its own identity when the click is sent, not by the relay route.
+            if (attached) return hit;
             path->leafAppearance = s.appearanceId; hit.planeMousePath = path;
             return hit;
         }
@@ -470,9 +476,13 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
                 const auto local = relayPixel(*it, binding, pixel, source);
                 if (!local) return;
                 if (it->passMouse) {
+                    // Every atom of the plane, an iconless one by its rectangle too: a vis_contents holder is listed
+                    // after its member (stock 516.1689, plane-relay-world iv-loc23 at 207,15).
                     const auto& surface = plan.planeSources.surfaces[size_t(binding.planeSource)];
-                    for (auto part = surface.parts.rbegin(); part != surface.parts.rend(); ++part)
-                        self(self, *part, *local, depth + 1, true);
+                    const int plane = plan.sprites[surface.master].plane;
+                    for (qsizetype part = plan.sprites.size(); part-- > 0;)
+                        if (plan.sprites[part].plane == plane && plan.sprites[part].kind != MapSprite::Master)
+                            self(self, part, *local, depth + 1, true);
                     return;
                 }
                 if (it->mouseTransparent || it->mouseOpacity != 1) return;
