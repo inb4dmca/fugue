@@ -1,6 +1,7 @@
 # Pointer hover: MouseEntered, MouseExited and MouseMove
 
-Independent DreamSeeker/DreamDaemon **516.1689**, 2026-11-26, Windows 11 at 96 dpi. No game assets in Git.
+Independent DreamSeeker/DreamDaemon **516.1689**, 2026-11-26, Windows 11 with the display at 144 dpi; stock drew the
+map one screen pixel per icon pixel, so map pixels below are window pixels. No game assets in Git.
 `prepare.py <dir> [CLIENT_ENTER] [CLIENT_MOVE]` writes the world, a 288x224 skin (a 7x7 view of 32 px tiles between
 32 px of letterbox left and right) and solid full-tile icons. `CLIENT_ENTER` adds client/MouseEntered and
 client/MouseExited, `CLIENT_MOVE` client/MouseMove; each calls `..()`. `world.params` `lag=<ds>` sets `world.tick_lag`.
