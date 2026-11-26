@@ -554,13 +554,16 @@ private slots:
     // it (replay/<compile>.txt). Each run is replayed in order: the real hit test picks, MapHover reports under the
     // MouseSubs and appearance flags DreamDaemon sent, and the server's rule turns the reports into procs: MouseExited
     // (with the params it entered with) and MouseEntered when a report names another atom than the last one, MouseMove
-    // when it names the same one, and a drop enters the atom it lands on. Those must be the procs stock's world logged,
+    // when it names the same one; a drop enters the atom it lands on, and a drop over a map where nothing is (empty
+    // space, the letterbox, another map's empty tile) exits the last one. Those must be the procs stock's world logged,
     // action by action. Cases that need moves posted to the window, fast sweeps or a scene that moves are left out, and
     // so are those over the EXTRA compile's stat panel and grid, which Fugue does not report hover on.
     // The EXTRA compile adds a second map (window pixels 300..395 x 0..31), modifiers, and right-click menus: a menu
     // opened at the release of a right press on an obj (every obj has a verb, a turf none) takes the pointer until
     // Escape, a press off it, or a pick from it (a press within its two levels, 258 x 40 pixels right of and below where
-    // it opened). Straight from one map onto another, the second map's pick comes before the first map's leave.
+    // it opened); the menu ignores the middle button, whose release after Escape closed the menu is a click where it is
+    // released. A right press while the middle button is held does nothing. Straight from one map onto another, the
+    // second map's pick comes before the first map's leave.
     void hoverLikeStock() {
         const QString path = QString(FUGUE_TEST_DATA_DIR) + "/hover-world/hover.json";
         QJsonDocument document; QString error;
@@ -660,16 +663,17 @@ private slots:
             };
             QPoint at(-80, 112); bool held = false, dragged = false; MapPointer pressed;
             std::optional<QPoint> menu; bool menuPick = false;
+            bool middleHeld = false, middleFromMenu = false;   // the middle button down; its press taken by the menu
             auto onMenu = [&](QPoint q) {
                 return menu && q.x() >= menu->x() && q.x() <= menu->x() + 258 && q.y() > menu->y() && q.y() <= menu->y() + 40;
             };
-            auto menuClosed = [&](bool rightHeld, bool otherHeld) {
+            auto menuClosed = [&](bool leftHeld, bool rightHeld) {
                 menu.reset();
-                const auto closed = mapMenuClosed(rightHeld, otherHeld);
+                const auto closed = mapMenuClosed(leftHeld, rightHeld, middleHeld, region(at) != 0);
                 if (closed == MapMenuClosed::Nothing) return;
-                if (!region(at)) { leave(); return; }
                 auto p = pick(at);
                 if (closed == MapMenuClosed::PickRight) p.click.button = "right";
+                if (closed == MapMenuClosed::PickMiddle) p.click.button = "middle";
                 report(p);
             };
             auto moveTo = [&](QPoint q) {
@@ -697,10 +701,13 @@ private slots:
                 }
                 hover.released();
                 auto drop = region(at) ? pick(at) : MapPointer{};
-                if (region(at) && (dragged || !sameMapTarget(drop, pressed)) &&
-                    drop.click.over.kind != proto::enc::RefNull && !same(drop)) {
-                    drop.click.button = pressed.click.button;
-                    enter(drop, QString::fromStdString(proto::enc::clickParams(drop.click)));
+                if (region(at) && (dragged || !sameMapTarget(drop, pressed))) {
+                    if (drop.click.over.kind == proto::enc::RefNull) {
+                        exit();
+                    } else if (!same(drop)) {
+                        drop.click.button = pressed.click.button;
+                        enter(drop, QString::fromStdString(proto::enc::clickParams(drop.click)));
+                    }
                 }
             };
             // The stat panel and the grid of the EXTRA compile.
@@ -730,10 +737,26 @@ private slots:
                     } else if (action == "down" || action == "rdown") {
                         if (menu && action == "down" && onMenu(at)) {
                             menuPick = true;   // an entry of the menu
+                        } else if (action == "rdown" && middleHeld && !middleFromMenu) {
+                            // ignored, and so is its release
                         } else {
-                            if (menu) menuClosed(action == "rdown", action == "down");
+                            if (menu) menuClosed(action == "down", action == "rdown");
                             press(action == "down" ? "left" : "right");
                         }
+                    } else if (action == "mdown") {
+                        middleHeld = true;
+                        middleFromMenu = bool(menu);   // the menu takes it and stays open
+                        if (!menu) press("middle");
+                    } else if (action == "mup") {
+                        middleHeld = false;
+                        if (!std::exchange(middleFromMenu, false)) {
+                            release("middle");
+                        } else if (!menu) {   // pressed where it is released
+                            press("middle");
+                            release("middle");
+                        }
+                    } else if (action == "rup" && middleHeld && !middleFromMenu) {
+                        // the ignored right press's release
                     } else if (action == "up" || action == "rup") {
                         if (menuPick) {
                             menuPick = false;
@@ -763,8 +786,9 @@ private slots:
                 }
             }
         }
-        QCOMPARE(runs, (QSet<QString>{"base", "base2", "lag10", "center", "cmove", "cboth", "extra", "extramenu", "xboth"}));
-        QVERIFY2(actions == 496 && reports == 283 && lines == 329,
+        QCOMPARE(runs, (QSet<QString>{"base", "base2", "lag10", "center", "cmove", "cboth", "extra", "extramenu", "xboth",
+                                         "round3", "round3mid", "xround3"}));
+        QVERIFY2(actions == 784 && reports == 387 && lines == 467,
                  qPrintable(QString("%1 actions, %2 reports, %3 procs").arg(actions).arg(reports).arg(lines)));
     }
     // tests/data/hover-world pace runs (stock 516.1689, tick_lag 0.25, 0.5 and 10 ds): 20 one-pixel steps over one atom
@@ -1344,6 +1368,42 @@ private slots:
         QVERIFY(hoverStep(hover,leave,true,{true}).empty()); // nothing picked since the release: nothing to leave
         QVERIFY(!hoverStep(hover,source,true,{true}).empty());
         QCOMPARE(hoverStep(hover,leave,true,{true}),proto::enc::encodeHoverLeave());
+    }
+    // Stock 516.1689 (tests/data/hover-world pacepost): stock reports every move it reads, but Windows merges the real
+    // pointer's moves between reads, about every 1/64 s. Picks in one tick stand for the last alone, weighed with its
+    // own gate against the record as the tick found it.
+    void hoverMergesPicksInATick() {
+        constexpr int64_t tick = MapHover::kPeriodNs;
+        MapPointer a; a.kind = MapPointer::Hover; a.click.over = proto::enc::objRef(42); a.click.control = "main.map";
+        a.click.iconX = a.click.iconY = 5;
+        auto b = a; b.click.over = proto::enc::objRef(43);
+        auto moved = a; moved.click.iconX = 6;
+        const MapHover::Gate both{false, false, 0x180800u, 0x180800u}, plain{false, false, 0, 0x180800u};
+        MapHover hover;
+        hover.update(a, true, both, 0);
+        QCOMPARE(hover.due(tick), mapPointerBody(a));
+        // Off and back within one tick: the pointer never left.
+        hover.update(b, true, both, 10 * tick + 1);
+        hover.update(a, true, both, 10 * tick + 2);
+        QVERIFY(hover.due(11 * tick).empty());
+        QVERIFY(!hover.dueAt());
+        // The last pick of the tick goes out alone, with its own gate: a move onto an atom without MouseMove, after a
+        // move report waiting in the same tick, sends nothing.
+        auto further = a; further.click.iconX = 7;
+        hover.update(moved, true, both, 20 * tick + 1);
+        hover.update(further, true, plain, 20 * tick + 2);
+        QVERIFY(hover.due(21 * tick).empty());
+        // In separate ticks each pick is its own.
+        hover.update(moved, true, both, 30 * tick + 1);
+        QCOMPARE(hover.due(31 * tick), mapPointerBody(moved));
+        hover.update(a, true, both, 31 * tick + 1);
+        QCOMPARE(hover.due(32 * tick), mapPointerBody(a));
+        // A leave between picks ends the merging: the pick before it goes out, then the leave.
+        hover.update(b, true, both, 40 * tick + 1);
+        MapPointer leave; leave.kind = MapPointer::Leave;
+        hover.update(leave, true, {false, false, 0, 0x180800u}, 40 * tick + 2);
+        QCOMPARE(hover.due(41 * tick), mapPointerBody(b));
+        QCOMPARE(hover.due(41 * tick), proto::enc::encodeHoverLeave());
     }
     void hoverTransitionsAndStaleIdentities() {
         MapPointer p; p.kind = MapPointer::Hover; p.session = 7;

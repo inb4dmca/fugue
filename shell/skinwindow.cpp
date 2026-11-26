@@ -68,6 +68,20 @@ private:
     const SkinWindow::SpaceCompleter* c_;
 };
 
+// The verb menu takes no notice of the middle button: a middle press off it neither closes it nor reaches the map, and
+// one on it picks nothing (stock 516.1689, tests/data/hover-world round3 mmidother).
+class MenuIgnoresMiddle : public QObject {
+public:
+    using QObject::QObject;
+    bool eventFilter(QObject* o, QEvent* e) override {
+        if ((e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseButtonRelease ||
+             e->type() == QEvent::MouseButtonDblClick) &&
+            static_cast<QMouseEvent*>(e)->button() == Qt::MiddleButton)
+            return true;
+        return QObject::eventFilter(o, e);
+    }
+};
+
 // A winset colour: "#rrggbb" or a name. "none", "" and anything unreadable give an invalid colour (the default look).
 QColor skinColor(const std::string& v) {
     std::string t = skin::lowerAscii(skin::trimSpace(v));
@@ -351,6 +365,8 @@ void SkinWindow::showMapMenu(const MapMenu& menu) {
     popup->setObjectName("mapContextMenu");
     mapMenu_ = popup;
     popup->setFont(skinMenuFont());
+    auto* ignoreMiddle = new MenuIgnoresMiddle(popup);
+    popup->installEventFilter(ignoreMiddle);
     connect(popup, &QMenu::aboutToHide, popup, &QObject::deleteLater);
     connect(popup, &QMenu::aboutToHide, this, [this] {
         for (const auto& [key, widget] : widgets_)
@@ -371,6 +387,7 @@ void SkinWindow::showMapMenu(const MapMenu& menu) {
         if (!group || groupId != item.group) {
             groupId = item.group;
             group = popup->addMenu(QString(item.atom).replace("&", "&&"));
+            group->installEventFilter(ignoreMiddle);
         }
         auto* action = group->addAction(QString(item.label).replace("&", "&&"));
         connect(action, &QAction::triggered, this,

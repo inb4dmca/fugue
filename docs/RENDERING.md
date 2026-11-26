@@ -151,8 +151,8 @@ MAP must not retarget queued input. Click/hover, right-release menus and world/o
 HUD drag/drop have bounded implementations; general affine gestures, grouped/image/
 vis input combinations and cross-MAP drags remain incomplete. Hover reports follow stock's record of atom, control,
 map and pixel in the screen tile, one record for all of a session's maps; they re-pick a still pointer as frames
-change it and when a verb menu closes, forget the record at every release but a right release the menu path takes,
-go out at most once per 1/64 s, and a map's leave follows the report of the map the pointer went to
+change it and when a verb menu closes over a map, forget the record at every release but a right release the menu
+path takes, merge the picks of each 1/64 s as Windows merges stock's pointer moves, and a map's leave follows the report of the map the pointer went to
 (`shell/mapinput.h` MapHover, tests/data/hover-world/README.md). Stat panels report hover in stock and not in Fugue.
 
 ## Diagnostics

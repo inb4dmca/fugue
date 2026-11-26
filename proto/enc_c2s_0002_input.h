@@ -71,8 +71,8 @@ std::string mapIdParam(const std::string& id);
 
 // The hover report (sub 0x08), one shape for all three hover procs: the server runs MouseExited on the atom the previous
 // report named and MouseEntered on this one when they differ, and MouseMove when they are the same.
-// params: hoverParams (clickParams without the button; "right=1;" before the modifiers when c.button is "right", a report
-// made while the right button is held), or "screen-loc=X:PX,Y:PY" alone over the letterbox (over and
+// params: hoverParams (clickParams without the button; "right=1;" or "middle=1;" before the modifiers when c.button is
+// "right" or "middle", a report made as a verb menu closes with that button held), or "screen-loc=X:PX,Y:PY" alone over the letterbox (over and
 // loc null). locStr: on a secondary map, loc is that string (the control's short id), and screen-loc carries it.
 std::string hoverParams(const ClickCmd&);
 Bytes encodeHover(const AtomRef& over, const AtomRef& loc, const std::string& control, const std::string& params,

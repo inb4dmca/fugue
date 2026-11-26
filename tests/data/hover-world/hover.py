@@ -26,5 +26,6 @@ for arg in sys.argv[3:]:
     cases = [c for c in probe['cases'] if f"{name}/{c['case']}" not in drop]
     runs[name] = {'run': name, 'date': date, 'stock': probe['stock'], 'switches': probe['switches'],
                   'params': probe['params'], 'replay': replay or 'base.txt', 'cases': cases}
+    if 'timer_ms' in probe: runs[name]['timer_ms'] = probe['timer_ms']   # system timer resolution; hoverprobe --timer1
 doc['runs'] = list(runs.values())
 out.write_text(json.dumps(doc, indent=1) + '\n', newline='\n')

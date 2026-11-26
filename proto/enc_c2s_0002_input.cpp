@@ -29,8 +29,8 @@ static int clampPx(int v, int tile) {
     return v < 1 ? 1 : (v > tile ? tile : v);
 }
 
-// Order: icon-x, icon-y, vis-x, vis-y, the button (a hover has only "right=1", and only while the right button is held),
-// the modifiers, screen-loc.
+// Order: icon-x, icon-y, vis-x, vis-y, the button (a hover has only "right=1" or "middle=1", and only while a verb menu
+// closes with that button held: stock 516.1689, tests/data/hover-world), the modifiers, screen-loc.
 static std::string mouseParams(const ClickCmd& c, bool withButton) {
     std::string btn = c.button.empty() ? "left" : c.button;
     // icon-x/icon-y are not clamped: they are in the named atom's icon frame, whatever the cursor's distance from it
@@ -39,8 +39,8 @@ static std::string mouseParams(const ClickCmd& c, bool withButton) {
     if (c.hasVis) s += "vis-x=" + std::to_string(c.visX) + ";vis-y=" + std::to_string(c.visY) + ";";
     if (withButton)
         s += btn + "=1;button=" + btn + ";";
-    else if (c.button == "right")
-        s += "right=1;";
+    else if (c.button == "right" || c.button == "middle")
+        s += c.button + "=1;";
     if (c.mods.ctrl) s += "ctrl=1;";
     if (c.mods.shift) s += "shift=1;";
     if (c.mods.alt) s += "alt=1;";

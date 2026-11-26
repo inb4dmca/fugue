@@ -10,7 +10,8 @@ run every case of SCRIPT in turn. Each line of SCRIPT is "<case> ACTION...", and
                  outside the map are allowed (with a wider skin, its other controls are reached this way): -40,100 is left of the window, 100,-60 above its client area
   post:X,Y       a WM_MOUSEMOVE posted to the window at that point; the real pointer stays where it is
   sweep:X0,Y0,X1,Y1,N,MS   N real moves from the first point to the second, MS milliseconds apart
-  down up rdown rup        a real press or release of the left or right button where the pointer is
+  psweep:X0,Y0,X1,Y1,N,MS  the same N moves posted to the window (Windows merges no posted moves)
+  down up rdown rup mdown mup   a real press or release of the left, right or middle button where the pointer is
   tap            a real left press and release at once
   key:K kdown:K kup:K      a real key pressed and released, pressed, or released: K is ctrl, shift, alt or esc
   shot:NAME      a grab of the screen around the window, NAME.png beside --out (to find where things are drawn)
@@ -21,7 +22,8 @@ at once.
 Before each case the pointer is put outside the window and the probe waits a second, so that a case starts with the
 pointer off the map. The stock window is moved to --at and kept topmost while the run lasts, so that real moves reach
 it. events.log lines the world wrote during each action are kept per action, with the probe's own clock (seconds since
-the case began) on the action. The user's pointer is put back at the end. Only processes started here are stopped.
+the case began) on the action. The user's pointer is put back at the end. Only processes started here are stopped. --timer1 holds a 1 ms system timer
+resolution (timeBeginPeriod) in this process while the run lasts.
 """
 import argparse, ctypes, json, re, shutil, subprocess, sys, tempfile, time
 from ctypes import wintypes
@@ -36,6 +38,7 @@ ap.add_argument('--switches', default='')
 ap.add_argument('--at', default='300,200', help='screen position of the stock window')
 ap.add_argument('--settle', type=float, default=.35, help='seconds after each action before its lines are read')
 ap.add_argument('--out', required=True)
+ap.add_argument('--timer1', action='store_true', help='hold timeBeginPeriod(1) while the run lasts')
 ap.add_argument('script')
 a = ap.parse_args()
 
@@ -81,7 +84,7 @@ subprocess.run([sys.executable, str(world / 'prepare.py'), str(work)] + switches
 built = subprocess.run([str(byond / 'dm.exe'), 'world.dme'], cwd=work, capture_output=True, text=True)
 if ' 0 errors' not in built.stdout: raise SystemExit(built.stdout)
 cases = [line.split() for line in Path(a.script).read_text().splitlines() if line.strip() and not line.startswith('#')]
-FORM = re.compile(r'(-?\d+,-?\d+|post:\d+,\d+|sweep:(-?\d+,){5}\d+|down|up|rdown|rup|tap|(key|kdown|kup):(ctrl|shift|alt|esc))!?$'
+FORM = re.compile(r'(-?\d+,-?\d+|post:\d+,\d+|p?sweep:(-?\d+,){5}\d+|down|up|rdown|rup|mdown|mup|tap|(key|kdown|kup):(ctrl|shift|alt|esc))!?$'
                   r'|wait:\d+(\.\d+)?$|shot:\w+$')
 KEYS = {'ctrl': 0x11, 'shift': 0x10, 'alt': 0x12, 'esc': 0x1b}
 for case in cases:
@@ -89,6 +92,13 @@ for case in cases:
     if bad: raise SystemExit('not an action: ' + ' '.join(bad))
 
 saved = wintypes.POINT(); user32.GetCursorPos(ctypes.byref(saved))
+def resolution():   # the system timer's current resolution, in ms
+    low, high, now = wintypes.ULONG(), wintypes.ULONG(), wintypes.ULONG()
+    ctypes.windll.ntdll.NtQueryTimerResolution(ctypes.byref(low), ctypes.byref(high), ctypes.byref(now))
+    return now.value / 10000
+timer = {'before': resolution()}
+if a.timer1:
+    ctypes.windll.winmm.timeBeginPeriod(1); timer['held'] = resolution()
 procs = []; log = work / 'events.log'; results = []
 at = [int(v) for v in a.at.split(',')]
 try:
@@ -104,11 +114,17 @@ try:
     user32.SetWindowPos(hwnd, wintypes.HWND(-1), at[0], at[1], 0, 0, 0x0001 | 0x0040)   # topmost, no size change
     user32.SetForegroundWindow(hwnd)
     time.sleep(1)
+    timer['running'] = resolution()
 
     def screen(x, y):
         p = wintypes.POINT(x, y); user32.ClientToScreen(hwnd, ctypes.byref(p)); return p.x, p.y
 
     def lines(): return text(log).splitlines()
+
+    def post(x, y):
+        p = wintypes.POINT(x, y); target = user32.ChildWindowFromPointEx(hwnd, p, 0) or hwnd
+        user32.MapWindowPoints(hwnd, target, ctypes.byref(p), 1)
+        user32.PostMessageW(target, 0x200, 0, (p.y << 16) | (p.x & 0xffff))
 
     def act(action):
         kind, _, value = action.rstrip('!').partition(':')
@@ -116,19 +132,19 @@ try:
         if kind == 'move':
             user32.SetCursorPos(*screen(*map(int, value.split(','))))
         elif kind == 'post':
-            x, y = map(int, value.split(','))
-            p = wintypes.POINT(x, y); target = user32.ChildWindowFromPointEx(hwnd, p, 0) or hwnd
-            user32.MapWindowPoints(hwnd, target, ctypes.byref(p), 1)
-            user32.PostMessageW(target, 0x200, 0, (p.y << 16) | (p.x & 0xffff))
-        elif kind == 'sweep':
+            post(*map(int, value.split(',')))
+        elif kind in ('sweep', 'psweep'):
             x0, y0, x1, y1, n, ms = map(int, value.split(','))
             start = time.perf_counter()
             for i in range(1, n + 1):
                 while time.perf_counter() < start + (i - 1) * ms / 1000: pass   # sleep() is too coarse for this
-                user32.SetCursorPos(*screen(round(x0 + (x1 - x0) * i / n), round(y0 + (y1 - y0) * i / n)))
+                x, y = round(x0 + (x1 - x0) * i / n), round(y0 + (y1 - y0) * i / n)
+                if kind == 'sweep': user32.SetCursorPos(*screen(x, y))
+                else: post(x, y)
             return time.perf_counter() - start
-        elif kind in ('down', 'up', 'rdown', 'rup', 'tap'):
-            user32.mouse_event({'down': 2, 'up': 4, 'rdown': 8, 'rup': 16, 'tap': 6}[kind], 0, 0, 0, 0)
+        elif kind in ('down', 'up', 'rdown', 'rup', 'mdown', 'mup', 'tap'):
+            user32.mouse_event({'down': 2, 'up': 4, 'rdown': 8, 'rup': 16, 'mdown': 32, 'mup': 64, 'tap': 6}[kind],
+                               0, 0, 0, 0)
         elif kind in ('key', 'kdown', 'kup'):
             if kind != 'kup': user32.keybd_event(KEYS[value], 0, 0, 0)
             if kind != 'kdown': user32.keybd_event(KEYS[value], 0, 2, 0)
@@ -156,13 +172,14 @@ try:
             for line in row['logged']: print('      ' + line)
     version = re.search(r'Version ([\d.]+)', text(work / 'dd.out'))
     Path(a.out).write_text(json.dumps({'stock': version.group(1) if version else '?', 'switches': switches,
-                                       'params': a.params, 'cases': results}, indent=1) + '\n')
+                                       'params': a.params, 'timer_ms': timer, 'cases': results}, indent=1) + '\n')
 finally:
     for key in KEYS.values():   # nothing is left held for the user
         if user32.GetAsyncKeyState(key) & 0x8000: user32.keybd_event(key, 0, 2, 0)
-    for button, up in ((1, 4), (2, 16)):
+    for button, up in ((1, 4), (2, 16), (4, 64)):
         if user32.GetAsyncKeyState(button) & 0x8000: user32.mouse_event(up, 0, 0, 0, 0)
     user32.SetCursorPos(saved.x, saved.y)
+    if a.timer1: ctypes.windll.winmm.timeEndPeriod(1)
     for p in reversed(procs):
         if p.poll() is None: p.kill()
     for p in procs: p.wait()

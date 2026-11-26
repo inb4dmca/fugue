@@ -959,9 +959,8 @@ void MapHover::update(const MapPointer& p, bool current, const Gate& g, int64_t 
     // Stock 516.1689 (tests/data/hover-world): appearance flag 0x800 comes with MouseEntered, MouseExited, MouseMove or
     // MouseWheel, 0x80000 with MouseMove alone (0x100000 with MouseMove or MouseWheel).
     constexpr uint32_t kHoverProcs = 0x800, kMoveProc = 0x80000;
-    // A pick still waiting is replaced whatever the gate says.
-    const bool replacing = !waiting_.empty() && waiting_.back().kind == MapPointer::Hover;
     if (p.kind == MapPointer::Leave) {
+        run_.reset();
         // Off the map: an over report naming nothing, null control and no params, then the record is gone. With no
         // record (nothing picked since a release) nothing is sent. It goes out after a report still waiting.
         if (!record_) return;
@@ -974,6 +973,21 @@ void MapHover::update(const MapPointer& p, bool current, const Gate& g, int64_t 
         return;
     }
     if (!current || p.kind != MapPointer::Hover) return;
+    // Within one tick Windows hands stock the pointer's last position alone: the picks before it in the tick never
+    // happened, and neither did their report.
+    Gate gate = g;
+    const int64_t tick = nowNs / kPeriodNs;
+    if (run_ && run_->tick == tick) {
+        record_ = run_->record;
+        gate.sentFlags = run_->sentFlags;
+        if (run_->queued) {
+            waiting_.pop_back();
+            dueNs_.pop_back();
+        }
+        run_->queued = false;
+    } else {
+        run_ = Run{tick, record_, g.sentFlags, false};
+    }
     const auto& c = p.click;
     auto pixel = [&](int v, int fallback) {
         const int tile = c.screenTileSize > 0 ? c.screenTileSize : 32;
@@ -985,20 +999,22 @@ void MapHover::update(const MapPointer& p, bool current, const Gate& g, int64_t 
                       record_->map != r.map;
     const bool moved = !over && r.over.kind != proto::enc::RefNull && (record_->px != r.px || record_->py != r.py);
     record_ = std::move(r);
-    if (over ? g.clientHover || (g.flags & kHoverProcs) || (g.sentFlags & kHoverProcs) || replacing
-             : moved && (g.clientMove || (g.flags & kMoveProc) || replacing))
+    if (over ? gate.clientHover || (gate.flags & kHoverProcs) || (gate.sentFlags & kHoverProcs)
+             : moved && (gate.clientMove || (gate.flags & kMoveProc))) {
         queue(p, nowNs);
+        run_->queued = true;
+    }
 }
 void MapHover::queue(const MapPointer& p, int64_t nowNs) {
-    if (waiting_.empty()) dueNs_ = (nowNs / kPeriodNs + 1) * kPeriodNs;
-    if (p.kind == MapPointer::Hover && !waiting_.empty() && waiting_.back().kind == MapPointer::Hover) waiting_.back() = p;
-    else waiting_.push_back(p);
+    dueNs_.push_back((nowNs / kPeriodNs + 1) * kPeriodNs);
+    waiting_.push_back(p);
     waiting_.back().source.reset();
 }
 Bytes MapHover::due(int64_t nowNs) {
-    if (waiting_.empty() || nowNs < dueNs_) return {};
+    if (waiting_.empty() || nowNs < dueNs_.front()) return {};
     MapPointer next = std::move(waiting_.front());
     waiting_.erase(waiting_.begin());
+    dueNs_.erase(dueNs_.begin());
     auto body = mapPointerBody(next);
     if (next.kind == MapPointer::Hover && next.click.over.kind != proto::enc::RefNull) sent_ = std::move(next);
     else sent_.reset();
