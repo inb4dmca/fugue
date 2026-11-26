@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "stock": "DreamSeeker/DreamDaemon 516.1689",
- "date": "2026-11-25",
+ "date": "2026-11-25 (each later case gives its own date)",
  "method": "tools/stockprobe/stockprobe.py click with set=<case>: left and right clicks at MAP pixels in the stock window. A click is what the world logged (the clicked atom's name, icon-x, icon-y); a menu is the entries of the right-click menu stock showed, topmost first, each named by its verb",
  "cases": [
   {
@@ -3092,6 +3092,541 @@
      ]
     }
    ]
+  },
+  {
+   "case": "locleft",
+   "clicks": [
+    {
+     "at": [
+      171,
+      45
+     ],
+     "over": "part",
+     "iconX": 12,
+     "iconY": 19
+    },
+    {
+     "at": [
+      139,
+      109
+     ],
+     "over": "floor",
+     "iconX": 12,
+     "iconY": 19
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      171,
+      45
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "locright",
+   "clicks": [
+    {
+     "at": [
+      171,
+      45
+     ],
+     "over": "part",
+     "iconX": 12,
+     "iconY": 19
+    },
+    {
+     "at": [
+      75,
+      13
+     ],
+     "over": "other",
+     "iconX": 12,
+     "iconY": 19
+    },
+    {
+     "at": [
+      203,
+      109
+     ],
+     "over": "button",
+     "iconX": 12,
+     "iconY": 19
+    },
+    {
+     "at": [
+      139,
+      109
+     ],
+     "over": "floor",
+     "iconX": 12,
+     "iconY": 19
+    },
+    {
+     "at": [
+      100,
+      150
+     ],
+     "over": "floor",
+     "iconX": 5,
+     "iconY": 10
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      171,
+      45
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      139,
+      109
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "locroff",
+   "clicks": [
+    {
+     "at": [
+      185,
+      57
+     ],
+     "over": "part",
+     "iconX": 22,
+     "iconY": 10
+    },
+    {
+     "at": [
+      170,
+      42
+     ],
+     "over": "floor",
+     "iconX": 11,
+     "iconY": 22
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      185,
+      57
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "rpx",
+   "clicks": [
+    {
+     "at": [
+      140,
+      117
+     ],
+     "over": "part",
+     "iconX": 13,
+     "iconY": 11
+    },
+    {
+     "at": [
+      158,
+      101
+     ],
+     "over": "floor",
+     "iconX": 31,
+     "iconY": 27
+    },
+    {
+     "at": [
+      43,
+      77
+     ],
+     "over": "other",
+     "iconX": 12,
+     "iconY": 19
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      140,
+      117
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      158,
+      101
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "rpw-loc23",
+   "clicks": [
+    {
+     "at": [
+      169,
+      54
+     ],
+     "over": "part",
+     "iconX": 10,
+     "iconY": 10
+    },
+    {
+     "at": [
+      190,
+      38
+     ],
+     "over": "floor",
+     "iconX": 31,
+     "iconY": 26
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      169,
+      54
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "locpd-mark",
+   "clicks": [
+    {
+     "at": [
+      156,
+      100
+     ],
+     "over": "part",
+     "iconX": 10,
+     "iconY": 9
+    },
+    {
+     "at": [
+      156,
+      84
+     ],
+     "over": "floor",
+     "iconX": 29,
+     "iconY": 12
+    },
+    {
+     "at": [
+      27,
+      196
+     ],
+     "over": "mark",
+     "iconX": 9,
+     "iconY": 9
+    },
+    {
+     "at": [
+      27,
+      180
+     ],
+     "over": "floor",
+     "iconX": 28,
+     "iconY": 12
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      156,
+      100
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      27,
+      196
+     ],
+     "entries": [
+      "mark",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "locpe",
+   "clicks": [
+    {
+     "at": [
+      98,
+      157
+     ],
+     "over": "part",
+     "iconX": 9,
+     "iconY": 9
+    },
+    {
+     "at": [
+      113,
+      141
+     ],
+     "over": "floor",
+     "iconX": 18,
+     "iconY": 19
+    },
+    {
+     "at": [
+      2,
+      125
+     ],
+     "over": "other",
+     "iconX": 9,
+     "iconY": 9
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      98,
+      157
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "locpf-mark",
+   "clicks": [
+    {
+     "at": [
+      155,
+      84
+     ],
+     "over": "part",
+     "iconX": 9,
+     "iconY": 24
+    },
+    {
+     "at": [
+      170,
+      100
+     ],
+     "over": "floor",
+     "iconX": 11,
+     "iconY": 28
+    },
+    {
+     "at": [
+      42,
+      195
+     ],
+     "over": "mark",
+     "iconX": 24,
+     "iconY": 9
+    },
+    {
+     "at": [
+      42,
+      196
+     ],
+     "over": "floor",
+     "iconX": 11,
+     "iconY": 28
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      155,
+      84
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "locrange",
+   "clicks": [
+    {
+     "at": [
+      139,
+      107
+     ],
+     "over": "part",
+     "iconX": 12,
+     "iconY": 21
+    },
+    {
+     "at": [
+      203,
+      43
+     ],
+     "over": "part",
+     "iconX": 12,
+     "iconY": 21
+    },
+    {
+     "at": [
+      171,
+      75
+     ],
+     "over": "part",
+     "iconX": 12,
+     "iconY": 21
+    },
+    {
+     "at": [
+      107,
+      11
+     ],
+     "over": "other",
+     "iconX": 12,
+     "iconY": 21
+    },
+    {
+     "at": [
+      203,
+      107
+     ],
+     "over": "button",
+     "iconX": 12,
+     "iconY": 21
+    },
+    {
+     "at": [
+      100,
+      150
+     ],
+     "over": "floor",
+     "iconX": 5,
+     "iconY": 10
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      139,
+      107
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      203,
+      43
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "locrow",
+   "clicks": [
+    {
+     "at": [
+      171,
+      43
+     ],
+     "over": "part",
+     "iconX": 12,
+     "iconY": 21
+    },
+    {
+     "at": [
+      213,
+      53
+     ],
+     "over": "part",
+     "iconX": 22,
+     "iconY": 11
+    },
+    {
+     "at": [
+      139,
+      11
+     ],
+     "over": "other",
+     "iconX": 12,
+     "iconY": 21
+    },
+    {
+     "at": [
+      100,
+      150
+     ],
+     "over": "floor",
+     "iconX": 5,
+     "iconY": 10
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      213,
+      53
+     ],
+     "entries": [
+      "part",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
   }
  ]
 }

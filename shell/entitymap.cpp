@@ -1438,24 +1438,34 @@ MapSprites EntityMap::prepare(const model::World& w, const TurfMap::Frame& terra
                         (ap.planeEffects && ap.planeEffects->boundedTreeFilters()));
                 }
             }
-            const QString location = ap.screenTarget ? ap.screenTarget->location : QString();
             // A relay of a plane's surface draws the plane's picture moved as far from the view's corner as its
-            // screen_loc is from 1,1, pixel offsets included (stock 516.1689, plane-relay-world loc23, locpx); the
+            // screen_loc places it from 1,1, pixel offsets included (stock 516.1689, plane-relay-world loc23, locpx); the
             // composition plan reads that from the relay's position. A relay of an atom's render target is drawn like
-            // an icon (stock-parity-world relay-hud*, relay-obj). CENTER, EAST and NORTH count in tiles as for any screen
-            // object (loccenter "CENTER-2,CENTER-1" and locne "EAST-5,NORTH-4" draw as 2,3 does); a range, an edge
-            // (LEFT, TOP, ...), a percent or the relay's own pixel_x/y was not measured and is left out.
-            if (!ap.master && !ap.renderSource.isEmpty() && ap.renderTarget.isEmpty() && !atomTarget(ap.renderSource)) {
-                const auto numeric = [](const ScreenLoc::Axis& a) {
-                    return a.anchor == ScreenLoc::Anchor::Tile && a.percent == 0;
-                };
+            // an icon (stock-parity-world relay-hud*, relay-obj). Every form places it as it places any screen object
+            // with a one-tile icon: CENTER, EAST, NORTH and the edges count in tiles (loccenter, locne, locleft
+            // "LEFT+1,BOTTOM+2" and locright "RIGHT-5,TOP-4" draw as 2,3 does), a percent moves it like an ordinary
+            // object at that screen_loc (locpd-mark, locpe, locpf-mark), and a range draws the picture once at every
+            // position (locrange, locrow). The relay's own pixel_x/y/w/z moves neither its picture nor its clicks (rpx,
+            // rpw-loc23, where DreamDaemon sends the relay's appearance without them); an appearance that carries
+            // them is drawn unmoved too, which is inferred, not measured.
+            const bool planeRelay = !ap.master && !ap.renderSource.isEmpty() && ap.renderTarget.isEmpty() &&
+                                    !atomTarget(ap.renderSource);
+            QPoint relayAlign, relayOffset;
+            if (planeRelay) {
                 const auto& loc = ap.screenPlacement;
-                if (!ap.offset.isNull() || (location != "SOUTHWEST" &&
-                    (!loc || loc->range || !numeric(loc->first.x) || !numeric(loc->first.y)))) return;
+                if (!loc) return;
+                // The placement aligned a RIGHT or TOP end by the root icon's size; a relay counts as one tile
+                // (measured with a relay that has no icon of its own).
+                if (!loc->range && !shape.iconSize.isEmpty()) {
+                    if (loc->first.x.anchor == ScreenLoc::Anchor::FarEdge) relayAlign.rx() = shape.iconSize.width() - tile_;
+                    if (loc->first.y.anchor == ScreenLoc::Anchor::FarEdge) relayAlign.ry() = shape.iconSize.height() - tile_;
+                }
+                relayOffset = ap.offset;
             }
             // A plane's surface and its relay cover the whole scene; anything else stands on the view.
             const QRect& base = !ap.master && !ap.renderSource.isEmpty() && !atomTarget(ap.renderSource) ? view : inner;
-            origin = QPoint(base.left() + screenPosition.x(), base.bottom() + 1 - tile_ - screenPosition.y());
+            origin = QPoint(base.left() + screenPosition.x() + relayAlign.x(),
+                            base.bottom() + 1 - tile_ - screenPosition.y() - relayAlign.y()) - relayOffset;
         }
         if (diagnostic) { diagnostic->placedBounds = shape.bounds.translated(origin); diagnostic->view = view; }
         const auto& rootAppearance = appearance(atom.appid);

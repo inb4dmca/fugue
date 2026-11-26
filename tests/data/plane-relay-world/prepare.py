@@ -25,3 +25,4 @@ def box(fill, lo=8, hi=23):
 box((200, 60, 60, 255)).save(t / 'box.png')        # 16x16 at 8..23: `part`
 box((40, 80, 230, 255)).save(t / 'blue.png')       # `other`
 box((60, 200, 60, 255)).save(t / 'green.png')      # the HUD `button`
+box((230, 220, 40, 255)).save(t / 'yellow.png')    # `mark`, an ordinary screen object at the relay's screen_loc

@@ -3364,6 +3364,11 @@ private slots:
         QCOMPARE(at("3,3 to 1:8,1"), at("1:8,1 to 3,3"));
         QCOMPARE(at("1,1 to 50%,50%",{7,7}), (std::vector<QPoint>{{0,0}}));
         QCOMPARE(at("50%,50% to 3,3",{7,7}), at("4,4 to 6,6",{7,7}));
+        // A percent's pixels added to a tile are cut towards zero, from an edge they go left and up (plane-relay-world
+        // locpd-mark, locpe, locpf-mark: 19.2 is 19 from 1, 20 from TOP; -38.4 is -38).
+        QCOMPARE(at("1+10%,1+10%",{7,7}), (std::vector<QPoint>{{19,19}}));
+        QCOMPARE(at("1-20%,1-20%",{7,7}), (std::vector<QPoint>{{-38,-38}}));
+        QCOMPARE(at("RIGHT-90%,TOP-90%",{7,7}), (std::vector<QPoint>{{19,20}}));
         for (const auto* invalid : {"", "garbage", "1", "1,1,1", "map:1,1", "1+1+1,1",
                                   "1:16,1:16 to 2:16,2:16 to 3:16,3:16",
                                   "2:16,2:16 to 1.5:16,1:16", "2,2 TO 1.5,1", "NORTH,EAST TO CENTER,CENTER",
@@ -3695,7 +3700,9 @@ private slots:
         QCOMPARE(moved.size(),1); QCOMPARE(moved[0].position,map.source.topLeft()+QPoint(96,0));
         QCOMPARE(top[0].position,map.source.topLeft()+QPoint(42,70)); // immutable publication
         setFields(w.appearances[1], R"({"screenLoc":"TOP,CENTER","renderSource":"*capture"})");
-        QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).empty()); // not a source-anchor extension
+        // A relay of a plane stands there too (stock 516.1689, plane-relay-world locleft, locright).
+        const auto relay=scene.prepare(w,map,reader(),0,nullptr,true);
+        QCOMPARE(relay.size(),1); QCOMPARE(relay[0].iconBottom,moved[0].iconBottom);
     }
     void screenLocationEdgeAliases_data() {
         QTest::addColumn<QString>("alias"); QTest::addColumn<QString>("canonical");
@@ -3757,8 +3764,19 @@ private slots:
         QCOMPARE(scene.prepare(w,map,reader(),0,&stats,true).constData(),after.constData());
         QCOMPARE(stats.templateBuilds,uint64_t(0)); QCOMPARE(stats.frameDecodes,uint64_t(0));
         QCOMPARE(stats.sceneReuses,uint64_t(1));
-        setFields(w.appearances[1], ("{\"screenLoc\":\""+alias+"\",\"renderSource\":\"*capture\"}").toStdString());
-        QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).empty());
+        // A relay of a plane stands where the canonical spelling puts it, at every position of a range (stock 516.1689,
+        // plane-relay-world locleft, locright, locrange).
+        const auto relays=[&](const QString& text) {
+            setFields(w.appearances[1], ("{\"screenLoc\":\""+text+"\",\"renderSource\":\"*capture\"}").toStdString());
+            std::vector<QPoint> bottoms;
+            for (const auto& sprite:scene.prepare(w,map,reader(),0,nullptr,true))
+                if (QRect(map.source.left(),map.source.top()+1,map.source.width(),map.source.height()).contains(sprite.iconBottom))
+                    bottoms.push_back(sprite.iconBottom);
+            std::sort(bottoms.begin(),bottoms.end(),[](QPoint a, QPoint b) { return std::pair(a.x(),a.y())<std::pair(b.x(),b.y()); });
+            return bottoms;
+        };
+        const auto relayed=relays(alias);
+        QCOMPARE(relayed.size(),visiblePositions(positions).size()); QCOMPARE(relayed,relays(canonical));
         QVERIFY(samePixelsAndMetadata(visibleSprites(before),visibleSprites(after))); // immutable publications
     }
     void screenRangeAnchoredPublication() {
@@ -3998,10 +4016,14 @@ private slots:
             {{"filters",shell::test::PlaneSourceFixture::blur("000080bf")}}, // negative
             {{"filters",shell::test::PlaneSourceFixture::blur("0000807f")}}, // infinity
             {{"filters",shell::test::PlaneSourceFixture::blur("0000")}},
-            {{"hasTransform",true}}, {{"pixelX",8}},
+            {{"hasTransform",true}},
             {{"appearanceFlags",0x0c000204}},
             {{"vars",QJsonArray{QJsonObject{{"bit",8192},{"data","0100"}}}}}
         };
+        // The relay's own pixel offset moves neither its picture nor its clicks (stock 516.1689, plane-relay-world rpx).
+        f.relay({{"pixelX",8},{"pixelY",3}});
+        const auto moved=f.at({69,37});
+        QCOMPARE(moved.click.over.ref,201u); QCOMPARE(moved.click.iconX,70); QCOMPARE(moved.click.iconY,59);
         for (const auto& fields:refused) {
             f.relay(fields);
             for(const auto& s:f.sprites) QVERIFY(s.atom!=201u);
@@ -4178,16 +4200,25 @@ private slots:
         QCOMPARE(numeric[0].position,southwest[0].position);
         QCOMPARE(numeric[0].renderSource,QString("*capture"));
         QVERIFY(!numeric[0].screenInteractive);
-        setFields(w.appearances[1], R"({"screenLoc":"1,1","renderSource":"*capture","pixelX":1})");
-        QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).isEmpty()); // a relay's own pixel offset was not measured
+        // A relay's own pixel offsets move nothing (stock 516.1689, plane-relay-world rpx, rpw-loc23).
+        setFields(w.appearances[1], R"({"screenLoc":"1,1","renderSource":"*capture","pixelX":1,"pixelY":-3,"pixelW":5,"pixelZ":7})");
+        const auto offset=scene.prepare(w,map,reader(),0,nullptr,true);
+        QCOMPARE(offset.size(),1);
+        QCOMPARE(offset[0].position,numeric[0].position); QCOMPARE(offset[0].iconBottom,numeric[0].iconBottom);
         // Stock's CENTER moves the captured plane as far as the centre tile is from 1,1 (tests/data/plane-relay-world
         // loccenter); the relay stands there.
         setFields(w.appearances[1], R"({"screenLoc":"CENTER","renderSource":"*capture"})");
         const auto centre=scene.prepare(w,map,reader(),0,nullptr,true);
         QCOMPARE(centre.size(),1);
         QVERIFY(centre[0].position.x()>southwest[0].position.x() && centre[0].position.y()<southwest[0].position.y());
+        // An edge counts in tiles, as for a one-tile icon (plane-relay-world locright "RIGHT-5,TOP-4" draws as 2,3).
         setFields(w.appearances[1], R"({"screenLoc":"TOP,CENTER","renderSource":"*capture"})");
-        QVERIFY(scene.prepare(w,map,reader(),0,nullptr,true).isEmpty()); // an edge was not measured
+        const auto top=scene.prepare(w,map,reader(),0,nullptr,true);
+        setFields(w.appearances[1], R"({"screenLoc":"CENTER,NORTH","renderSource":"*capture"})");
+        const auto north=scene.prepare(w,map,reader(),0,nullptr,true);
+        QCOMPARE(top.size(),1); QCOMPARE(north.size(),1);
+        QCOMPARE(top[0].iconBottom,north[0].iconBottom); QCOMPARE(top[0].position,north[0].position);
+        QVERIFY(top[0].iconBottom!=centre[0].iconBottom);
     }
     void screenRangesLateResourcesAndChildren() {
         auto w=world();w.atoms.clear();w.hudOrder={42};w.hudAppid[42]=1;w.hudIdentity[42]={2,99};

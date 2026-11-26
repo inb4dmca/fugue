@@ -35,6 +35,14 @@ world
 /obj/marker
     icon = 'blue.png'
     name = "marker"
+// An ordinary screen object above the relay, put at the relay's screen_loc (case word `mark`).
+/obj/mark
+    icon = 'yellow.png'
+    plane = 6
+    name = "mark"
+    verb/poke_mark()
+        set src in world
+        world.log << "VERB mark"
 // A HUD object on the relayed plane.
 /obj/button
     icon = 'green.png'
@@ -87,6 +95,23 @@ world
     if(findtext(kind, "locpx")) R.screen_loc = "2:5,3:-7"
     if(findtext(kind, "loccenter")) R.screen_loc = "CENTER-2,CENTER-1"   // 2,3 in a 7x7 view
     if(findtext(kind, "locne")) R.screen_loc = "EAST-5,NORTH-4"   // 2,3 as well
+    if(findtext(kind, "locleft")) R.screen_loc = "LEFT+1,BOTTOM+2"   // edge anchors
+    if(findtext(kind, "locright")) R.screen_loc = "RIGHT-5,TOP-4"
+    if(findtext(kind, "locroff")) R.screen_loc = "RIGHT-5:4,TOP-4:-3"
+    if(findtext(kind, "locws")) R.screen_loc = "WEST+1,SOUTH+2"
+    if(findtext(kind, "locpb")) R.screen_loc = "1+25%,1+40%"
+    if(findtext(kind, "locpd")) R.screen_loc = "1+10%,1+10%"
+    if(findtext(kind, "locpe")) R.screen_loc = "1-20%,1-20%"
+    if(findtext(kind, "locpf")) R.screen_loc = "RIGHT-90%,TOP-90%"
+    if(findtext(kind, "locpg")) R.screen_loc = "1+40%,1+25%"
+    if(findtext(kind, "locrange")) R.screen_loc = "1,1 to 3,3"   // ranges
+    if(findtext(kind, "locrow")) R.screen_loc = "2,3 to 4,3"
+    if(findtext(kind, "rpx"))   // the relay's own offsets
+        R.pixel_x = 10
+        R.pixel_y = 5
+    if(findtext(kind, "rpw"))
+        R.pixel_w = 10
+        R.pixel_z = 5
     if(findtext(kind, "rturn90")) R.transform = turned(90)
     if(findtext(kind, "rturn45")) R.transform = turned(45)
     if(findtext(kind, "rscalex2")) R.transform = matrix(2, 0, 0, 0, 1, 0)
@@ -105,6 +130,10 @@ world
     at = findtext(kind, "rt_")   // rt_<degrees>: the relay turned (last in the case name)
     if(at) R.transform = turned(text2num(copytext(kind, at + 3)))
     C.screen += R
+    if(findtext(kind, "mark"))
+        var/obj/mark/K = new
+        K.screen_loc = R.screen_loc
+        C.screen += K
     world.log << "CASE [kind]"
 world/New()
     ..()

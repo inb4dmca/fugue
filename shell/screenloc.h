@@ -155,12 +155,19 @@ struct ScreenLoc {
         // The tile part of an axis: what places the scene, orders a range and counts its copies. A percent is added
         // afterwards, like a pixel offset (master-screen-loc-world: "2,1 to 50%,1" is two copies from 4,1).
         const auto local = [](const Axis& a, int dimension) { return a.tiles + a.relative * dimension; };
-        const auto share = [](double percent, int dimension) { return percent * (dimension - 1); };
         const auto shift = [](const Axis& a, int dimension) { return a.anchor == Anchor::FarEdge ? dimension - 1 : 0; };
-        // A percent that lands between pixels goes to the left and up (RIGHT-10% at 489.6 is 489, BOTTOM+33%
-        // at 116.2 is 117).
-        const auto pixel = [&](double at, double percent, bool vertical) {
-            return int(percent != 0 ? (vertical ? std::ceil((at-1)*tile) : std::floor((at-1)*tile)) : std::lround((at-1)*tile));
+        // A percent that lands between pixels: from an edge it goes to the left and up (RIGHT-10% at 489.6 is 489,
+        // BOTTOM+33% at 116.2 is 117, TOP-90% at 19.2 is 20); added to a tile, its own pixels are cut towards zero
+        // (stock 516.1689, plane-relay-world locpd-mark: "1+10%,1+10%" 19 right and 19 up; locpe: "1-20%,1-20%" 38
+        // left and 38 down). at: the tile part, with an edge's own shift.
+        const auto pixel = [&](double at, double percent, int dimension, bool vertical, bool edge) {
+            if (percent == 0) return int(std::lround((at-1)*tile));
+            if (!edge) {
+                const double share = percent*(dimension-1)*tile;
+                return int(std::lround((at-1)*tile)) + int(std::trunc(share + (share < 0 ? -1e-6 : 1e-6)));
+            }
+            const double v = (at-1+percent*(dimension-1))*tile;
+            return int(vertical ? std::ceil(v) : std::floor(v));
         };
         if (!range) {
             const double x = local(first.x,view.width()) + shift(first.x,view.width());
@@ -169,8 +176,8 @@ struct ScreenLoc {
             // and not seen, as in stock.
             if (x < 1 - outside.left() || y < 1 - outside.bottom() || x > view.width() + outside.right() ||
                 y > view.height() + outside.top()) return {};
-            return {QPoint(pixel(x + share(first.x.percent,view.width()),first.x.percent,false)+first.x.pixels,
-                           pixel(y + share(first.y.percent,view.height()),first.y.percent,true)+first.y.pixels)};
+            return {QPoint(pixel(x,first.x.percent,view.width(),false,first.x.anchor != Anchor::Tile)+first.x.pixels,
+                           pixel(y,first.y.percent,view.height(),true,first.y.anchor != Anchor::Tile)+first.y.pixels)};
         }
         struct Run { int origin = 0, count = 0; };
         const auto run = [&](const Axis& a, const Axis& b, int dimension, int near, int far, bool vertical) -> Run {
@@ -209,7 +216,7 @@ struct ScreenLoc {
             // even when its range extends past the far edge. Do not expand here.
             if (origin->anchor != Anchor::FarEdge && (lo < 1 - near || hi > dimension + far)) return {};
             // Copies a percent carries past the scene are not seen and enlarge nothing ("3+100%,1 to 1,1" shows 7,1).
-            return {pixel(lo+shift(*origin,dimension)+share(percent,dimension),percent,vertical)+pixels,count};
+            return {pixel(lo+shift(*origin,dimension),percent,dimension,vertical,origin->anchor != Anchor::Tile)+pixels,count};
         };
         const auto x = run(first.x,last.x,view.width(),outside.left(),outside.right(),false);
         const auto y = run(first.y,last.y,view.height(),outside.bottom(),outside.top(),true);

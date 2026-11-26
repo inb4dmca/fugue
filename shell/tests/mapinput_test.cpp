@@ -475,8 +475,8 @@ private slots:
         QVERIFY2(clicks >= 60 && menus >= 30, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
     }
     // tests/data/plane-relay-world (stock 516.1689): plane 1's master has the render target "*p1" and a screen object
-    // draws it through render_source, standing elsewhere, with a matrix of its own, without PASS_MOUSE, or over a
-    // master with a matrix (see its README). replay/<case>.txt is what DreamDaemon sent for the case; clicks.json what
+    // draws it through render_source, standing elsewhere (numbers, edges, percents, a range), with pixel offsets or a
+    // matrix of its own, without PASS_MOUSE, or over a master with a matrix (see its README). replay/<case>.txt is what DreamDaemon sent for the case; clicks.json what
     // stock named for left clicks (with icon-x/y) and listed in right-click menus where the relay draws each atom, where
     // the atom stands and on empty floor.
     void planeRelaysLikeStock() {
@@ -486,7 +486,8 @@ private slots:
         QSet<QString> remaining{"plain", "nopass", "visible", "visible-loc23", "loc23", "nopass-loc23", "locpx", "loccenter",
                                 "rturn90", "nopass-rturn90", "rt_45", "rhalf", "rscalex2", "rflip", "rmove", "rgrowmove",
                                 "rturnmove", "malpha-rhalf", "malpha-rt_45", "mturn90", "nopass-mturn90", "mturn90-loc23",
-                                "norelay"};
+                                "norelay", "locleft", "locright", "locroff", "rpx", "rpw-loc23", "locpd-mark", "locpe",
+                                "locpf-mark", "locrange", "locrow"};
         QSet<QString> over;
         int clicks = 0, menus = 0;
         for (const auto& value : document.object()["cases"].toArray()) {
@@ -494,8 +495,7 @@ private slots:
             QVERIFY2(remaining.remove(name), qPrintable(path + ": unknown or duplicate case " + name));
             test::ReplayFixture f;
             QVERIFY2(f.load(name + ".txt", "plane-relay-world/replay"), qPrintable(name + ": " + f.error));
-            QCOMPARE(f.frame.source.size(), QSize(224, 224));
-            auto pick = [&](const QJsonValue& at, QString& context) -> std::optional<MapPointer> {
+            QCOMPARE(f.frame.source.size(), QSize(224, 224));            auto pick = [&](const QJsonValue& at, QString& context) -> std::optional<MapPointer> {
                 context = QString("%1 at %2,%3").arg(name).arg(at[0].toInt()).arg(at[1].toInt());
                 if (!testinput::isIntegerTuple(at, 2, 0, 223)) return {};
                 return mapPointerAt(QPointF(at[0].toInt(), at[1].toInt()), {224, 224}, {7, 7}, f.frame.source,
@@ -527,8 +527,8 @@ private slots:
             }
         }
         QVERIFY2(remaining.isEmpty(), qPrintable(path + ": missing case " + QStringList(remaining.values()).join(", ")));
-        QVERIFY2(over == (QSet<QString>{"floor", "part", "other", "button", "relay"}), qPrintable(QStringList(over.values()).join(", ")));
-        QVERIFY2(clicks >= 150 && menus >= 150, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
+        QVERIFY2(over == (QSet<QString>{"floor", "part", "other", "button", "relay", "mark"}), qPrintable(QStringList(over.values()).join(", ")));
+        QVERIFY2(clicks >= 190 && menus >= 169, qPrintable(QString("%1 clicks, %2 menus").arg(clicks).arg(menus)));
     }
     void worldPassMouseLifetimeAndBounds() {
         test::PlaneSourceFixture f;
