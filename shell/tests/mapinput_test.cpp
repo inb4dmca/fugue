@@ -409,8 +409,8 @@ private slots:
                     const auto kind=expected["kind"].toString();
                     hit.kind=kind=="Enter" ? MapPointer::Hover : kind=="Down" ? MapPointer::Down :
                         kind=="Up" ? MapPointer::Up : MapPointer::Click;
-                    const auto error=f.checkClick(hit,expected);
-                    QVERIFY2(error.isEmpty(),qPrintable(name+" "+kind+": "+error));
+                    const auto mismatch=f.checkClick(hit,expected);
+                    QVERIFY2(mismatch.isEmpty(),qPrintable(name+" "+kind+": "+mismatch));
                     QVERIFY2(mapPointerCurrent(hit,f.session.world(),0),qPrintable(name+" lifetime"));
                     if(expected["target"].toString()!="floor") {
                         QVERIFY2(hit.planeMousePath,qPrintable(name));
