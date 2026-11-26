@@ -50,12 +50,22 @@ were run twice, with the same procs both times. The menu cases were first tried 
 some of the probe's own moves and presses landed on the open menu; they were rewritten (menu at 100,10, the other
 points clear of it) and only the rewritten run is kept. `xboth` was run once.
 
+Third round, same day and version: `hoverprobe.py` also presses the middle button (`mdown`, `mup`), posts sweeps
+(`psweep:`, the moves of `sweep:` posted to the window) and with `--timer1` holds a 1 ms system timer resolution in its
+own process; each run records the system timer's resolution (`timer_ms`). `round3` (the `EXTRA` compile: a middle
+button and menus, menus closed off every map, drops over nothing) and `round3mid` (the middle button and menus again,
+one menu per case) use `replay/extra.txt`, `xround3` (some of both with the client procs) `replay/xboth.txt`;
+`pacepost` (posted and real one-pixel sweeps, tick_lag 0.5) and `pacepost1ms` (the same with `--timer1`) the plain
+world. Five middle-button cases of `round3` were left out: a middle press does not close the menu, so it stayed open
+into the following cases, and in one the user's own pointer moved; `round3mid` repeats them.
+
 `mapinput_test::hoverLikeStock` replays the runs in order through the real hit test (a second `NamedMap` for map2),
 `MapHover`, the rules of `mapMenuClosed` and `mapReleaseForgetsHover`, and a model of the server (below), and compares
-the procs with stock's, action by action (496 actions, 329 procs); cases with posted moves, sweeps or a moving scene are
-left out of it, and so are those over the stat panel and the grid (`st1`..`st3`, `grid1`), on which Fugue reports no
-hover. `hoverPaceLikeStock` replays the sweeps; `hoverTransitionsAndStaleIdentities` and `releaseForgetsHover` hold the
-rules below on hand-made picks.
+the procs with stock's, action by action (784 actions, 467 procs); cases with posted moves, sweeps or a moving
+scene are left out of it, and so are those over the stat panel and the grid (`st1`..`st3`, `grid1`, `mstat*`, `dstat`),
+on which Fugue reports no hover. `hoverPaceLikeStock` replays the real pointer's sweeps (posted sweeps are left out:
+Fugue cannot tell them from the pointer's own); `hoverMergesPicksInATick`, `hoverTransitionsAndStaleIdentities` and
+`releaseForgetsHover` hold the rules below on hand-made picks.
 
 ## What stock does
 
@@ -84,26 +94,24 @@ Each point says whether it confirms or contradicts the static reading of the cli
   goes out when the last report's atom had 0x800 or a client hover proc exists; MouseExited gets the params it entered
   with. Over the letterbox no client/MouseEntered runs (no object). Going from `enter` to `move` or `none` names the new
   atom; the old one is exited either way.
-- **Releases** (confirmed for clicks, contradicts the old Fugue rule for drops): any release, click or drop, clears the
-  record (with menus off; for a right release with menus on see the second round). After a click the next step on
-  the same atom is an over report, which the server, getting the same atom,
-  turns into MouseMove; leaving the window before any move sends nothing (`clickleave`: no MouseExited; back on the same
-  pixel, MouseMove). A drop makes the server enter the atom dropped on, with the drop's params and without exiting the
-  last one; leaving right after it sends nothing (`dropleave`), after a move it exits with the drop's params
-  (`dropmoveleave`).
-- **Button held** (confirmed): no hover at all while a left or right button is down (`held`, `rheld`); the drag path
-  takes the moves. (With menus on, a right press that closes a menu is the exception: second round.)
+- **Releases** (confirmed for clicks, contradicts the old Fugue rule for drops): any release, click or drop, of the left
+  or the middle button, clears the record (with menus off; for a right release with menus on see the second round).
+  After a click the next step on the same atom is an over report, which the server, getting the same atom,
+  turns into MouseMove; leaving the window before any move sends nothing (`clickleave`, `round3` midclick: no
+  MouseExited; back on the same pixel, MouseMove). A drop makes the server enter the atom dropped on, with the drop's
+  params and without exiting the last one; leaving right after it sends nothing (`dropleave`), after a move it exits
+  with the drop's params (`dropmoveleave`). A drop over nothing, see the third round.
+- **Button held** (confirmed): no hover at all while a left, right or middle button is down (`held`, `rheld`, `round3`
+  mid); the drag path takes the moves, and a middle drag drops as a left one does. (With menus on, a right press that closes a menu is the exception: second round.)
 - **Posted moves** (contradicts the plane-click-world note): a WM_MOUSEMOVE posted to the window is taken at its own
   point (`posted`, `parkpost`, `parkpost2`). With the real pointer outside the window the leave follows at once
   (MouseEntered then MouseExited); with it parked over the map, the next map change picks the real pointer again
   (MouseMove back to its pixel, or MouseExited if it is over something else).
-- **Pacing** (contradicts "one server tick"): at most about one report per 1/64 s of pointer motion, at tick_lag 0.25,
-  0.5 and 10 alike; a later pick replaces a waiting one (20 one-pixel steps 4, 8, 12, 14 and 16 ms apart reach the
-  world as 5-7, 10-11, 14-15, 17-19 and 19 MouseMoves, 18 ms and more apart all 20; two steps a millisecond apart, one).
-  Sweeping from `none` onto `both` in 10 ms steps, `both` is entered once, with the last step's params (`base2`
-  `enterquick`). Whether stock holds the report or Windows merges the pointer moves stock reads was not settled, nor
-  whether a replacing report goes out where its own gate would not let it (Fugue sends it, as the static reading has
-  it).
+- **Pacing** (contradicts "one server tick"): at most about one report per 1/64 s of real pointer motion, at tick_lag
+  0.25, 0.5 and 10 alike (20 one-pixel steps 4, 8, 12, 14 and 16 ms apart reach the world as 5-7, 10-11, 14-15, 17-19
+  and 19 MouseMoves, 18 ms and more apart all 20; two steps a millisecond apart, one). Sweeping from `none` onto `both`
+  in 10 ms steps, `both` is entered once, with the last step's params (`base2` `enterquick`). It is Windows that merges
+  the moves, not stock that holds reports: see the third round.
 
 ### Second round
 
@@ -142,6 +150,46 @@ Each point says whether it confirms or contradicts the static reading of the cli
   stale atom is exited and the one under the pointer entered as soon as the menu closes, with right=1 while the right
   button is held.
 
+### Third round
+
+- **The middle button and menus** (`round3mid`, `xround3` mmidheld*): a middle press off an open verb menu neither
+  closes it nor reaches the map (no MouseDown), nor does its release while the menu is open (mmidother: the menu stays
+  until Escape, which then reports as usual). When Escape closes the menu with the middle button held, the pointer is
+  picked again at once and the report carries `middle=1` (mmidheld: `EXIT both`, `ENTER enter` with
+  `icon-x=9;icon-y=16;middle=1;screen-loc=..`; mmidheldpix: MouseMove with middle=1; mmidheldvoid: EXIT; mmidheldsame,
+  at the record's pixel: nothing). The middle release then reaches the map as MouseUp and Click on what is under the
+  pointer, with `middle=1;button=middle` and no MouseDown before it (on empty space only an UP naming nothing, as a left
+  click there). A right press while the middle button is held does nothing at all: no MouseDown, no menu, nothing at
+  its release (mmidbefore, mmidbeforeother; the middle release is then an ordinary click or drop).
+- **A menu closing off every map** (`round3`, `xround3` moutesc, moutescother, mbgesc): with the pointer outside the
+  window or over its background, Escape reports nothing and the record is kept: back at the pixel the record has,
+  nothing; a pixel further on the same atom, MouseMove; onto another atom, EXIT and ENTER; leaving, MouseExited with the
+  params it was entered with before the menu opened. Over the stat panel's empty part the panel reports at once (a
+  report naming nothing, so `EXIT both`), and so it does at a left or right press there that closes the menu
+  (mstatesc, mstatclick, mstatright; the left press sends no MouseDown, its release an UP naming nothing with
+  `loc=Probe ctl=main.info`); the next move onto the map gives ENTER and, the panel's leave coming late, EXIT, and the
+  step after that ENTER again.
+- **Drops over nothing** (`round3`, `xround3` dvoid, dvoidleave, dletter, dm2empty, dstat, dbg, dout, douten,
+  dvoiden): the client sends no hover report at the release, wherever it is; the record is cleared as at any release.
+  What the server does depends on the drop: over a map where nothing is (empty map space, the letterbox, map2's empty
+  tile; MouseDrop with `over=` empty and `over_control` that map) it runs MouseExited (and client/MouseExited) on the
+  atom last entered, with the params it was entered with, right after MouseDrop; over the window background or outside
+  the window (`over_control` empty) it runs nothing, so the first move back onto the same atom gives MouseMove
+  (dbg, dout) where after a drop on empty map space it gives MouseEntered (dvoid). Over the stat panel the server runs
+  nothing at the drop either; the panel's own report naming nothing exits the atom half a tick later (dstat). No
+  MouseEntered runs for any drop over nothing.
+- **Pacing** (`pacepost`, `pacepost1ms`): 20 one-pixel moves posted to the window over `both`, 1, 2, 4 and 8 ms apart
+  (each twice, the real pointer parked on `both` at another pixel), all reach the world: every distinct pixel gives its
+  own MouseMove (19 of 20 steps land on a new pixel), with at most two MouseMoves back to the parked pointer's pixel when
+  the map changed. Stock therefore makes a report for every move it reads and holds none; the 1/64 s of the real
+  pointer's sweeps (the same run: 5, 10, 15 and 19 MouseMoves for 4, 8, 12 and 16 ms) is Windows merging the pointer's
+  moves between the times stock reads them, so a world sees the pointer's last position in each tick, picked against
+  the record as the tick found it, and no report from a position in between. The system timer stood at 0.5 ms before
+  and during both runs (another process held it there), and holding it at 1 ms from the probe changed nothing: stock's
+  1/64 s does not follow the system timer resolution here. Not separated: Windows 11 grants timer resolution per
+  process, so whether stock would read faster if it raised its own resolution, or reads on a fixed 1/64 s tick, could
+  not be told apart from outside.
+
 ## Fugue
 
 Before: the pick was redone after every frame and any change of the whole report (icon-x/y, the tile, modifiers, the
@@ -163,9 +211,20 @@ gave MouseMove; `mapReleaseForgetsHover` keeps it for a release the menu path ta
 re-picked; `mapMenuClosed` reports nothing then (`MapWidget::popupClosed`), and only the map under the pointer reports
 for all the maps told of the close. Not done: Fugue has no hover on stat panel rows, and no grid control at all.
 
+Third round. Already as stock: drops over nothing (no hover report at the release, the record cleared; what the
+server runs is the server's), the middle button's releases clearing the record. Changed: a menu closed off every map
+sent a leave; `MapWidget::popupClosed` now sends nothing then, and the record is kept. A middle press closed the menu
+and reached the map; the menu now ignores the middle button (`SkinWindow::showMapMenu`), a menu closed with it held
+reports with `middle=1` (`mapMenuClosed`, `proto::enc::hoverParams`), and its release is a click where it is released
+(`MapWidget::middleFromMenu_`). A right press while the middle button is held is ignored (`MapWidget::mousePressEvent`).
+`MapHover` replaced a waiting report with a later pick whatever its gate said; it now merges the picks of a tick as
+Windows merges the moves: the last pick of the tick is weighed with its own gate against the record as the tick found
+it, and the earlier picks and their report are undone. Moves posted to Fugue's window are merged too, where stock
+reports each: Qt cannot tell them from the pointer's own.
+
 ## Not measured
 
-The server's handling of a drop over nothing beyond "no MouseEntered", the pacing on a machine whose timer runs faster
-than 1/64 s, a middle button held when a menu closes (Fugue reports nothing, as for the left), a menu closed with the
-pointer outside every map, hover reports over a stat panel with a client/MouseMove (whether its pixel steps report),
-and alt, whose release stock's window took as Windows' menu key.
+Whether stock reads the pointer faster when it holds a finer timer resolution itself (above), hover reports over a
+stat panel with a client/MouseMove (whether its pixel steps report), a middle press on the menu itself (tried once,
+disturbed), a right or left press while another button than the middle is held, hover while the middle button stays
+held after Escape closed the menu, and alt, whose release stock's window took as Windows' menu key.
