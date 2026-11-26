@@ -27,8 +27,10 @@ processes started by the tool are stopped. Capture failures retain partial
 observations and logs with `complete: false` and an error in `capture.json`.
 
 `hoverprobe.py` drives stock alone with the real pointer for hover: it keeps stock's window on top, moves the
-pointer (SetCursorPos), presses real buttons and keys (ctrl, shift, alt, Escape), posts moves, grabs the screen
-around the window on request, and keeps per action what the world logged (`tests/data/hover-world`). It moves the
+pointer (SetCursorPos), presses real buttons (left, right, middle) and keys (ctrl, shift, alt, Escape), posts moves
+and sweeps of moves, grabs the screen around the window on request, and keeps per action what the world logged
+(`tests/data/hover-world`). `--timer1` holds a 1 ms system timer resolution in the probe's process while it runs; every
+run records the system timer's resolution. It moves the
 user's pointer and presses keys in the foreground, puts the pointer back at the end and leaves no key or button held.
 
 The fixture supplies `prepare.py` when its assets or skin need special setup.
