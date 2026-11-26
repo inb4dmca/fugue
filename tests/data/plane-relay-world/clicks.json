@@ -4245,6 +4245,133 @@
     }
    ],
    "clicks": []
+  },
+  {
+   "case": "nopass-rhalf",
+   "clicks": [
+    {
+     "at": [
+      183,
+      167
+     ],
+     "over": "floor",
+     "iconX": 24,
+     "iconY": 25
+    },
+    {
+     "at": [
+      127,
+      111
+     ],
+     "over": "relay",
+     "iconX": 143,
+     "iconY": 114
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      60,
+      60
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      200,
+      200
+     ],
+     "entries": [
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      20,
+      20
+     ],
+     "entries": [
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
+  },
+  {
+   "case": "nopass-rt_45",
+   "clicks": [
+    {
+     "at": [
+      134,
+      201
+     ],
+     "over": "floor",
+     "iconX": 7,
+     "iconY": 23
+    },
+    {
+     "at": [
+      89,
+      110
+     ],
+     "over": "floor",
+     "iconX": 26,
+     "iconY": 18
+    },
+    {
+     "at": [
+      89,
+      44
+     ],
+     "over": "relay",
+     "iconX": 48,
+     "iconY": 144
+    }
+   ],
+   "menus": [
+    {
+     "at": [
+      5,
+      5
+     ],
+     "entries": [
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      5,
+      218
+     ],
+     "entries": [
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      112,
+      112
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    },
+    {
+     "at": [
+      112,
+      10
+     ],
+     "entries": [
+      "relay",
+      "floor"
+     ]
+    }
+   ],
+   "date": "2026-11-26"
   }
  ]
 }

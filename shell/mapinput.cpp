@@ -429,7 +429,11 @@ QVector<MapPointer> mapPointerStack(const MapPointer& pointer) {
     // A plane hidden because a relay draws it is still listed where its atoms stand (stock 516.1689, plane-relay-world
     // loc23 and nopass-loc23 at 139,109), as well as through a PASS_MOUSE relay where the relay draws them (loc23 at
     // 171,45, rturn90, mturn90-loc23). A relay without PASS_MOUSE is listed itself wherever its picture's rectangle is,
-    // and lists nothing through it (nopass-loc23 at 171,45 and 100,150).
+    // and lists nothing through it (nopass-loc23 at 171,45 and 100,150). With a matrix that rectangle is the view taken
+    // through the matrix about the view's centre, without the move stock draws a neutral plane's picture with, and not
+    // its bounding box: nopass-rhalf lists the relay in the view's middle half and not where it draws the boxes,
+    // nopass-rt_45 in the turned square only (at 112,10 but not at 5,5 or 5,218). A relay standing on a plane that
+    // another relay draws is listed where it stands, and lists through it when it passes the mouse (chain-bopaque-loc23).
     std::set<int> menuHidden;
     std::set_difference(hidden.begin(), hidden.end(), plan.captured.begin(), plan.captured.end(),
                         std::inserter(menuHidden, menuHidden.end()));
