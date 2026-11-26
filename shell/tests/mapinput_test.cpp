@@ -18,6 +18,13 @@ using namespace fugue;
 using namespace fugue::shell;
 class MapInputTest : public QObject {
     Q_OBJECT
+    // One pick a second, and what it reports by the end of its tick.
+    static Bytes hoverStep(MapHover& hover, const MapPointer& p, bool current, MapHover::Gate gate) {
+        static int64_t now = 0;
+        now += 1'000'000'000;
+        hover.update(p, current, gate, now);
+        return hover.due(now + MapHover::kPeriodNs);
+    }
 private slots:
     void popupReleaseRouting() {
         MapPointer p;
@@ -309,7 +316,7 @@ private slots:
         }
         auto hover=hit;hover.kind=MapPointer::Hover;
         QVERIFY(mapPointerCurrent(hover,f.world,17));MapHover state;
-        QVERIFY(!state.update(hover,true,true,false).empty());QVERIFY(state.update(hover,true,true,false).empty());
+        QVERIFY(!hoverStep(state,hover,true,{true}).empty());QVERIFY(hoverStep(state,hover,true,{true}).empty());
         for(auto kind:{MapPointer::Down,MapPointer::Up,MapPointer::Click}) {
             auto p=hit;p.kind=kind;QVERIFY(mapPointerCurrent(p,f.world,17));
         }
@@ -541,6 +548,201 @@ private slots:
     // were shown, and in the added tiles nothing of the world is, drawn or not; screen objects are clicked anywhere. A
     // colour-matrix atom is clicked on its own tile, not where stock draws it stretched. replay/<case>.txt is what
     // DreamDaemon sent; clicks.json what stock named for left clicks and listed in right-click menus.
+    // tests/data/hover-world (stock 516.1689): the real pointer moved over stock's map with presses and releases, and
+    // the hover procs the world logged per action (hover.json), for each compile of the world with what DreamDaemon sent
+    // it (replay/<compile>.txt). Each run is replayed in order: the real hit test picks, MapHover reports under the
+    // MouseSubs and appearance flags DreamDaemon sent, and the server's rule turns the reports into procs: MouseExited
+    // (with the params it entered with) and MouseEntered when a report names another atom than the last one, MouseMove
+    // when it names the same one, and a drop enters the atom it lands on. Those must be the procs stock's world logged,
+    // action by action. Cases that need moves posted to the window, fast sweeps or a scene that moves are left out.
+    void hoverLikeStock() {
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/hover-world/hover.json";
+        QJsonDocument document; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
+        const QSet<QString> entered{"enter", "enter2", "both", "big", "slider", "glider", "hopper", "enteronly"},
+            exited{"enter", "enter2", "both", "big", "slider", "glider", "hopper", "exitonly", "moveexit"},
+            moving{"move", "both", "big", "slider", "glider", "hopper", "moveexit"};
+        const QSet<QString> hoverProcs{"ENTER", "EXIT", "MOVE", "C-ENTER", "C-EXIT", "C-MOVE"};
+        QSet<QString> runs; int actions = 0, reports = 0, lines = 0;
+        for (const auto& runValue : document.object()["runs"].toArray()) {
+            const auto run = runValue.toObject(); const auto name = run["run"].toString();
+            if (name.startsWith("pace")) continue;
+            runs.insert(name);
+            const auto replay = run["replay"].toString();
+            test::ReplayFixture f; net::InputModel im;
+            QVERIFY2(f.load(replay, "hover-world/replay"), qPrintable(name + ": " + f.error));
+            QVERIFY(f.readFrames(replay, "hover-world/replay", [&](uint16_t type, const Bytes& body) { im.onFrame(type, body); }));
+            QStringList switches; for (const auto& v : run["switches"].toArray()) switches.push_back(v.toString());
+            const bool clientEnter = switches.contains("CLIENT_ENTER"), clientMove = switches.contains("CLIENT_MOVE");
+            // Any client hover proc sets the hover subscription; client/MouseMove also the move bit.
+            QCOMPARE(im.clientHover(), clientEnter || clientMove); QCOMPARE(im.clientMove(), clientMove);
+            const auto& world = f.session.world();
+            auto flagsOf = [&](const MapPointer& p) -> uint32_t {
+                const auto target = mapPointerTarget(p, world);
+                if (!target || !target->appid) return 0;
+                const auto a = world.appearances.find(*target->appid);
+                return a == world.appearances.end() ? 0 : a->second.fields.appearanceFlags;
+            };
+            auto inside = [](QPoint q) { return q.x() >= 0 && q.y() >= 0 && q.x() < 288 && q.y() < 224; };
+            auto pick = [&](QPoint q) {
+                auto p = mapPointerAt(QPointF(q), {288, 224}, {7, 7}, f.frame.source, f.frame.geometry, "map", true, f.sprites);
+                return p ? *p : MapPointer{};
+            };
+            // The server: what it was last told the pointer is over, and the params it entered with.
+            struct Stored { QString name, params; proto::enc::AtomRef over; };
+            std::optional<Stored> stored; QStringList logged;
+            auto exit = [&] {
+                if (!stored) return;
+                if (clientEnter) logged << "C-EXIT " + stored->name + " " + stored->params;
+                if (exited.contains(stored->name)) logged << "EXIT " + stored->name + " " + stored->params;
+                stored.reset();
+            };
+            auto enter = [&](const MapPointer& p, const QString& params) {
+                const auto atom = QString::fromStdString(f.targetName(p));
+                if (clientEnter) logged << "C-ENTER " + atom + " " + params;
+                if (entered.contains(atom)) logged << "ENTER " + atom + " " + params;
+                stored = Stored{atom, params, p.click.over};
+            };
+            auto same = [&](const MapPointer& p) {
+                return stored && stored->over.kind == p.click.over.kind && stored->over.ref == p.click.over.ref &&
+                       stored->over.x == p.click.over.x && stored->over.y == p.click.over.y;
+            };
+            MapHover hover; int64_t now = 0;
+            auto flush = [&](int64_t ns) {
+                now += ns;
+                if (hover.due(now).empty()) return;
+                ++reports;
+                const auto* sent = hover.sent();
+                if (!sent) { exit(); return; }
+                const auto params = QString::fromStdString(proto::enc::hoverParams(sent->click));
+                if (same(*sent)) {
+                    const auto atom = stored->name;
+                    if (clientMove) logged << "C-MOVE " + atom + " " + params;
+                    if (moving.contains(atom)) logged << "MOVE " + atom + " " + params;
+                } else {
+                    exit();
+                    enter(*sent, params);
+                }
+            };
+            QPoint at(-80, 112); bool held = false, dragged = false; MapPointer pressed;
+            auto moveTo = [&](QPoint q) {
+                if (q == at) return;   // no real move: Windows sends none
+                at = q;
+                if (held) {
+                    if (inside(q) && !sameMapTarget(pick(q), pressed)) dragged = true;
+                    return;   // a held button drags: no hover
+                }
+                auto p = inside(q) ? pick(q) : MapPointer{};
+                p.kind = inside(q) ? MapPointer::Hover : MapPointer::Leave;
+                MapHover::Gate gate{im.clientHover(), im.clientMove(), inside(q) ? flagsOf(p) : 0};
+                if (const auto* sent = hover.sent()) gate.sentFlags = flagsOf(*sent);
+                hover.update(p, p.kind == MapPointer::Leave || mapPointerCurrent(p, world, 0), gate, now);
+            };
+            for (const auto& caseValue : run["cases"].toArray()) {
+                const auto row = caseValue.toObject(); const auto label = name + "/" + row["case"].toString();
+                bool skip = row["case"].toString().contains("still");
+                for (const auto& entry : row["actions"].toArray()) {
+                    const auto action = entry.toObject()["action"].toString();
+                    skip |= action.startsWith("post:") || action.startsWith("sweep:") || action.startsWith("tap");
+                }
+                if (skip) {   // what it leaves behind is not modelled: start the next case afresh, the pointer outside
+                    hover = MapHover{}; stored.reset(); at = QPoint(-80, 112); held = false;
+                    continue;
+                }
+                moveTo(QPoint(-80, 112)); flush(1'000'000'000); logged.clear();   // not kept by the probe
+                for (const auto& entry : row["actions"].toArray()) {
+                    const auto action = entry.toObject()["action"].toString();
+                    if (action.contains(',')) {
+                        const auto xy = action.split(',');
+                        moveTo(QPoint(xy[0].toInt(), xy[1].toInt()));
+                    } else if (action == "down" || action == "rdown") {
+                        held = true; dragged = false; pressed = pick(at);
+                        pressed.click.button = action == "down" ? "left" : "right";
+                    } else if (action == "up" || action == "rup") {
+                        held = false;
+                        hover.released();
+                        auto drop = inside(at) ? pick(at) : MapPointer{};
+                        if (inside(at) && (dragged || !sameMapTarget(drop, pressed)) &&
+                            drop.click.over.kind != proto::enc::RefNull && !same(drop)) {
+                            drop.click.button = pressed.click.button;
+                            enter(drop, QString::fromStdString(proto::enc::clickParams(drop.click)));
+                        }
+                    } else if (action.startsWith("wait:")) {
+                        now += int64_t(action.mid(5).toDouble() * 1e9);
+                    }
+                    flush(350'000'000);
+                    QStringList stock;
+                    for (const auto& line : entry.toObject()["logged"].toArray()) {
+                        const auto words = line.toString().split(' ');
+                        if (words.size() >= 4 && hoverProcs.contains(words[1])) stock << words[1] + " " + words[2] + " " + words.last();
+                    }
+                    QVERIFY2(logged == stock, qPrintable(QString("%1 %2: stock [%3], got [%4]")
+                                                          .arg(label, action, stock.join("; "), logged.join("; "))));
+                    lines += int(stock.size()); logged.clear(); ++actions;
+                }
+            }
+        }
+        QCOMPARE(runs, (QSet<QString>{"base", "base2", "lag10", "center", "cmove", "cboth"}));
+        QVERIFY2(actions == 216 && reports == 144 && lines == 162,
+                 qPrintable(QString("%1 actions, %2 reports, %3 procs").arg(actions).arg(reports).arg(lines)));
+    }
+    // tests/data/hover-world pace runs (stock 516.1689, tick_lag 0.25, 0.5 and 10 ds): 20 one-pixel steps over one atom
+    // with MouseMove, 1 to 50 ms apart; how many MouseMove calls stock's world got. MapHover keeps the last pick of each
+    // tick of 1/64 s, so the count depends on where the steps fall in the ticks. Stock's count must be one that some
+    // phase gives, or differ from those by one at most: 7 of the 35 sweeps do (stock's ticks are not exactly even).
+    void hoverPaceLikeStock() {
+        const QString path = QString(FUGUE_TEST_DATA_DIR) + "/hover-world/hover.json";
+        QJsonDocument document; QString error;
+        QVERIFY2(testinput::readRecordedJson(path, document, error), qPrintable(error));
+        test::ReplayFixture f;
+        QVERIFY2(f.load("base.txt", "hover-world/replay"), qPrintable(f.error));
+        int cases = 0;
+        for (const auto& runValue : document.object()["runs"].toArray()) {
+            const auto run = runValue.toObject();
+            if (!run["run"].toString().startsWith("pace")) continue;
+            for (const auto& caseValue : run["cases"].toArray()) {
+                const auto row = caseValue.toObject(); const auto label = run["run"].toString() + "/" + row["case"].toString();
+                QStringList sweep; int measured = 0; bool counting = false;
+                for (const auto& entry : row["actions"].toArray()) {
+                    const auto action = entry.toObject()["action"].toString();
+                    if (action.startsWith("sweep:")) { sweep = action.mid(6).split(','); counting = true; }
+                    else if (!action.startsWith("wait:")) counting = false;
+                    if (counting)
+                        for (const auto& line : entry.toObject()["logged"].toArray())
+                            measured += line.toString().split(' ').value(1) == "MOVE";
+                }
+                if (sweep.size() != 6) continue;
+                const int x0 = sweep[0].toInt(), x1 = sweep[2].toInt(), y = sweep[1].toInt(), n = sweep[4].toInt();
+                const int64_t step = sweep[5].toLongLong() * 1'000'000;
+                auto pickAt = [&](int x) {
+                    auto p = *mapPointerAt(QPointF(x, y), {288, 224}, {7, 7}, f.frame.source, f.frame.geometry, "map", true, f.sprites);
+                    p.kind = MapPointer::Hover;
+                    return p;
+                };
+                const auto start = pickAt(112);
+                QCOMPARE(f.targetName(start), std::string("both"));
+                const MapHover::Gate gate{false, false, 0x00180804u, 0x00180804u};
+                int least = n + 1, most = -1;
+                for (int phase = 0; phase < 64; ++phase) {
+                    MapHover hover; int64_t now = 0; int sent = 0;
+                    hover.update(start, true, gate, now); now += 500'000'000; hover.due(now);
+                    now += phase * MapHover::kPeriodNs / 64;
+                    const int64_t begin = now;
+                    for (int64_t t = begin; t < begin + n * step + 100'000'000; t += 250'000) {
+                        const int64_t i = (t - begin) / step;
+                        if (i < n && (t - begin) % step < 250'000)
+                            hover.update(pickAt(x0 + int((x1 - x0) * (i + 1) / n)), true, gate, t);
+                        sent += !hover.due(t).empty();
+                    }
+                    least = std::min(least, sent); most = std::max(most, sent);
+                }
+                QVERIFY2(measured >= least - 1 && measured <= most + 1,
+                         qPrintable(QString("%1: stock %2 MouseMove, MapHover %3..%4").arg(label).arg(measured).arg(least).arg(most)));
+                ++cases;
+            }
+        }
+        QVERIFY2(cases >= 33, qPrintable(QString("%1 cases").arg(cases)));
+    }
     void largerMapClicksLikeStock() {
         const QString path = QString(FUGUE_TEST_DATA_DIR) + "/master-screen-loc-world/clicks.json";
         QJsonDocument document; QString error;
@@ -990,10 +1192,14 @@ private slots:
         QCOMPARE(pick({turf,master,source,hud}).click.over.ref,50u);
         model::World w; w.bounds.maxX=w.bounds.maxY=1;
         auto& atom=w.atoms[42]; atom.hasPos=true; atom.renderIdentity=7;
+        // Over a pixel nothing is drawn on, a hover names no atom but keeps the control and screen-loc, as stock does
+        // over empty space in the map (stock 516.1689, tests/data/hover-world).
         auto hidden=captured; hidden.kind=MapPointer::Hover;
-        QVERIFY(!mapPointerCurrent(hidden,w,1));
-        MapHover hover; QVERIFY(!hover.update(pressed,true,true,true).empty());
-        QCOMPARE(hover.update(hidden,false,true,true),proto::enc::encodeHoverLeave());
+        QVERIFY(mapPointerCurrent(hidden,w,1));
+        auto hovered=pressed; hovered.kind=MapPointer::Hover;
+        MapHover hover; QVERIFY(!hoverStep(hover,hovered,true,{true}).empty());
+        QCOMPARE(hoverStep(hover,hidden,true,{true}),mapPointerBody(hidden));
+        QVERIFY(mapPointerBody(hidden)!=proto::enc::encodeHoverLeave());
         hidden.kind=MapPointer::Drop; hidden.source=std::make_shared<const MapPointer>(pressed);
         QVERIFY(mapPointerCurrent(hidden,w,1)); // null drop keeps its rendered source identity
         ++atom.renderIdentity; QVERIFY(!mapPointerCurrent(hidden,w,1));
@@ -1044,20 +1250,19 @@ private slots:
         settings.zoom = 0; settings.iconSize = 0; settings.letterbox = true;
         QCOMPARE(mapPresentation({241,160},scene,32,settings).destination, QRectF(0.5,0,240,160));
     }
-    void dropAdoptsImplicitServerHover() {
+    // Stock 516.1689 (tests/data/hover-world clickleave, dropleave): any release forgets what the pointer was over.
+    void releaseForgetsHover() {
         MapPointer source;source.kind=MapPointer::Hover;source.click.over=proto::enc::objRef(42);
         source.click.control="main.map";
-        MapHover hover;QVERIFY(!hover.update(source,true,true,true).empty());
-        auto destination=source;destination.click.over=proto::enc::objRef(43);
-        destination.kind=MapPointer::Drop;destination.click.button="left";
-        destination.source=std::make_shared<MapPointer>(source);
-        hover.dropped(destination); // no extra Hover packet/Exit between Drag and Drop
-        auto next=destination;next.kind=MapPointer::Hover;next.source.reset();next.click.button.clear();
-        QVERIFY(hover.update(next,true,true,true).empty());
-        QCOMPARE(hover.update(source,true,true,true),mapPointerBody(source)); // exact return must enter
-        hover.dropped(destination);
-        next.kind=MapPointer::Leave;
-        QCOMPARE(hover.update(next,true,false,false),proto::enc::encodeHoverLeave());
+        MapHover hover;QVERIFY(!hoverStep(hover,source,true,{true}).empty());
+        QVERIFY(hoverStep(hover,source,true,{true}).empty());
+        hover.released();
+        QCOMPARE(hoverStep(hover,source,true,{true}),mapPointerBody(source)); // the same atom at the same pixel again
+        hover.released();
+        auto leave=source;leave.kind=MapPointer::Leave;
+        QVERIFY(hoverStep(hover,leave,true,{true}).empty()); // nothing picked since the release: nothing to leave
+        QVERIFY(!hoverStep(hover,source,true,{true}).empty());
+        QCOMPARE(hoverStep(hover,leave,true,{true}),proto::enc::encodeHoverLeave());
     }
     void hoverTransitionsAndStaleIdentities() {
         MapPointer p; p.kind = MapPointer::Hover; p.session = 7;
@@ -1068,27 +1273,42 @@ private slots:
         w.hudAppid[42]=1; setFields(w.appearances[1], R"({"screenLoc":"1,1"})");
         QVERIFY(mapPointerCurrent(p,w,7));
         QVERIFY(!mapPointerCurrent(p,w,8));
+        MapHover quiet;
+        QVERIFY(hoverStep(quiet,p,true,{}).empty()); // no hover proc anywhere: nothing
         MapHover hover;
-        QVERIFY(hover.update(p,true,false,false).empty());
-        QCOMPARE(hover.update(p,true,true,false), mapPointerBody(p));
+        QCOMPARE(hoverStep(hover,p,true,{true}), mapPointerBody(p));
         QCOMPARE(mapPointerBody(p)[0], proto::enc::kMouseHover);
         auto bytes = mapPointerBody(p);
         QByteArray packet(reinterpret_cast<const char*>(bytes.data()), qsizetype(bytes.size()));
         QVERIFY(packet.contains("icon-x=3;icon-y=4;screen-loc=")); QVERIFY(!packet.contains("button="));
-        QVERIFY(hover.update(p,true,true,false).empty());
+        QVERIFY(hoverStep(hover,p,true,{true}).empty());
         p.click.iconX++;
-        QVERIFY(hover.update(p,true,true,false).empty()); // enter/exit only
+        QVERIFY(hoverStep(hover,p,true,{true}).empty()); // the client's hover bit alone reports no moves
         p.click.iconX++;
-        QCOMPARE(hover.update(p,true,true,true), mapPointerBody(p));
+        QVERIFY(hoverStep(hover,p,true,{true,false,0x800}).empty()); // nor does MouseEntered
+        p.click.iconX++;
+        QCOMPARE(hoverStep(hover,p,true,{false,false,0x80000}), mapPointerBody(p)); // the atom's MouseMove does
+        p.click.iconX++;
+        QVERIFY(hoverStep(hover,p,true,{false,false,0x100800}).empty()); // MouseWheel's bits do not
+        p.click.iconX++;
+        QCOMPARE(hoverStep(hover,p,true,{true,true}), mapPointerBody(p)); // client/MouseMove does
+        auto jumped = p; jumped.click.screenX++;
+        QVERIFY(hoverStep(hover,jumped,true,{true,true}).empty()); // another tile, the same pixel in it
+        auto moved = p; moved.click.screenPX = p.click.iconX; moved.click.iconX += 2;
+        QVERIFY(hoverStep(hover,moved,true,{true,true}).empty()); // the atom moved under a still pointer
         w.hudIdentity[42].key++;
         QVERIFY(!mapPointerCurrent(p,w,7));
-        QCOMPARE(hover.update(p,false,true,true), proto::enc::encodeHoverLeave());
-        QVERIFY(hover.update(p,false,true,true).empty());
+        p.click.iconY++;
+        QVERIFY(hoverStep(hover,p,false,{true,true}).empty()); // a stale pick changes nothing
         p.atomKey++; QVERIFY(mapPointerCurrent(p,w,7));
-        QVERIFY(!hover.update(p,true,true,false).empty());
+        QVERIFY(!hoverStep(hover,p,true,{true,true}).empty());
         p.kind = MapPointer::Leave;
-        QCOMPARE(hover.update(p,true,false,false), proto::enc::encodeHoverLeave());
-        QVERIFY(hover.update(p,true,false,false).empty());
+        QVERIFY(hoverStep(hover,p,true,{}).empty()); // leaving an atom without hover procs, none on the client
+        QVERIFY(hoverStep(hover,p,true,{true}).empty()); // and nothing is left to leave
+        p.kind = MapPointer::Hover;
+        QVERIFY(!hoverStep(hover,p,true,{true}).empty());
+        p.kind = MapPointer::Leave;
+        QCOMPARE(hoverStep(hover,p,true,{false,false,0,0x800}), proto::enc::encodeHoverLeave());
         // Image hits route to the target, but both image and target lifetimes are checked.
         p.kind = MapPointer::Hover; p.screen = false; p.atomKey = 9;
         auto& atom = w.atoms[42]; atom.hasPos = atom.haveKey = true; atom.key = 9; atom.renderIdentity = 10;

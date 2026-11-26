@@ -86,7 +86,9 @@ and `relay`, kept by `clicks.py <output> 516.1689 2026-11-26 --gestures` in `ges
   outline is the floor x=8), on the turned plane (`turn90`: `holder` x=16 y=24 at 120,79) and through a PASS_MOUSE
   relay (`relay`: the part, the image's holder and the member). A client image and a vis_contents member are dragged
   and dropped on like any atom (`DRAG holder over=child`, `DROP child over=floor`). A posted pointer move sent no
-  MouseEntered or MouseMove, with or without the real pointer, so MouseMove was not measured.
+  MouseEntered or MouseMove here, with or without the real pointer, so MouseMove was not measured. (`hover-world`
+  later found a posted move taken at its own point with stock's window on top; why these gave nothing was not
+  settled. Hover itself is measured there.)
 
 ## Fugue
 

@@ -1,0 +1,3733 @@
+{
+ "schema": 1,
+ "method": "tools/stockprobe/hoverprobe.py --world tests/data/hover-world: the real pointer moved over stock DreamSeeker's map (SetCursorPos), real button presses and releases, and moves posted to its window. Per action the lines the world logged while it lasted (world.time, proc, atom, location, control, params). Before each case the pointer goes outside the window for a second; lines logged then are not kept. A run is one server and one client, its cases in order.",
+ "runs": [
+  {
+   "run": "base",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [],
+   "params": "",
+   "replay": "base.txt",
+   "cases": [
+    {
+     "case": "posted",
+     "actions": [
+      {
+       "action": "post:112,16",
+       "at": 0.0,
+       "logged": [
+        "52.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "52.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:1",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "post:80,16",
+       "at": 1.351,
+       "logged": []
+      },
+      {
+       "action": "wait:1",
+       "at": 1.702,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "parkpost",
+     "actions": [
+      {
+       "action": "144,16",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "post:112,16",
+       "at": 0.851,
+       "logged": [
+        "98.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "98.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:1",
+       "at": 1.202,
+       "logged": []
+      },
+      {
+       "action": "post:48,16",
+       "at": 2.203,
+       "logged": [
+        "112 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16",
+        "112 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:1",
+       "at": 2.553,
+       "logged": []
+      },
+      {
+       "action": "post:49,16",
+       "at": 3.554,
+       "logged": [
+        "125.5 ENTER enter loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=1:18,7:16",
+        "127 EXIT enter loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=1:18,7:16"
+       ]
+      },
+      {
+       "action": "wait:1",
+       "at": 3.904,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "parkpost2",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "149 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "post:113,16",
+       "at": 0.851,
+       "logged": [
+        "157.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "158.5 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:1",
+       "at": 1.202,
+       "logged": []
+      },
+      {
+       "action": "post:114,16",
+       "at": 2.202,
+       "logged": [
+        "171 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "172 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:1",
+       "at": 2.553,
+       "logged": []
+      },
+      {
+       "action": "post:300,16",
+       "at": 3.553,
+       "logged": []
+      },
+      {
+       "action": "wait:1",
+       "at": 3.904,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "steps",
+     "actions": [
+      {
+       "action": "100,10",
+       "at": 0.0,
+       "logged": [
+        "208 ENTER both loc=the floor ctl=main.map icon-x=5;icon-y=22;screen-loc=3:5,7:22"
+       ]
+      },
+      {
+       "action": "101,10",
+       "at": 0.351,
+       "logged": [
+        "211.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=22;screen-loc=3:6,7:22"
+       ]
+      },
+      {
+       "action": "102,10",
+       "at": 0.702,
+       "logged": [
+        "215 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=22;screen-loc=3:7,7:22"
+       ]
+      },
+      {
+       "action": "102,11",
+       "at": 1.052,
+       "logged": [
+        "218.5 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=21;screen-loc=3:7,7:21"
+       ]
+      },
+      {
+       "action": "110,20",
+       "at": 1.402,
+       "logged": [
+        "222 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=12;screen-loc=3:15,7:12"
+       ]
+      },
+      {
+       "action": "110,20",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.103,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "bigjump",
+     "actions": [
+      {
+       "action": "40,70",
+       "at": 0.0,
+       "logged": [
+        "244 ENTER big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26"
+       ]
+      },
+      {
+       "action": "41,70",
+       "at": 0.351,
+       "logged": [
+        "247.5 MOVE big loc=the floor ctl=main.map icon-x=10;icon-y=58;screen-loc=1:10,5:26"
+       ]
+      },
+      {
+       "action": "9,70",
+       "at": 0.701,
+       "logged": [
+        "251 EXIT big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26"
+       ]
+      },
+      {
+       "action": "9,102",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "41,102",
+       "at": 1.402,
+       "logged": [
+        "258 ENTER big loc=the floor ctl=main.map icon-x=10;icon-y=26;screen-loc=1:10,4:26"
+       ]
+      },
+      {
+       "action": "41,70",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "73,70",
+       "at": 2.103,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.454,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "still",
+     "actions": [
+      {
+       "action": "176,110",
+       "at": 0.0,
+       "logged": [
+        "283.5 ENTER slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18"
+       ]
+      },
+      {
+       "action": "wait:4",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "205,80",
+       "at": 4.352,
+       "logged": [
+        "327 EXIT slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18",
+        "327 ENTER glider loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=6:14,5:16"
+       ]
+      },
+      {
+       "action": "wait:4",
+       "at": 4.702,
+       "logged": []
+      },
+      {
+       "action": "176,176",
+       "at": 8.703,
+       "logged": [
+        "370.5 EXIT glider loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=6:14,5:16",
+        "370.5 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16"
+       ]
+      },
+      {
+       "action": "wait:5",
+       "at": 9.054,
+       "logged": [
+        "381.5 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "402 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "421.5 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16"
+       ]
+      },
+      {
+       "action": "176,144",
+       "at": 14.054,
+       "logged": [
+        "424 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,3:16"
+       ]
+      },
+      {
+       "action": "wait:5",
+       "at": 14.405,
+       "logged": [
+        "442 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,3:16",
+        "461.5 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=32;screen-loc=5:17,3:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "moveonly",
+     "actions": [
+      {
+       "action": "80,16",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "81,16",
+       "at": 0.351,
+       "logged": [
+        "491 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=2:18,7:16"
+       ]
+      },
+      {
+       "action": "81,17",
+       "at": 0.701,
+       "logged": [
+        "494.5 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=15;screen-loc=2:18,7:15"
+       ]
+      },
+      {
+       "action": "81,17",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.402,
+       "logged": [
+        "501.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "80,16",
+       "at": 1.753,
+       "logged": [
+        "505 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "81,16",
+       "at": 2.104,
+       "logged": [
+        "508.5 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=2:18,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.455,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "leave",
+     "actions": [
+      {
+       "action": "48,16",
+       "at": 0.0,
+       "logged": [
+        "527 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "48,40",
+       "at": 0.351,
+       "logged": [
+        "530.5 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "48,16",
+       "at": 0.701,
+       "logged": [
+        "534 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "49,16",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.402,
+       "logged": [
+        "541 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16",
+        "541 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "48,16",
+       "at": 1.753,
+       "logged": [
+        "544.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "544.5 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "16,16",
+       "at": 2.104,
+       "logged": [
+        "548 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "48,16",
+       "at": 2.455,
+       "logged": [
+        "551.5 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "48,-60",
+       "at": 2.805,
+       "logged": [
+        "555 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 3.156,
+       "logged": [
+        "558.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 3.507,
+       "logged": [
+        "562 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "112,-60",
+       "at": 3.857,
+       "logged": [
+        "565.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 4.208,
+       "logged": [
+        "569 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "144,16",
+       "at": 4.559,
+       "logged": [
+        "572.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 4.909,
+       "logged": [
+        "576 ENTER both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "16,16",
+       "at": 5.26,
+       "logged": [
+        "579.5 EXIT both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "17,16",
+       "at": 5.61,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 5.961,
+       "logged": [
+        "586.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "300,16",
+       "at": 6.312,
+       "logged": [
+        "590 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "click",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "603.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "607 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 0.705,
+       "logged": [
+        "610.5 UP both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "610.5 CLICK both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 1.056,
+       "logged": []
+      },
+      {
+       "action": "113,16",
+       "at": 1.407,
+       "logged": [
+        "618 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 1.757,
+       "logged": [
+        "621.5 DOWN both loc=the floor ctl=main.map icon-x=18;icon-y=16;left=1;button=left;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "114,16",
+       "at": 2.121,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 2.471,
+       "logged": [
+        "628.5 UP both loc=the floor ctl=main.map icon-x=19;icon-y=16;left=1;button=left;screen-loc=3:19,7:16",
+        "628.5 CLICK both loc=the floor ctl=main.map icon-x=19;icon-y=16;left=1;button=left;screen-loc=3:19,7:16"
+       ]
+      },
+      {
+       "action": "115,16",
+       "at": 2.822,
+       "logged": [
+        "632 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 3.172,
+       "logged": [
+        "635.5 DOWN both loc=the floor ctl=main.map icon-x=20;icon-y=16;left=1;button=left;screen-loc=3:20,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 3.523,
+       "logged": [
+        "639 UP both loc=the floor ctl=main.map icon-x=20;icon-y=16;left=1;button=left;screen-loc=3:20,7:16",
+        "639 CLICK both loc=the floor ctl=main.map icon-x=20;icon-y=16;left=1;button=left;screen-loc=3:20,7:16"
+       ]
+      },
+      {
+       "action": "116,16",
+       "at": 3.874,
+       "logged": [
+        "642.5 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "drop",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "656 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "659.5 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "144,16",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "48,16",
+       "at": 1.053,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 1.403,
+       "logged": [
+        "670 UP enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "670 DROP both loc=the floor ctl=main.map over=the enter icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "670 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "49,16",
+       "at": 1.754,
+       "logged": []
+      },
+      {
+       "action": "50,16",
+       "at": 2.104,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "drop2",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "690.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "694 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "48,16",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 1.052,
+       "logged": [
+        "701 UP enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "701 DROP both loc=the floor ctl=main.map over=the enter icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "701 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 1.403,
+       "logged": [
+        "704.5 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "704.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 1.753,
+       "logged": [
+        "708 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "held",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "721.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "725 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "48,16",
+       "at": 1.053,
+       "logged": []
+      },
+      {
+       "action": "49,16",
+       "at": 1.403,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 1.754,
+       "logged": [
+        "739 UP enter loc=the floor ctl=main.map icon-x=18;icon-y=16;left=1;button=left;screen-loc=1:18,7:16",
+        "739 DROP both loc=the floor ctl=main.map over=the enter icon-x=18;icon-y=16;left=1;button=left;screen-loc=1:18,7:16",
+        "739 ENTER enter loc=the floor ctl=main.map icon-x=18;icon-y=16;left=1;button=left;screen-loc=1:18,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "rheld",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "752.5 EXIT enter loc=the floor ctl=main.map icon-x=18;icon-y=16;left=1;button=left;screen-loc=1:18,7:16",
+        "752.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "rdown",
+       "at": 0.351,
+       "logged": [
+        "756 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;right=1;button=right;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 0.701,
+       "logged": []
+      },
+      {
+       "action": "48,16",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "rup",
+       "at": 1.403,
+       "logged": [
+        "766.5 UP enter loc=the floor ctl=main.map icon-x=17;icon-y=16;right=1;button=right;screen-loc=1:17,7:16",
+        "766.5 DROP both loc=the floor ctl=main.map over=the enter icon-x=17;icon-y=16;right=1;button=right;screen-loc=1:17,7:16",
+        "766.5 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;right=1;button=right;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "49,16",
+       "at": 1.754,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "probes",
+     "actions": [
+      {
+       "action": "48,208",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "80,208",
+       "at": 0.351,
+       "logged": [
+        "787 EXIT exitonly loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,1:16"
+       ]
+      },
+      {
+       "action": "112,208",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "144,208",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "176,208",
+       "at": 1.402,
+       "logged": []
+      },
+      {
+       "action": "177,208",
+       "at": 1.753,
+       "logged": [
+        "801 MOVE moveexit loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=5:18,1:16"
+       ]
+      },
+      {
+       "action": "208,208",
+       "at": 2.104,
+       "logged": [
+        "804.5 EXIT moveexit loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,1:16"
+       ]
+      },
+      {
+       "action": "208,176",
+       "at": 2.454,
+       "logged": [
+        "808 ENTER enteronly loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=6:17,2:16"
+       ]
+      },
+      {
+       "action": "209,176",
+       "at": 2.805,
+       "logged": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "base2",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [],
+   "params": "",
+   "replay": "base.txt",
+   "cases": [
+    {
+     "case": "clickleave",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "53.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "57 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 0.705,
+       "logged": [
+        "60.5 UP both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "60.5 CLICK both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "112,-60",
+       "at": 1.056,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.407,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.907,
+       "logged": [
+        "73 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.258,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "dropleave",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "91.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "95 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "48,16",
+       "at": 0.713,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 1.063,
+       "logged": [
+        "102 UP enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "102 DROP both loc=the floor ctl=main.map over=the enter icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "102 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "48,-60",
+       "at": 1.414,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.765,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 2.265,
+       "logged": [
+        "114 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "114 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.616,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "dropmoveleave",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "132.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "136 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "48,16",
+       "at": 0.715,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 1.065,
+       "logged": [
+        "143 UP enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "143 DROP both loc=the floor ctl=main.map over=the enter icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16",
+        "143 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "49,16",
+       "at": 1.415,
+       "logged": []
+      },
+      {
+       "action": "48,-60",
+       "at": 1.766,
+       "logged": [
+        "150 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.117,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "heldleave",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "168.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "172 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "112,-60",
+       "at": 0.702,
+       "logged": []
+      },
+      {
+       "action": "up",
+       "at": 1.052,
+       "logged": [
+        "179 UP null loc= ctl= left=1;button=left;screen-loc=3:17,7:16",
+        "179 DROP both loc= ctl= over= left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.403,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.903,
+       "logged": [
+        "187.5 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 2.254,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "glidestill",
+     "actions": [
+      {
+       "action": "208,80",
+       "at": 0.0,
+       "logged": [
+        "206 ENTER glider loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=6:17,5:16"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 0.351,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "fastsweep",
+     "actions": [
+      {
+       "action": "sweep:16,16,250,16,24,8",
+       "at": 0.0,
+       "logged": [
+        "250 ENTER enter loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=1:5,7:16",
+        "250 EXIT enter loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=1:5,7:16",
+        "250 MOVE move loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=2:21,7:16",
+        "250.5 ENTER both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "250.5 MOVE both loc=the floor ctl=main.map icon-x=28;icon-y=16;screen-loc=3:28,7:16",
+        "250.5 EXIT both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "251 ENTER enter2 loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=5:3,7:16",
+        "251 EXIT enter2 loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=5:3,7:16"
+       ]
+      },
+      {
+       "action": "wait:1",
+       "at": 0.55,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "enterquick",
+     "actions": [
+      {
+       "action": "144,16",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:144,16,112,16,4,10",
+       "at": 0.851,
+       "logged": [
+        "284 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:1",
+       "at": 1.243,
+       "logged": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "lag10",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [],
+   "params": "lag=10",
+   "replay": "base.txt",
+   "cases": [
+    {
+     "case": "fastsweep",
+     "actions": [
+      {
+       "action": "sweep:16,16,250,16,24,8",
+       "at": 0.0,
+       "logged": [
+        "50 ENTER enter loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=1:5,7:16",
+        "50 EXIT enter loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=1:5,7:16",
+        "50 MOVE move loc=the floor ctl=main.map icon-x=31;icon-y=16;screen-loc=2:31,7:16",
+        "50 ENTER both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "50 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "50 EXIT both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "50 ENTER enter2 loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=5:13,7:16",
+        "50 EXIT enter2 loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=5:13,7:16"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 0.549,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "backforth",
+     "actions": [
+      {
+       "action": "sweep:16,16,250,16,24,8",
+       "at": 0.0,
+       "logged": [
+        "100 ENTER enter loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=1:5,7:16",
+        "100 EXIT enter loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=1:5,7:16",
+        "100 MOVE move loc=the floor ctl=main.map icon-x=31;icon-y=16;screen-loc=2:31,7:16",
+        "100 ENTER both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "100 EXIT both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "100 ENTER enter2 loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=5:13,7:16",
+        "100 EXIT enter2 loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=5:13,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.3",
+       "at": 0.551,
+       "logged": []
+      },
+      {
+       "action": "sweep:250,16,16,16,24,8",
+       "at": 0.852,
+       "logged": [
+        "100 ENTER enter2 loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=5:13,7:16",
+        "100 EXIT enter2 loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=5:13,7:16",
+        "100 ENTER both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "110 EXIT both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "110 MOVE move loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=2:11,7:16",
+        "110 ENTER enter loc=the floor ctl=main.map icon-x=24;icon-y=16;screen-loc=1:24,7:16",
+        "110 EXIT enter loc=the floor ctl=main.map icon-x=24;icon-y=16;screen-loc=1:24,7:16"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 1.403,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "steps",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "150 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 0.351,
+       "logged": [
+        "150 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "114,16",
+       "at": 0.701,
+       "logged": [
+        "160 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16"
+       ]
+      },
+      {
+       "action": "115,16",
+       "at": 1.052,
+       "logged": [
+        "160 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16"
+       ]
+      },
+      {
+       "action": "116,16",
+       "at": 1.403,
+       "logged": [
+        "160 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 1.753,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "quicksteps",
+     "actions": [
+      {
+       "action": "sweep:100,16,110,16,10,20",
+       "at": 0.0,
+       "logged": [
+        "210 ENTER both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "210 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 0.555,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "enterquick",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "250 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:112,16,140,16,4,30",
+       "at": 3.352,
+       "logged": [
+        "290 MOVE both loc=the floor ctl=main.map icon-x=24;icon-y=16;screen-loc=3:24,7:16",
+        "290 MOVE both loc=the floor ctl=main.map icon-x=31;icon-y=16;screen-loc=3:31,7:16",
+        "290 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 3.823,
+       "logged": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "center",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [
+    "CLIENT_ENTER"
+   ],
+   "params": "",
+   "replay": "center.txt",
+   "cases": [
+    {
+     "case": "moveonly",
+     "actions": [
+      {
+       "action": "80,16",
+       "at": 0.0,
+       "logged": [
+        "52.5 C-ENTER move loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=2:17,7:16"
+       ]
+      },
+      {
+       "action": "81,16",
+       "at": 0.351,
+       "logged": [
+        "56.5 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=2:18,7:16"
+       ]
+      },
+      {
+       "action": "81,17",
+       "at": 0.701,
+       "logged": [
+        "59.5 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=15;screen-loc=2:18,7:15"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.052,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "leave",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "78 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "78 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 0.351,
+       "logged": [
+        "81.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "144,16",
+       "at": 0.701,
+       "logged": [
+        "85.5 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "85.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "85.5 C-ENTER none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "145,16",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "16,16",
+       "at": 1.403,
+       "logged": [
+        "92 C-EXIT none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "17,16",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "48,16",
+       "at": 2.104,
+       "logged": [
+        "99 C-ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16",
+        "99 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "49,16",
+       "at": 2.455,
+       "logged": []
+      },
+      {
+       "action": "112,-60",
+       "at": 2.805,
+       "logged": [
+        "106.5 C-EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16",
+        "106.5 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "none",
+     "actions": [
+      {
+       "action": "144,16",
+       "at": 0.0,
+       "logged": [
+        "120 C-ENTER none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "145,16",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "208,16",
+       "at": 0.701,
+       "logged": [
+        "127 C-EXIT none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16",
+        "127 C-ENTER floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=6:17,7:16"
+       ]
+      },
+      {
+       "action": "209,16",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "300,16",
+       "at": 1.403,
+       "logged": [
+        "134 C-EXIT floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=6:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "bigjump",
+     "actions": [
+      {
+       "action": "40,70",
+       "at": 0.0,
+       "logged": [
+        "147.5 C-ENTER big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26",
+        "147.5 ENTER big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26"
+       ]
+      },
+      {
+       "action": "41,70",
+       "at": 0.351,
+       "logged": [
+        "151 MOVE big loc=the floor ctl=main.map icon-x=10;icon-y=58;screen-loc=1:10,5:26"
+       ]
+      },
+      {
+       "action": "9,70",
+       "at": 0.702,
+       "logged": [
+        "154.5 C-EXIT big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26",
+        "154.5 EXIT big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26"
+       ]
+      },
+      {
+       "action": "9,102",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "41,102",
+       "at": 1.403,
+       "logged": [
+        "161.5 C-ENTER big loc=the floor ctl=main.map icon-x=10;icon-y=26;screen-loc=1:10,4:26",
+        "161.5 ENTER big loc=the floor ctl=main.map icon-x=10;icon-y=26;screen-loc=1:10,4:26"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "still",
+     "actions": [
+      {
+       "action": "176,110",
+       "at": 0.0,
+       "logged": [
+        "175 C-ENTER slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18",
+        "175 ENTER slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "176,176",
+       "at": 3.351,
+       "logged": [
+        "208.5 C-EXIT slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18",
+        "208.5 EXIT slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18",
+        "208.5 C-ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "208.5 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16"
+       ]
+      },
+      {
+       "action": "wait:5",
+       "at": 3.702,
+       "logged": [
+        "221.5 C-EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "221.5 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "221.5 C-ENTER floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "242 C-EXIT floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "242 C-ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "242 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "261.5 C-EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "261.5 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "261.5 C-ENTER floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "click",
+     "actions": [
+      {
+       "action": "144,16",
+       "at": 0.0,
+       "logged": [
+        "272 C-ENTER none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "275.5 DOWN none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 0.709,
+       "logged": [
+        "279 UP none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16",
+        "279 CLICK none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "145,16",
+       "at": 1.06,
+       "logged": []
+      },
+      {
+       "action": "112,16",
+       "at": 1.411,
+       "logged": [
+        "286 C-EXIT none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16",
+        "286 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "286 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 1.761,
+       "logged": [
+        "289.5 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 2.124,
+       "logged": [
+        "293 UP both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "293 CLICK both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 2.475,
+       "logged": [
+        "297 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "cmove",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [
+    "CLIENT_MOVE"
+   ],
+   "params": "",
+   "replay": "cmove.txt",
+   "cases": [
+    {
+     "case": "moveonly",
+     "actions": [
+      {
+       "action": "80,16",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "81,16",
+       "at": 0.351,
+       "logged": [
+        "56 C-MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=2:18,7:16",
+        "56 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=2:18,7:16"
+       ]
+      },
+      {
+       "action": "81,17",
+       "at": 0.702,
+       "logged": [
+        "60 C-MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=15;screen-loc=2:18,7:15",
+        "60 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=15;screen-loc=2:18,7:15"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.053,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "leave",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "78.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 0.351,
+       "logged": [
+        "81.5 C-MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "81.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "144,16",
+       "at": 0.702,
+       "logged": [
+        "85 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "145,16",
+       "at": 1.052,
+       "logged": [
+        "89 C-MOVE none loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=4:18,7:16"
+       ]
+      },
+      {
+       "action": "16,16",
+       "at": 1.402,
+       "logged": []
+      },
+      {
+       "action": "17,16",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "48,16",
+       "at": 2.103,
+       "logged": [
+        "99 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "49,16",
+       "at": 2.454,
+       "logged": [
+        "103 C-MOVE enter loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=1:18,7:16"
+       ]
+      },
+      {
+       "action": "112,-60",
+       "at": 2.804,
+       "logged": [
+        "106 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "none",
+     "actions": [
+      {
+       "action": "144,16",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "145,16",
+       "at": 0.351,
+       "logged": [
+        "123.5 C-MOVE none loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=4:18,7:16"
+       ]
+      },
+      {
+       "action": "208,16",
+       "at": 0.701,
+       "logged": []
+      },
+      {
+       "action": "209,16",
+       "at": 1.052,
+       "logged": [
+        "130.5 C-MOVE floor loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=6:18,7:16"
+       ]
+      },
+      {
+       "action": "300,16",
+       "at": 1.403,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "bigjump",
+     "actions": [
+      {
+       "action": "40,70",
+       "at": 0.0,
+       "logged": [
+        "147.5 ENTER big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26"
+       ]
+      },
+      {
+       "action": "41,70",
+       "at": 0.351,
+       "logged": [
+        "151 C-MOVE big loc=the floor ctl=main.map icon-x=10;icon-y=58;screen-loc=1:10,5:26",
+        "151 MOVE big loc=the floor ctl=main.map icon-x=10;icon-y=58;screen-loc=1:10,5:26"
+       ]
+      },
+      {
+       "action": "9,70",
+       "at": 0.701,
+       "logged": [
+        "154.5 EXIT big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26"
+       ]
+      },
+      {
+       "action": "9,102",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "41,102",
+       "at": 1.403,
+       "logged": [
+        "161.5 ENTER big loc=the floor ctl=main.map icon-x=10;icon-y=26;screen-loc=1:10,4:26"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "still",
+     "actions": [
+      {
+       "action": "176,110",
+       "at": 0.0,
+       "logged": [
+        "175 ENTER slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "176,176",
+       "at": 3.352,
+       "logged": [
+        "208.5 EXIT slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18",
+        "208.5 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16"
+       ]
+      },
+      {
+       "action": "wait:5",
+       "at": 3.702,
+       "logged": [
+        "221.5 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "242 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "261.5 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "click",
+     "actions": [
+      {
+       "action": "144,16",
+       "at": 0.0,
+       "logged": []
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "275.5 DOWN none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 0.71,
+       "logged": [
+        "279 UP none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16",
+        "279 CLICK none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "145,16",
+       "at": 1.06,
+       "logged": [
+        "282.5 C-MOVE none loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=4:18,7:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 1.411,
+       "logged": [
+        "286 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 1.761,
+       "logged": [
+        "289.5 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 2.125,
+       "logged": [
+        "293 UP both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "293 CLICK both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 2.475,
+       "logged": [
+        "297 C-MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "297 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "cboth",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [
+    "CLIENT_ENTER",
+    "CLIENT_MOVE"
+   ],
+   "params": "",
+   "replay": "cboth.txt",
+   "cases": [
+    {
+     "case": "moveonly",
+     "actions": [
+      {
+       "action": "80,16",
+       "at": 0.0,
+       "logged": [
+        "52.5 C-ENTER move loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=2:17,7:16"
+       ]
+      },
+      {
+       "action": "81,16",
+       "at": 0.351,
+       "logged": [
+        "56 C-MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=2:18,7:16",
+        "56 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=2:18,7:16"
+       ]
+      },
+      {
+       "action": "81,17",
+       "at": 0.701,
+       "logged": [
+        "59.5 C-MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=15;screen-loc=2:18,7:15",
+        "59.5 MOVE move loc=the floor ctl=main.map icon-x=18;icon-y=15;screen-loc=2:18,7:15"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 1.052,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "leave",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "78 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "78 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 0.351,
+       "logged": [
+        "82 C-MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "82 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      },
+      {
+       "action": "144,16",
+       "at": 0.701,
+       "logged": [
+        "85.5 C-EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "85.5 EXIT both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "85.5 C-ENTER none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "145,16",
+       "at": 1.052,
+       "logged": [
+        "89 C-MOVE none loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=4:18,7:16"
+       ]
+      },
+      {
+       "action": "16,16",
+       "at": 1.403,
+       "logged": [
+        "92.5 C-EXIT none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "17,16",
+       "at": 1.753,
+       "logged": []
+      },
+      {
+       "action": "48,16",
+       "at": 2.103,
+       "logged": [
+        "99.5 C-ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16",
+        "99.5 ENTER enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      },
+      {
+       "action": "49,16",
+       "at": 2.454,
+       "logged": [
+        "103 C-MOVE enter loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=1:18,7:16"
+       ]
+      },
+      {
+       "action": "112,-60",
+       "at": 2.804,
+       "logged": [
+        "106.5 C-EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16",
+        "106.5 EXIT enter loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=1:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "none",
+     "actions": [
+      {
+       "action": "144,16",
+       "at": 0.0,
+       "logged": [
+        "120 C-ENTER none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "145,16",
+       "at": 0.351,
+       "logged": [
+        "123.5 C-MOVE none loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=4:18,7:16"
+       ]
+      },
+      {
+       "action": "208,16",
+       "at": 0.701,
+       "logged": [
+        "127 C-EXIT none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16",
+        "127 C-ENTER floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=6:17,7:16"
+       ]
+      },
+      {
+       "action": "209,16",
+       "at": 1.052,
+       "logged": [
+        "130.5 C-MOVE floor loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=6:18,7:16"
+       ]
+      },
+      {
+       "action": "300,16",
+       "at": 1.402,
+       "logged": [
+        "134 C-EXIT floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=6:17,7:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "bigjump",
+     "actions": [
+      {
+       "action": "40,70",
+       "at": 0.0,
+       "logged": [
+        "147.5 C-ENTER big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26",
+        "147.5 ENTER big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26"
+       ]
+      },
+      {
+       "action": "41,70",
+       "at": 0.351,
+       "logged": [
+        "151 C-MOVE big loc=the floor ctl=main.map icon-x=10;icon-y=58;screen-loc=1:10,5:26",
+        "151 MOVE big loc=the floor ctl=main.map icon-x=10;icon-y=58;screen-loc=1:10,5:26"
+       ]
+      },
+      {
+       "action": "9,70",
+       "at": 0.701,
+       "logged": [
+        "154.5 C-EXIT big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26",
+        "154.5 EXIT big loc=the floor ctl=main.map icon-x=9;icon-y=58;screen-loc=1:9,5:26"
+       ]
+      },
+      {
+       "action": "9,102",
+       "at": 1.052,
+       "logged": []
+      },
+      {
+       "action": "41,102",
+       "at": 1.403,
+       "logged": [
+        "161.5 C-ENTER big loc=the floor ctl=main.map icon-x=10;icon-y=26;screen-loc=1:10,4:26",
+        "161.5 ENTER big loc=the floor ctl=main.map icon-x=10;icon-y=26;screen-loc=1:10,4:26"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "still",
+     "actions": [
+      {
+       "action": "176,110",
+       "at": 0.0,
+       "logged": [
+        "175 C-ENTER slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18",
+        "175 ENTER slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18"
+       ]
+      },
+      {
+       "action": "wait:3",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "176,176",
+       "at": 3.351,
+       "logged": [
+        "208.5 C-EXIT slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18",
+        "208.5 EXIT slider loc=the floor ctl=main.map icon-x=13;icon-y=18;screen-loc=5:17,4:18",
+        "208.5 C-ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "208.5 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16"
+       ]
+      },
+      {
+       "action": "wait:5",
+       "at": 3.702,
+       "logged": [
+        "221.5 C-EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "221.5 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "221.5 C-ENTER floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "242 C-EXIT floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16",
+        "242 C-ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "242 ENTER hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "261.5 C-EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "261.5 EXIT hopper loc=the floor ctl=main.map icon-x=17;icon-y=4;screen-loc=5:17,2:16",
+        "261.5 C-ENTER floor loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=5:17,2:16"
+       ]
+      }
+     ]
+    },
+    {
+     "case": "click",
+     "actions": [
+      {
+       "action": "144,16",
+       "at": 0.0,
+       "logged": [
+        "272 C-ENTER none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 0.351,
+       "logged": [
+        "275.5 DOWN none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 0.705,
+       "logged": [
+        "279 UP none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16",
+        "279 CLICK none loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=4:17,7:16"
+       ]
+      },
+      {
+       "action": "145,16",
+       "at": 1.056,
+       "logged": [
+        "282.5 C-MOVE none loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=4:18,7:16"
+       ]
+      },
+      {
+       "action": "112,16",
+       "at": 1.407,
+       "logged": [
+        "286 C-EXIT none loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=4:17,7:16",
+        "286 C-ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "286 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "down",
+       "at": 1.757,
+       "logged": [
+        "289.5 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "up",
+       "at": 2.121,
+       "logged": [
+        "293 UP both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "293 CLICK both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "113,16",
+       "at": 2.472,
+       "logged": [
+        "296.5 C-MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "296.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "pace",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [],
+   "params": "",
+   "replay": "base.txt",
+   "cases": [
+    {
+     "case": "p4",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "54 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,4",
+       "at": 0.851,
+       "logged": [
+        "62.5 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "62.5 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "62.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "63 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "63 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "63 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.076
+      },
+      {
+       "action": "wait:1",
+       "at": 1.278,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p8",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "86.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,8",
+       "at": 0.851,
+       "logged": [
+        "95 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "95.5 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "95.5 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "95.5 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "96 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "96 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "96 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "96.5 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "96.5 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "96.5 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.152
+      },
+      {
+       "action": "wait:1",
+       "at": 1.354,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p12",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "120 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,12",
+       "at": 0.852,
+       "logged": [
+        "128.5 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "129 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "129 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "129 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "129.5 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "129.5 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "129.5 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "130.5 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "130.5 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "130.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "131 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "131 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.228
+      },
+      {
+       "action": "wait:1",
+       "at": 1.431,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p14",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "154.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,14",
+       "at": 0.851,
+       "logged": [
+        "163 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "163 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "163.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "163.5 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "163.5 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "164 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "164 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "164 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "164 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "164.5 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "164.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "164.5 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "165 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "165 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "165 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "165.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "165.5 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "165.5 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.266
+      },
+      {
+       "action": "wait:1",
+       "at": 1.468,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p16",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "189 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,16",
+       "at": 0.851,
+       "logged": [
+        "197.5 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "198 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "198 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "198 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "198.5 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "198.5 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "198.5 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "199 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "199 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "199 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "199.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "199.5 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "199.5 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "200.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "200.5 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "200.5 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.304
+      },
+      {
+       "action": "wait:1",
+       "at": 1.506,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p18",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "224 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,18",
+       "at": 0.851,
+       "logged": [
+        "232.5 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "233 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "233 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "233.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "233.5 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "233.5 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "234 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "234 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "234 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "234.5 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "234.5 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "234.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "235 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "235 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "235 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "235.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "235.5 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "236 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "236 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "236 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.342
+      },
+      {
+       "action": "wait:1",
+       "at": 1.544,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p20",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "259.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,20",
+       "at": 0.852,
+       "logged": [
+        "268 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "268.5 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "268.5 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "269 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "269 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "269 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "269.5 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "269.5 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "270.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "270.5 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "271 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "271 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "271 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "271.5 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "271.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "272 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "272 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.38
+      },
+      {
+       "action": "wait:1",
+       "at": 1.582,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p25",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "295.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,25",
+       "at": 0.851,
+       "logged": [
+        "304 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "304 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "304.5 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "304.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "305 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "305 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "305.5 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "305.5 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "306 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "306 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "306.5 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "306.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "307 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "307 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "307.5 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "307.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "308 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "308 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "308.5 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "308.5 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.475
+      },
+      {
+       "action": "wait:1",
+       "at": 1.677,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p50",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "370.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,50",
+       "at": 0.851,
+       "logged": [
+        "379 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "379.5 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "380.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "381 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "381.5 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "382 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "382.5 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "383 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "383.5 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "384 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "384.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "385 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "385.5 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "386 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "386.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "387 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "387.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "388 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "388.5 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.95
+      },
+      {
+       "action": "wait:1.5",
+       "at": 2.152,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "ncp",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "417 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:113,16,114,16,2,1",
+       "at": 0.852,
+       "logged": [
+        "425.5 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16"
+       ],
+       "took": 0.001
+      },
+      {
+       "action": "wait:1",
+       "at": 1.204,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "cp",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "449 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "tap!",
+       "at": 0.852,
+       "logged": []
+      },
+      {
+       "action": "sweep:113,16,114,16,2,1",
+       "at": 0.864,
+       "logged": [
+        "457.5 UP both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "457.5 CLICK both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "458 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16"
+       ],
+       "took": 0.001
+      },
+      {
+       "action": "wait:1",
+       "at": 1.216,
+       "logged": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "pace10",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [],
+   "params": "lag=10",
+   "replay": "base.txt",
+   "cases": [
+    {
+     "case": "p4",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "50 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,4",
+       "at": 0.851,
+       "logged": [
+        "60 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "60 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "60 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "60 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "60 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.076
+      },
+      {
+       "action": "wait:1",
+       "at": 1.278,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p8",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "80 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,8",
+       "at": 0.851,
+       "logged": [
+        "90 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "90 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.152
+      },
+      {
+       "action": "wait:1",
+       "at": 1.354,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p12",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "120 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,12",
+       "at": 0.851,
+       "logged": [
+        "120 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "120 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.228
+      },
+      {
+       "action": "wait:1",
+       "at": 1.429,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p14",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "150 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,14",
+       "at": 0.852,
+       "logged": [
+        "160 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "160 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.266
+      },
+      {
+       "action": "wait:1",
+       "at": 1.469,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p16",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "190 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,16",
+       "at": 0.852,
+       "logged": [
+        "190 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "190 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "190 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "190 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "190 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "190 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "190 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "190 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "200 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.304
+      },
+      {
+       "action": "wait:1",
+       "at": 1.506,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p18",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "220 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,18",
+       "at": 0.851,
+       "logged": [
+        "230 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "230 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.342
+      },
+      {
+       "action": "wait:1",
+       "at": 1.544,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p20",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "260 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,20",
+       "at": 0.851,
+       "logged": [
+        "260 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "260 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "260 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "260 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "270 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.38
+      },
+      {
+       "action": "wait:1",
+       "at": 1.582,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p25",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "290 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,25",
+       "at": 0.852,
+       "logged": [
+        "300 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "300 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.475
+      },
+      {
+       "action": "wait:1",
+       "at": 1.678,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p33",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "330 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,33",
+       "at": 0.852,
+       "logged": [
+        "340 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "340 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.627
+      },
+      {
+       "action": "wait:1",
+       "at": 1.829,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p50",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "370 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,50",
+       "at": 0.851,
+       "logged": [
+        "380 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "380 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.95
+      },
+      {
+       "action": "wait:1.5",
+       "at": 2.151,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "ncp",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "410 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:113,16,114,16,2,1",
+       "at": 0.852,
+       "logged": [
+        "420 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16"
+       ],
+       "took": 0.001
+      },
+      {
+       "action": "wait:1",
+       "at": 1.203,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "cp",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "450 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "tap!",
+       "at": 0.851,
+       "logged": []
+      },
+      {
+       "action": "sweep:113,16,114,16,2,1",
+       "at": 0.865,
+       "logged": [
+        "450 DOWN both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "450 UP both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "450 CLICK both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "450 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16"
+       ],
+       "took": 0.0011
+      },
+      {
+       "action": "wait:1",
+       "at": 1.216,
+       "logged": []
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "run": "pace025",
+   "date": "2026-11-26",
+   "stock": "516.1689",
+   "switches": [],
+   "params": "lag=0.25",
+   "replay": "base.txt",
+   "cases": [
+    {
+     "case": "p4",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "53 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,4",
+       "at": 0.852,
+       "logged": [
+        "61.5 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "61.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "61.75 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "61.75 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "61.75 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "62 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "62.25 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.076
+      },
+      {
+       "action": "wait:1",
+       "at": 1.278,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p8",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "85.75 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,8",
+       "at": 0.851,
+       "logged": [
+        "94.25 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "94.25 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "94.5 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "94.75 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "94.75 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "95 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "95.25 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "95.25 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "95.5 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "95.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "95.75 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.152
+      },
+      {
+       "action": "wait:1",
+       "at": 1.353,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p12",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "119.25 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,12",
+       "at": 0.851,
+       "logged": [
+        "127.75 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "128 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "128.25 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "128.25 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "128.5 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "128.75 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "128.75 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "129 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "129.25 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "129.25 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "129.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "129.75 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "129.75 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "130 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.228
+      },
+      {
+       "action": "wait:1",
+       "at": 1.431,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p14",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "153.5 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,14",
+       "at": 0.851,
+       "logged": [
+        "162.25 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "162.25 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "162.5 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "162.75 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "162.75 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "163 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "163.25 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "163.25 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "163.5 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "163.75 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "163.75 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "163.75 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "164 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "164.25 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "164.25 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "164.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "164.75 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.266
+      },
+      {
+       "action": "wait:1",
+       "at": 1.468,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p16",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "188.25 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,16",
+       "at": 0.851,
+       "logged": [
+        "196.75 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "197 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "197.25 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "197.25 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "197.5 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "197.75 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "197.75 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "198 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "198.25 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "198.25 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "198.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "198.75 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "198.75 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "199 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "199.25 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "199.25 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "199.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "199.75 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "199.75 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.304
+      },
+      {
+       "action": "wait:1",
+       "at": 1.505,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p18",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "223.25 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,18",
+       "at": 0.851,
+       "logged": [
+        "231.75 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "232 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "232.25 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "232.25 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "232.5 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "232.75 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "232.75 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "233.25 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "233.25 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "233.5 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "233.75 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "233.75 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "234 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "234.25 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "234.25 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "234.5 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "234.75 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "234.75 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "235 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "235.25 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.342
+      },
+      {
+       "action": "wait:1",
+       "at": 1.544,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p20",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "258.75 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,20",
+       "at": 0.852,
+       "logged": [
+        "267.25 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "267.5 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "267.75 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "267.75 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "268.25 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "268.25 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "268.5 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "268.75 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "268.75 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "269.25 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "269.25 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "269.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "269.75 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "269.75 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "270.25 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "270.25 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "270.5 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "270.75 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "270.75 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "271.25 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.38
+      },
+      {
+       "action": "wait:1",
+       "at": 1.583,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p25",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "294.75 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,25",
+       "at": 0.852,
+       "logged": [
+        "303.25 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "303.25 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "303.75 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "303.75 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "304.25 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "304.25 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "304.75 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "304.75 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "305.25 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "305.25 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "305.75 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "305.75 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "306.25 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "306.25 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "306.75 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "306.75 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "307.25 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "307.25 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "307.75 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "307.75 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.475
+      },
+      {
+       "action": "wait:1",
+       "at": 1.678,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p33",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "331.25 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,33",
+       "at": 0.852,
+       "logged": [
+        "339.75 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "340.25 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "340.5 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "340.75 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "341.25 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "341.5 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "341.75 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "342.25 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "342.5 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "342.75 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "343.25 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "343.5 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "343.75 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "344.25 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "344.5 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "344.75 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "345.25 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "345.5 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "345.75 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "346.25 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.627
+      },
+      {
+       "action": "wait:1",
+       "at": 1.829,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "p50",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "369.75 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:97,16,117,16,20,50",
+       "at": 0.852,
+       "logged": [
+        "378.25 MOVE both loc=the floor ctl=main.map icon-x=3;icon-y=16;screen-loc=3:3,7:16",
+        "378.75 MOVE both loc=the floor ctl=main.map icon-x=4;icon-y=16;screen-loc=3:4,7:16",
+        "379.25 MOVE both loc=the floor ctl=main.map icon-x=5;icon-y=16;screen-loc=3:5,7:16",
+        "379.75 MOVE both loc=the floor ctl=main.map icon-x=6;icon-y=16;screen-loc=3:6,7:16",
+        "380.25 MOVE both loc=the floor ctl=main.map icon-x=7;icon-y=16;screen-loc=3:7,7:16",
+        "380.75 MOVE both loc=the floor ctl=main.map icon-x=8;icon-y=16;screen-loc=3:8,7:16",
+        "381.25 MOVE both loc=the floor ctl=main.map icon-x=9;icon-y=16;screen-loc=3:9,7:16",
+        "381.75 MOVE both loc=the floor ctl=main.map icon-x=10;icon-y=16;screen-loc=3:10,7:16",
+        "382.25 MOVE both loc=the floor ctl=main.map icon-x=11;icon-y=16;screen-loc=3:11,7:16",
+        "382.75 MOVE both loc=the floor ctl=main.map icon-x=12;icon-y=16;screen-loc=3:12,7:16",
+        "383.25 MOVE both loc=the floor ctl=main.map icon-x=13;icon-y=16;screen-loc=3:13,7:16",
+        "383.75 MOVE both loc=the floor ctl=main.map icon-x=14;icon-y=16;screen-loc=3:14,7:16",
+        "384.25 MOVE both loc=the floor ctl=main.map icon-x=15;icon-y=16;screen-loc=3:15,7:16",
+        "384.75 MOVE both loc=the floor ctl=main.map icon-x=16;icon-y=16;screen-loc=3:16,7:16",
+        "385.25 MOVE both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16",
+        "385.75 MOVE both loc=the floor ctl=main.map icon-x=18;icon-y=16;screen-loc=3:18,7:16",
+        "386.25 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16",
+        "386.75 MOVE both loc=the floor ctl=main.map icon-x=20;icon-y=16;screen-loc=3:20,7:16",
+        "387.25 MOVE both loc=the floor ctl=main.map icon-x=21;icon-y=16;screen-loc=3:21,7:16",
+        "387.75 MOVE both loc=the floor ctl=main.map icon-x=22;icon-y=16;screen-loc=3:22,7:16"
+       ],
+       "took": 0.95
+      },
+      {
+       "action": "wait:1.5",
+       "at": 2.152,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "ncp",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "416.25 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "sweep:113,16,114,16,2,1",
+       "at": 0.852,
+       "logged": [
+        "424.75 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16"
+       ],
+       "took": 0.001
+      },
+      {
+       "action": "wait:1",
+       "at": 1.204,
+       "logged": []
+      }
+     ]
+    },
+    {
+     "case": "cp",
+     "actions": [
+      {
+       "action": "112,16",
+       "at": 0.0,
+       "logged": [
+        "448.25 ENTER both loc=the floor ctl=main.map icon-x=17;icon-y=16;screen-loc=3:17,7:16"
+       ]
+      },
+      {
+       "action": "wait:0.5",
+       "at": 0.351,
+       "logged": []
+      },
+      {
+       "action": "tap!",
+       "at": 0.852,
+       "logged": []
+      },
+      {
+       "action": "sweep:113,16,114,16,2,1",
+       "at": 0.867,
+       "logged": [
+        "456.75 UP both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "456.75 CLICK both loc=the floor ctl=main.map icon-x=17;icon-y=16;left=1;button=left;screen-loc=3:17,7:16",
+        "457 MOVE both loc=the floor ctl=main.map icon-x=19;icon-y=16;screen-loc=3:19,7:16"
+       ],
+       "took": 0.0011
+      },
+      {
+       "action": "wait:1",
+       "at": 1.219,
+       "logged": []
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

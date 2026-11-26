@@ -149,7 +149,9 @@ The worker revalidates session, registry identity, local lifetime, HUD membershi
 turf revision and MAP scope as applicable before dispatch. Slot reuse or a reopened
 MAP must not retarget queued input. Click/hover, right-release menus and world/object-
 HUD drag/drop have bounded implementations; general affine gestures, grouped/image/
-vis input combinations and cross-MAP drags remain incomplete.
+vis input combinations and cross-MAP drags remain incomplete. Hover reports follow stock's record of atom, control,
+map and pixel in the screen tile, re-pick a still pointer as frames change it, forget the record at every release and
+go out at most once per 1/64 s (`shell/mapinput.h` MapHover, tests/data/hover-world/README.md).
 
 ## Diagnostics
 
