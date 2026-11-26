@@ -180,6 +180,13 @@ std::string infoClickParams(const std::string& button, const Mods& m, bool icon,
     return s + "button=" + btn;
 }
 
+std::string infoHoverParams(const Mods& m, bool icon, int iconX, int iconY) {
+    std::string s = icon ? "icon-x=" + std::to_string(iconX) + ";icon-y=" + std::to_string(iconY) : std::string();
+    for (auto [held, name] : {std::pair{m.ctrl, "ctrl=1"}, std::pair{m.shift, "shift=1"}, std::pair{m.alt, "alt=1"}})
+        if (held) s += (s.empty() ? "" : ";") + std::string(name);
+    return s;
+}
+
 MouseHooks allMouseHooks() { return MouseHooks{true, true, true, true, true, true}; }
 
 std::vector<Bytes> pressFrames(ClickCmd c, const MouseHooks& h) {

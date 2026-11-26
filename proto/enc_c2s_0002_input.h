@@ -96,6 +96,13 @@ Bytes encodeInfoClick(uint8_t sub, const AtomRef& over, const std::string& panel
 // pixels: x+1 from the cell's left edge, y+1 from its bottom edge, unclamped. A row with nothing drawn in its cell
 // (no icon, no overlay) sends neither.
 std::string infoClickParams(const std::string& button, const Mods&, bool icon = false, int iconX = 0, int iconY = 0);
+// A hover report over the INFO control is the click's shape with sub 0x08 (encodeInfoClick(kMouseHover, ..)), as stock
+// DreamSeeker 516.1689 sends it (tests/data/hover-world panel.json): over a row naming an atom, that atom, the
+// selected tab's name and the control, params "icon-x=X;icon-y=Y" for a row that draws an icon (counted as for a
+// click) and "" for one that does not; over the panel's empty space (a row's label, past its text, a text row, below
+// the rows) a null atom with the same location and control and params "". Leaving the panel is the map's leave
+// (encodeHoverLeave). Modifiers held: appended as on the map ("ctrl=1", "shift=1", "alt=1"), not measured here.
+std::string infoHoverParams(const Mods&, bool icon, int iconX, int iconY);
 
 // Which mouse events the world subscribed to (MouseSubs FormatFlags word, decoded by net/input.h).
 struct MouseHooks {

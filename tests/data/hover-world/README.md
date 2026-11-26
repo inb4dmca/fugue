@@ -224,7 +224,89 @@ reports each: Qt cannot tell them from the pointer's own.
 
 ## Not measured
 
-Whether stock reads the pointer faster when it holds a finer timer resolution itself (above), hover reports over a
-stat panel with a client/MouseMove (whether its pixel steps report), a middle press on the menu itself (tried once,
-disturbed), a right or left press while another button than the middle is held, hover while the middle button stays
-held after Escape closed the menu, and alt, whose release stock's window took as Windows' menu key.
+Whether stock reads the pointer faster when it holds a finer timer resolution itself (above), a middle press on the
+menu itself (tried once, disturbed), a right or left press while another button than the middle is held, hover while
+the middle button stays held after Escape closed the menu, a menu closing with the pointer over the stat panel (the
+panel reports at once in stock; Fugue's panel does not pick then), and alt, whose release stock's window took as
+Windows' menu key.
+
+## Stat panel hover
+
+Third round, same day and version, the bytes on the wire as well. `hoverprobe.py --wire` puts a relay between stock
+and DreamDaemon and keeps, per action, the plaintext of what stock sent (input commands, c2s 0x0002, and stat tab
+selections, 0x006b), read with the session key both ends derive from the handshake; `--replay` writes what DreamDaemon
+sent stock before the first case. The `PANEL` compile (with `EXTRA`; `prepare.py` then makes the panel 300x290)
+lists on "Probe", after `statrow` and `both`, `plain` (no mouse procs, icon), `bare` (all three, no icon), a text row
+and `swap` (`swapa`, or `swapb` after F3; both all three), and on a second tab "Other" `other` (all three); F2 switches
+the tab (`client.statpanel`), F4 adds a row at the end whose text changes every tick. `panel.json` keeps the runs
+`panel1`, `panel`, `panel2` (`EXTRA PANEL`, replay `replay/panel.txt`) and `pboth` (with both client switches,
+`replay/pboth.txt`). With the wider label column ("plain") the value column starts at x 346: rows `statrow` 63..96,
+`both` 97..129, `plain` 130..162, `bare` 163..181, the text row 182..199, `swap` 200..233; icons are 32 pixels from
+x 346. The whole set was run a second time: it agreed everywhere except where that run's F2 and F3 presses did not
+reach stock (`swap`, `tabempty`) and where its first move into the grid reported nothing (`grid`, `gridempty`; the
+next move did); only the first run is kept.
+
+The wire, in the notation of `proto/enc_c2s_0002_input.h`:
+
+| pointer | body |
+|---|---|
+| a stat row naming an atom | `[08 00 ff ff][over][03][02 "Probe\0"][02 "main.info\0"][02 "icon-x=5;icon-y=16\0"]` |
+| a stat row whose atom draws no icon | the same with params `""` |
+| the panel's empty space | `[08 00 ff ff][00 ff ff 00 00][03][02 "Probe\0"][02 "main.info\0"][02 "\0"]` |
+| leaving the panel, the grid or a map | `[08 00 ff ff][00 null][03][00 null][00 null][02 "\0"]` (the map's leave) |
+| a grid cell | `[08 00 ff ff][over][03][02 "1,1\0"][02 "main.grid\0"][02 "icon-x=17;icon-y=16;vis-x=0;vis-y=0;cell=1,1\0"]` |
+| the grid's empty space (below its cells) | `[08 00 ff ff][00 ff ff 00 00][03][02 "\0"][02 "main.grid\0"][02 "icon-x=0;icon-y=0\0"]` |
+
+That is the INFO click's shape (`encodeInfoClick`) with sub 0x08: the location is the selected tab's name, a string;
+`over` a row's atom as the click names it (`statrow` `[01 00000000]`, `both` `[01 09000000]`, the same id the map
+names it by). icon-x/icon-y count as for a click: x+1 from the icon cell's left edge, y+1 from its bottom, unclamped
+on the name text (`icon-x=55;icon-y=21` at 400,75).
+
+What stock does:
+
+- **What a row is**: an atom row takes the pointer on its icon and its name text, all of the row's height (350,96 is
+  still `statrow`). Its label, the gap between label and icon, and past the text are the panel's empty space (statrow:
+  400 is the text, 500 empty), and so is a text row and the space below the rows. A row drawn without an icon takes
+  the pointer some way past its text (`bare`, text 346..369: 420 is the row, 440 empty). The tab strip is not part of
+  the panel: going there from a row sends the leave (`parts` 360,50), and back onto the row is entered afresh.
+- **Gates**: those of the map. A row naming another atom is an over report when a client hover proc exists, the atom
+  has 0x800, or the atom the last report named had it: from `both` onto `plain` the report names `plain` (the server
+  exits `both`), from outside onto `plain` and about it nothing is sent (`plainonly`), with client/MouseEntered
+  `C-ENTER plain`. The empty space is an over report naming nothing, under the same gate (`parts`, `text`; `pboth`
+  sends it with client procs, and the server runs no client/MouseEntered for it).
+- **No move reports**: no pixel step within a row reports, and none within the empty space, with client/MouseMove too
+  (`pboth steps`). Moving from the icon onto the name text is the same row.
+- **Another tab under a still pointer** (F2, `tabempty`, `pboth tabs`): the pointer is picked again with the new tab's
+  rows: over `other` a report naming it with location "Other" (EXIT `statrow`, ENTER `other`), over empty space a
+  report naming nothing with location "Other". A tab chosen by a click (`tabclick`) sends `006b [u16 index][token]
+  [name\0]` (`01 00 01 "Other"`), as Fugue's `encodeStatTabBody`; the pointer was on the tab strip then.
+- **Rows changing under a still pointer**: not picked again. `swap` showing `swapb` under the pointer reports
+  nothing; the next step names `swapb` (EXIT `swapa`, ENTER `swapb`, `swap2`, `pboth swap`); a row added below
+  (F4) and the panel refreshing every tick report nothing (`tick`).
+- **Clicks**: a left click on a row sends `[06 ..]` MouseDown, `[05 ..]` MouseUp and `[03 ..]` Click, each with
+  `icon-x=5;icon-y=16;left=1;button=left`, and clears the record: the next step is an over report, MouseMove at the
+  server (`pclick`).
+- **Leaving** (`leaves`): onto the window background the leave; onto a map, the second map or the grid the control
+  reached reports first and then the panel's leave clears the record (EXIT `statrow`, ENTER `hud2`, EXIT `hud2`), and
+  the same from them onto the panel (ENTER `statrow`, EXIT `statrow`), as between maps.
+- **The grid**, for a later implementation: a cell takes the pointer across its whole width (`icon-x=197` at x 200)
+  and reports no pixel step, client/MouseMove or not; its empty space below the cells has its own body (above); the
+  leave and the gates are the map's, and from the map onto a cell the cell reports first, then the map's leave.
+
+`stathover_test::statHoverLikeStock` replays the runs through statHoverPointer at the rows stock drew under the
+pointer, the real map hit test, one MapHover and the server's rule of `hoverLikeStock`, and compares both the reports,
+byte for byte, and the procs with stock's, action by action; the cases over the grid and those whose F2, F3 or tab
+click change the panel are left out of it. `statPanelHoverPicks` holds the widget's picks, its late leave and when it
+picks again.
+
+### Fugue
+
+Before: no hover report over the stat panel at all. After: `StatPanelWidget` (`shell/statpanelwidget.cpp`) picks the
+pointer over its rows (`rowHovered`, row -1 for empty space; `hoverLeft` after the event in hand) and picks again when
+another tab is shown with its rows; `SessionWorker` turns each pick into a `MapPointer` with `info` set
+(`statHoverPointer`, `shell/statview.cpp`) and feeds it to the session's one `MapHover`, with the row's appearance
+flags for the gate; a stat panel pick never makes a move report, its body is the INFO click's shape
+(`mapPointerBody`), and a row click clears the record. Not done: a stat row click still sends Click alone, without
+stock's MouseDown and MouseUp; modifiers held over the panel are sent as on the map, which was not measured; a verb
+tab is treated as empty space naming the tab "verbs", not measured; the widget's row geometry is Qt's, not stock's
+(the hit area follows the same parts of a row). Fugue still has no grid control.
