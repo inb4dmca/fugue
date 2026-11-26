@@ -247,3 +247,58 @@ proc/theboth()
         stat("row", statrow)
         stat(theboth())
 #endif
+
+#ifdef PANEL
+// Third round (prepare.py <dir> EXTRA PANEL): more of the stat panel. "Probe" goes on with plain (no mouse procs),
+// bare (all three, no icon), a text row, and swap, which shows swapa or swapb (both with all three); a second tab
+// "Other" lists other (all three). Keys, through the skin's macros: F2 shows the other tab (client.statpanel), F3
+// swaps the swap row, F4 adds or removes a row at the end whose text changes every tick.
+/obj/plain
+    name = "plain"
+    icon = 'grey.png'
+/obj/bare
+    parent_type = /obj/both
+    name = "bare"
+    icon = null
+/obj/other
+    parent_type = /obj/both
+    name = "other"
+    icon = 'cyan.png'
+/obj/swapa
+    parent_type = /obj/both
+    name = "swapa"
+    icon = 'green.png'
+/obj/swapb
+    parent_type = /obj/both
+    name = "swapb"
+    icon = 'blue.png'
+var/obj/plain/plain = new
+var/obj/bare/bare = new
+var/obj/other/other = new
+var/obj/swapa/swapa = new
+var/obj/swapb/swapb = new
+var/swapped = 0
+var/ticking = 0
+/client/Stat()
+    ..()
+    if(statpanel("Probe"))
+        stat("plain", plain)
+        stat("bare", bare)
+        stat("text", "just text")
+        stat("swap", swapped ? swapb : swapa)
+        if(ticking) stat("time", world.time)
+    if(statpanel("Other"))
+        stat("other", other)
+/client/verb/flip()
+    set hidden = 1
+    statpanel = statpanel == "Other" ? "Probe" : "Other"
+    world.log << "[world.time] FLIP [statpanel]"
+/client/verb/swap()
+    set hidden = 1
+    swapped = !swapped
+    world.log << "[world.time] SWAP [swapped]"
+/client/verb/tick()
+    set hidden = 1
+    ticking = !ticking
+    world.log << "[world.time] TICK [ticking]"
+#endif
