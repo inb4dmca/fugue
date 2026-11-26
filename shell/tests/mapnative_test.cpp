@@ -116,6 +116,65 @@ protected:
 };
 #endif
 
+// Independent stock observation: Normal's transition occupies .75 physical pixels, not one source texel and not one
+// logical pixel. Maps a native coordinate u (texel centres at n+.5) to the linear sampling coordinate (texel centres
+// at n) at `scale` physical pixels per native pixel; minification is ordinary linear.
+static double normalCoordinate(double u, double scale) {
+    if (scale<1) return u-0.5;
+    const double cell=std::floor(u), f=u-cell;
+    if (f<0.5) return cell-0.5+std::min(0.5,f*scale/0.75);
+    return cell+0.5-std::min(0.5,(1-f)*scale/0.75);
+}
+// The window must present the map's native composition (MapWidget::screenshot) as stock Normal magnification at
+// the window's own device pixel ratio. At a fractional ratio such as 1.25, some texels have no physical pixel free
+// of a neighbour's blend, so checks against native stock pixels read the composition and this checks the
+// presentation of every physical pixel. Returns the first mismatch, or nothing.
+static QString presentationMismatch(const MapWidget& map, const QImage& framebuffer, const QImage& composition) {
+    if (framebuffer.isNull() || composition.isNull()) return "missing framebuffer or composition";
+    const auto p=mapPresentation(map.size(),composition.size(),32,map.presentationSettings());
+    if (!p.sharpen) return "the presentation model covers Normal mode only";
+    const QImage presented=framebuffer.convertToFormat(QImage::Format_RGB32);
+    const QImage native=composition.convertToFormat(QImage::Format_RGB32);
+    const double dx=double(presented.width())/map.width(), dy=double(presented.height())/map.height();
+    const int w=native.width(), h=native.height();
+    for (int y=0;y<presented.height();++y) {
+        const auto* row=reinterpret_cast<const QRgb*>(presented.constScanLine(y));
+        const double v=((y+0.5)/dy-p.destination.y())/p.scale;
+        // A fragment centre exactly on the outer cutoff is sensitive to GPU float interpolation.
+        if (std::abs(v)<1e-9 || std::abs(v-h)<1e-9) continue;
+        for (int x=0;x<presented.width();++x) {
+            const double u=((x+0.5)/dx-p.destination.x())/p.scale;
+            if (std::abs(u)<1e-9 || std::abs(u-w)<1e-9) continue;
+            double expected[3]={0,0,0};
+            if (u>=0 && u<w && v>=0 && v<h) {
+                const double a=normalCoordinate(u,p.scale*dx), b=normalCoordinate(v,p.scale*dy);
+                const int ix=int(std::floor(a)), iy=int(std::floor(b));
+                const double fx=a-ix, fy=b-iy;
+                for (int j=0;j<2;++j) for (int i=0;i<2;++i) {
+                    const QRgb c=native.pixel(std::clamp(ix+i,0,w-1),std::clamp(iy+j,0,h-1));
+                    const double weight=(i ? fx : 1-fx)*(j ? fy : 1-fy);
+                    expected[0]+=qRed(c)*weight; expected[1]+=qGreen(c)*weight; expected[2]+=qBlue(c)*weight;
+                }
+            }
+            const QRgb got=row[x];
+            const int actual[3]={qRed(got),qGreen(got),qBlue(got)};
+            for (int k=0;k<3;++k) if (std::abs(actual[k]-qRound(expected[k]))>2)
+                return QString("physical pixel %1,%2 (native %3,%4, DPR %5): actual %6 expected %7,%8,%9")
+                    .arg(x).arg(y).arg(u,0,'f',2).arg(v,0,'f',2).arg(dx).arg(QColor(got).name())
+                    .arg(qRound(expected[0])).arg(qRound(expected[1])).arg(qRound(expected[2]));
+        }
+    }
+    return {};
+}
+// The map's composition at native resolution, checked first to be presented correctly; null (with a warning) if not.
+static QImage presentedComposition(MapWidget& map, const QImage& framebuffer) {
+    QString error; const auto native=map.screenshot(&error);
+    if (native.isNull()) { qWarning().noquote() << "map screenshot:" << error; return {}; }
+    const auto mismatch=presentationMismatch(map,framebuffer,native);
+    if (!mismatch.isEmpty()) { qWarning().noquote() << "map presentation:" << mismatch; return {}; }
+    return native;
+}
+
 class MapNativeTest : public QObject {
     Q_OBJECT
     PixelMapHosts pixelHosts_;
@@ -284,8 +343,10 @@ private slots:
         // Nonidentity master forces supported plane composition; HUD is included in final resampling.
         MapGeometry geometry{{0,0,1,1},{20,20},32,0,1};
         mailbox->publish(terrain,terrain.rect(),0,0,geometry,{lower,upper,master});
-        window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
+        // Count from before showing: without a window manager (Xvfb), the frames submitted while the window is
+        // being exposed may be the only ones.
         QSignalSpy submitted(map,&QRhiWidget::frameSubmitted);
+        window.show(); QVERIFY(QTest::qWaitForWindowExposed(&window));
         QTRY_VERIFY_WITH_TIMEOUT(submitted.size()>0,5000);
         const auto initial=map->grabFramebuffer(); QVERIFY(!initial.isNull());
         qInfo() << "MAP presentation logical/physical/DPR" << map->size() << initial.size() << map->devicePixelRatioF();
@@ -311,6 +372,9 @@ private slots:
                 bool interpolated=false;
                 for(int x=0;x<image.width();++x) {
                     const double native=((x+0.5)/dpr-place.destination.x())/place.scale;
+                    // Point sampling flips on a fragment centre at a texel edge, and Qt rounds the framebuffer to
+                    // whole pixels (211 for 192 logical at 1.1): test the steps, not a tie within a tenth of a pixel.
+                    if(name == QString("&Distort") && std::abs(native-std::round(native))*place.scale*dpr < 0.1) continue;
                     double weight=0;
                     if(native>=0 && native<32) {
                         const double slope = name == QString("&Normal") && zoom*dpr >= 1 ? zoom*dpr/0.75 : 1;
@@ -408,14 +472,7 @@ private slots:
                     QVERIFY(std::abs(image.pixelColor(qRound(p.destination.x())+i,
                         qRound(p.destination.y())+4).red()-stock[i])<=1);
             }
-            // Independent stock observation: Normal's transition occupies .75
-            // physical pixels, not one source texel and not one logical pixel.
-            const auto coordinate=[](double u,double scale) {
-                if (scale<1) return u-0.5;
-                const double cell=std::floor(u), f=u-cell;
-                if (f<0.5) return cell-0.5+std::min(0.5,f*scale/0.75);
-                return cell+0.5-std::min(0.5,(1-f)*scale/0.75);
-            };
+            const auto coordinate=normalCoordinate;
             for (int y=0;y<image.height();++y) for (int x=0;x<image.width();++x) {
                 const double u=((x+0.5)/dx-p.destination.x())/p.scale;
                 const double v=((y+0.5)/dy-p.destination.y())/p.scale;
@@ -838,7 +895,8 @@ private slots:
             QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,previousPoint);
             QCOMPARE(events.back().imageIdentity,previous.imageIdentity);
             QVERIFY(!mapPointerCurrent(previous,w,frame.geometry.session));
-            const auto image=map.grabFramebuffer(); QVERIFY(!image.isNull());
+            const auto native=presentedComposition(map,map.grabFramebuffer()); QVERIFY(!native.isNull());
+            QCOMPARE(native.size(),QSize(160,160));
             for(int y=-4;y<34;++y) for(int x=0;x<40;++x) {
                 QColor expected(Qt::black);
                 if(c.yellow.contains(x,y)) {
@@ -846,10 +904,7 @@ private slots:
                     if(c.half) {edges+=(x==c.yellow.left()||x==c.yellow.right()); edges+=(y==c.yellow.top()||y==c.yellow.bottom());}
                     expected=edges==2?QColor(16,14,0):edges==1?QColor(63,55,0):QColor(255,220,0);
                 }
-                const QPoint p=origin+QPoint(x,y);
-                // Sample the native texel's interior, not its boundary when
-                // physical DPR is fractional (final Normal now blends edges).
-                const auto actual=image.pixelColor(int((p.x()+0.5)*image.width()/160),int((p.y()+0.5)*image.height()/160));
+                const auto actual=native.pixelColor(origin+QPoint(x,y));
                 QVERIFY2(qAbs(actual.red()-expected.red())<=1 && qAbs(actual.green()-expected.green())<=1 && actual.blue()==0,
                     qPrintable(QString("pixel %1,%2 expected %3 actual %4").arg(x).arg(y).arg(expected.name()).arg(actual.name())));
             }
@@ -941,10 +996,11 @@ private slots:
                 QCOMPARE(events.back().click.iconY,previous->click.iconY);
                 QVERIFY(!mapPointerCurrent(*previous,w,frame.geometry.session));
             }
-            const auto image=map.grabFramebuffer(); QVERIFY(!image.isNull());
+            const auto native=presentedComposition(map,map.grabFramebuffer()); QVERIFY(!native.isNull());
+            QCOMPARE(native.size(),QSize(160,160));
             const QImage expected(directory+"/stock-"+c.name+".png"); QCOMPARE(expected.size(),QSize(120,104));
             for(int y=0;y<104;++y) for(int x=0;x<120;++x) {
-                const auto actual=image.pixelColor(int((32+x+0.5)*image.width()/160),int((24+y+0.5)*image.height()/160));
+                const auto actual=native.pixelColor(32+x,24+y);
                 const auto want=expected.pixelColor(x,y);
                 QVERIFY2(qAbs(actual.red()-want.red())<=1 && qAbs(actual.green()-want.green())<=1 && qAbs(actual.blue()-want.blue())<=1,
                     qPrintable(QString("%1 pixel %2,%3 expected %4 actual %5").arg(c.name).arg(x).arg(y).arg(want.name()).arg(actual.name())));
@@ -1791,11 +1847,11 @@ private slots:
         for(const auto& value:rows) {
             const auto row=value.toObject();
             mailbox->publish(floor,floor.rect(),0,0,geometry,{fugue::test::filtertypes::sprite(row,{64,64})});
-            const auto got=map.grabFramebuffer();QVERIFY(!got.isNull());
+            const auto got=presentedComposition(map,map.grabFramebuffer());QVERIFY(!got.isNull());
+            QCOMPARE(got.size(),QSize(160,160));
             for(const auto& sample:row["samples"].toArray()) {
                 const auto s=sample.toArray();
-                const int x=64+s[0].toInt(),y=64+s[1].toInt();
-                const auto a=got.pixelColor((2*x+1)*got.width()/320,(2*y+1)*got.height()/320);
+                const auto a=got.pixelColor(64+s[0].toInt(),64+s[1].toInt());
                 const int d=std::max({std::abs(a.red()-s[2].toInt()),std::abs(a.green()-s[3].toInt()),std::abs(a.blue()-s[4].toInt())});
                 QVERIFY2(d<=2,qPrintable(QString("%1 (%2,%3): %4,%5,%6 expected %7,%8,%9").arg(row["case"].toString())
                     .arg(s[0].toInt()).arg(s[1].toInt()).arg(a.red()).arg(a.green()).arg(a.blue())
@@ -1825,12 +1881,9 @@ private slots:
             auto frame=[&](double size) {
                 auto effects=std::make_shared<PlaneEffects>();PlaneFilter f;f.size=size;effects->filters={f};master.planeEffects=effects;
                 mailbox->publish(black,black.rect(),0,0,geometry,{pattern,master,markers});
-                const auto got=map.grabFramebuffer();
-                QImage source(black.size(),QImage::Format_RGB32);
-                if(got.isNull()) return QImage();
-                for(int y=0;y<672;++y) for(int x=0;x<992;++x)
-                    source.setPixel(x,y,got.pixel((2*x+1)*got.width()/1984,(2*y+1)*got.height()/1344));
-                return source;
+                const auto native=presentedComposition(map,map.grabFramebuffer());
+                if(native.size()!=black.size()) return QImage();
+                return native.convertToFormat(QImage::Format_RGB32);
             };
             QImage baseline=black;{QPainter p(&baseline);p.drawImage(0,0,pattern.image);p.drawImage(0,0,markers.image);}
             QCOMPARE(frame(0),baseline.convertToFormat(QImage::Format_RGB32));
@@ -2504,11 +2557,12 @@ private slots:
         std::vector<MapPointer> events;
         map.setInputHandler("map",true,[&](const auto& p) { events.push_back(p); });
         auto publish = [&] { mailbox->publish(geometry.image,geometry.source,0,0,geometry.geometry,scene.prepare(w,geometry,read)); };
-        auto pixel = [](const QImage& image,int x,int y) { return image.pixelColor(x*image.width()/96,y*image.height()/96); };
+        auto pixel = [](const QImage& native,int x,int y) { return native.pixelColor(x,y); };
         publish(); map.show(); QVERIFY(QTest::qWaitForWindowExposed(&map));
         const int dirs[] = {2,1,4,8};
         for (int i=0; i<4; ++i) {
-            atom.dir = dirs[i]; publish(); const auto image = map.grabFramebuffer(); QVERIFY(!image.isNull());
+            atom.dir = dirs[i]; publish(); const auto image = presentedComposition(map,map.grabFramebuffer());
+            QVERIFY(!image.isNull()); QCOMPARE(image.size(),QSize(96,96));
             QCOMPARE(pixel(image,48,48),colors[i]); // root uses atom direction
             QCOMPARE(pixel(image,16,48),colors[i]); // non-fixed SOUTH follows root
             QCOMPARE(pixel(image,80,48),QColor(Qt::green)); // fixed NORTH does not turn
@@ -2518,7 +2572,8 @@ private slots:
         atom.dir = 1; publish();
         QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{8,96});
         QCOMPARE(events.back().click.over.kind,uint8_t(fugue::proto::enc::RefMob)); // old SOUTH frame
-        const auto north = map.grabFramebuffer(); QCOMPARE(pixel(north,4,48),QColor(Qt::black));
+        const auto north = presentedComposition(map,map.grabFramebuffer()); QVERIFY(!north.isNull());
+        QCOMPARE(pixel(north,4,48),QColor(Qt::black));
         QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{8,96});
         QCOMPARE(events.back().click.over.kind,uint8_t(fugue::proto::enc::RefTurf)); // new overlay alpha hole
         const auto now = MapMetrics::nowNs(); metrics->reset(now+60'000'000'000);
@@ -2526,7 +2581,7 @@ private slots:
         QCOMPARE(metrics->snapshot(now+61'000'000'000).uploadMBPerSecond,0.0);
         atom.pixelX = 0;
         setFields(w.appearances[3], R"({"dir":2,"appearanceFlags":131588,"pixelX":32,"overlays":[4]})");
-        publish(); const auto fixedSouth = map.grabFramebuffer();
+        publish(); const auto fixedSouth = presentedComposition(map,map.grabFramebuffer()); QVERIFY(!fixedSouth.isNull());
         QCOMPARE(pixel(fixedSouth,48,48),QColor(Qt::green));
         QCOMPARE(pixel(fixedSouth,80,48),QColor(Qt::red)); QCOMPARE(pixel(fixedSouth,80,16),QColor(Qt::red));
     }
@@ -2613,9 +2668,7 @@ private slots:
             f.geometry.session=1; sprites=scene.prepare(w,f,read,0,nullptr,true);
             mailbox->publish(f.image,f.source,0,0,f.geometry,sprites);
         };
-        auto pixel=[](const QImage& f,int x,int y) {
-            return f.pixelColor(int((x+.5)*f.width()/288),int((y+.5)*f.height()/288));
-        };
+        auto pixel=[](const QImage& native,int x,int y) { return native.pixelColor(x,y); };
         std::vector<MapPointer> clicks;
         int checkedSamples=0,checkedClicks=0;
         map.setInputHandler("main.map",true,[&](const MapPointer& p) { if (p.kind==MapPointer::Click) clicks.push_back(p); });
@@ -2623,8 +2676,9 @@ private slots:
         QVERIFY(!map.grabFramebuffer().isNull());
         for (const auto& value:cases) {
             const auto c=value.toObject(); const auto name=c["name"].toString();
-            w=test::blacknessWorld(c["config"].toString()); publish(); const auto image=map.grabFramebuffer();
-            QVERIFY(!image.isNull());
+            w=test::blacknessWorld(c["config"].toString()); publish();
+            const auto image=presentedComposition(map,map.grabFramebuffer());
+            QVERIFY(!image.isNull()); QCOMPARE(image.size(),QSize(288,288));
             for (const auto& v:c["samples"].toArray()) {
                 const auto s=v.toArray(); const auto actual=pixel(image,s[0].toInt(),s[1].toInt());
                 const QColor expected(s[2].toInt(),s[3].toInt(),s[4].toInt());
@@ -2680,7 +2734,8 @@ private slots:
         before=clicks.size();
         w.sight|=16; publish(); // pending category admission cannot change the rendered background
         QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{240,144}); QCOMPARE(clicks.size(),before);
-        QCOMPARE(pixel(map.grabFramebuffer(),240,144),QColor(Qt::black));
+        const auto background=presentedComposition(map,map.grabFramebuffer()); QVERIFY(!background.isNull());
+        QCOMPARE(pixel(background,240,144),QColor(Qt::black));
         QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{240,144}); QCOMPARE(clicks.size(),before+1);
         QCOMPARE(clicks.back().click.over.kind,uint8_t(fugue::proto::enc::RefTurf));
         w.sight=0x400; publish();
