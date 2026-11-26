@@ -274,7 +274,8 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                            std::chrono::steady_clock::now().time_since_epoch()).count());
     };
     auto sendHover = [&] {
-        if (auto body = hover.due(steadyNs()); !body.empty())
+        const auto now = steadyNs();
+        for (auto body = hover.due(now); !body.empty(); body = hover.due(now))  // reports due together, in order
             s.sendInput(C2S::Command, proto::enc::mouseWireBody(std::move(body), s.wideVerbIds()));
     };
     bool rightPressSent = false;  // the right press in progress went to the wire (shell::mapPopupAction)
@@ -917,13 +918,17 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                     };
                     shell::MapHover::Gate gate{im.clientHover(), im.clientMove()};
                     if (current && p.kind == shell::MapPointer::Hover) gate.flags = flagsOf(p);
-                    if (const auto* sent = hover.sent()) gate.sentFlags = flagsOf(*sent);
+                    if (const auto* last = hover.last()) gate.sentFlags = flagsOf(*last);
                     hover.update(p, current, gate, steadyNs());
                     sendHover();
                     continue;
                 }
-                // Any release clears the hover record (stock 516.1689, tests/data/hover-world).
-                if (p.kind == shell::MapPointer::Up || p.kind == shell::MapPointer::Released) hover.released();
+                const auto popup = shell::mapPopupAction(p, im.showPopupMenus(), rightPressSent);
+                // A release clears the hover record, unless the verb-menu path takes it (stock 516.1689,
+                // tests/data/hover-world).
+                if ((p.kind == shell::MapPointer::Up || p.kind == shell::MapPointer::Released) &&
+                    shell::mapReleaseForgetsHover(popup))
+                    hover.released();
                 if (p.kind == shell::MapPointer::Released) continue;
                 static const bool traceInput = std::getenv("FUGUE_INPUT_TRACE") != nullptr;
                 if (traceInput) {
@@ -944,7 +949,6 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                                  static_cast<unsigned long long>(p.targetIdentity), src.kind, src.ref,
                                  proto::enc::clickParams(c).c_str(), im.mouseFlags());
                 }
-                const auto popup = shell::mapPopupAction(p, im.showPopupMenus(), rightPressSent);
                 if (p.kind == shell::MapPointer::Down && p.click.button == "right")
                     rightPressSent = popup == shell::MapPopupAction::None;
                 // A transparent/iconless rectangle can belong to the menu stack

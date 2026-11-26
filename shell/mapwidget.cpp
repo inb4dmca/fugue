@@ -293,7 +293,8 @@ void MapWidget::refreshHover() {
         leaveHover();
         return;
     }
-    // Empty space inside the map is a pick naming no atom, with the control and screen-loc (stock 516.1689).
+    // Empty space inside the map, where nothing is drawn, is a pick naming no atom, with the control and screen-loc, as
+    // over the letterbox: no turf without an icon is named (stock 516.1689, tests/data/hover-world extra void1).
     // Every pick goes to the session, which alone keeps what the pointer was last over (MapHover) and reports only
     // what changes it.
     p->kind = MapPointer::Hover;
@@ -304,16 +305,24 @@ void MapWidget::popupClosing() {
     if (QApplication::mouseButtons() & Qt::RightButton) closedPopupTimer_.start();
 }
 void MapWidget::popupClosed() {
-    // Stock 516.1684 (tests/data/popupmenu-world, part C): EXIT of the stale atom and ENTER of the one now under the
-    // pointer as soon as the menu closes, button held or not.
+    // The pointer is picked again as soon as the menu closes (mapMenuClosed has stock's rule).
     if (!input_) return;
-    const bool rightHeld = (QApplication::mouseButtons() & Qt::RightButton) != 0;
+    const auto buttons = QApplication::mouseButtons();
+    const auto closed = mapMenuClosed(buttons & Qt::RightButton, buttons & ~Qt::RightButton);
+    if (closed == MapMenuClosed::Nothing) return;
     const auto global = QCursor::pos();
     const QPoint local = mapFromGlobal(global);
     std::optional<MapPointer> p;
     if (isVisible() && rect().contains(local))
-        p = pointerAt(local, global, QApplication::keyboardModifiers(), rightHeld ? Qt::RightButton : Qt::NoButton);
+        p = pointerAt(local, global, QApplication::keyboardModifiers(),
+                      closed == MapMenuClosed::PickRight ? Qt::RightButton : Qt::NoButton);
     if (!p) {
+        // Every map hears of the menu closing; the one under the pointer reports, and only when none is does a leave.
+        for (auto* w = QApplication::widgetAt(global); w; w = w->parentWidget())
+            if (auto* map = dynamic_cast<MapWidget*>(w)) {
+                if (map != this) return;
+                break;
+            }
         sendUnpicked(MapPointer::Leave);
         return;
     }
@@ -445,7 +454,13 @@ void MapWidget::enterEvent(QEnterEvent* e) {
 }
 void MapWidget::leaveEvent(QEvent* e) {
     hoverInside_ = false;
-    leaveHover();
+    // Stock 516.1689 (tests/data/hover-world extra m2jump, st1, m2vis): a control the pointer leaves says so after the
+    // control it went to has reported. Straight from one map onto another, the second names its atom and then the
+    // leave of the first clears the record the session's maps share: the server exits that atom at once and enters it
+    // again at the next move. Qt delivers this leave before the other map's enter and move, hence the delay.
+    QTimer::singleShot(0, this, [this] {
+        if (!hoverInside_) leaveHover();
+    });
     QRhiWidget::leaveEvent(e);
 }
 void MapWidget::hideEvent(QHideEvent* e) {
