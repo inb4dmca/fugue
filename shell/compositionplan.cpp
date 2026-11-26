@@ -549,7 +549,12 @@ void CompositionPlan::plan() {
                         quad.tint={1,1,1,1};quad.color=identityColor;
                     }
                     quad.affine=turnedBy(bounds.topLeft()-s->groupOrigin,bounds.size());
-                    quad.smooth=!g->nearest; // PIXEL_SCALE on the group samples its surface unsmoothed (ta-kt-turn-pixelscale)
+                    // PIXEL_SCALE on the group samples its surface unsmoothed (ta-kt-turn-pixelscale): the texel the pixel's
+                    // centre falls in, on a boundary the one before it except in a triangle of every seventh column, and
+                    // nothing past the surface's edge (stock 516.1689, master-transform-world fx-grid-kt-pxs-s50, -s60).
+                    // The graphics card's nearest sampler over this hard-edged quad gives exactly that on Direct3D 11,
+                    // OpenGL and Vulkan, the triangle included, so the shader's own pick (texel.w) is not used here.
+                    quad.smooth=!g->nearest;
                 }
                 const bool turned=quad.affine.has_value();
                 out.push_back({generated(std::move(quad)),input});
@@ -669,10 +674,16 @@ void CompositionPlan::plan() {
             // Stock 516.1689 samples an unfiltered plane as though it ended at the part of it the view shows: the view
             // taken back through the matrix, its bounding box rounded out to whole plane pixels. An enlarged plane's
             // outermost row and column of the view are so not mixed with what lies just outside it (master-transform-
-            // world fx-grid-s200, -s200t90, -sx200y300; -s150, -s300, -s200m3 round outward, not to nearest). With a
-            // filter the whole surface is sampled (fx-grid-outline1-s200). Where that box lies past the plane, the
-            // plane's own edge still fades to clear over a texel (fx-grid-s50t30), so the box is not cut to the plane.
-            if (composite.affine && master.renderTarget.isEmpty() && (!effects || effects->filters.empty())) {
+            // world fx-grid-s200, -s200t90, -sx200y300; -s150, -s300, -s200m3 round outward, not to nearest; turned:
+            // -s300t1, -s400t4, and a limit turned with the view is ruled out by -s200t30). The same holds with a
+            // render target, visible or hidden (fx-grid-rtv-s200, -rth-s200), with the master's own colour or alpha
+            // (-tint-, -dim-) and with filters that only recolour pixels where they are, a colour matrix or an alpha
+            // mask (-swap-, -cover-). A filter that draws past the pixels it reads (an outline) leaves the whole surface
+            // sampled (fx-grid-outline1-s200). Where that box lies past the plane, the plane's own edge still fades to
+            // clear over a texel (fx-grid-s50t30), so the box is not cut to the plane.
+            const bool inPlace = !effects || std::all_of(effects->filters.begin(),effects->filters.end(),[](const auto& f) {
+                return f.kind == PlaneFilter::Color || f.kind == PlaneFilter::AlphaMask; });
+            if (composite.affine && inPlace) {
                 const QRectF view(QPointF(source.topLeft()-composite.position),QSizeF(source.size()));
                 const QRectF shown = composite.affine->inverse.mapRect(view);
                 const double margin = 1e-6;   // a bound on a whole pixel is not pushed outward by rounding error
@@ -828,7 +839,11 @@ void CompositionPlan::plan() {
                     quad.tint = {1,1,1,1}; quad.color = identityColor;
                 }
                 quad.affine = effects->relayAffine(source.size(),!processedPlaneTargets[quad.renderSource]);
-                quad.smooth = true;
+                // Stock 516.1689 samples the whole relayed plane, not only the part the view shows, and repeats its
+                // edge texels past it (plane-relay-world grid-rm_2_0_0_0_2_0, grid-rm_2_0_-112_0_2_112). With PIXEL_SCALE
+                // on the relay it takes the nearest texel, as a master does (grid-rnear-*; see the renderer).
+                if (quad.affine) quad.affine->sampled = QRect(QPoint(),quad.size);
+                quad.smooth = !quad.nearest;
             }
             quad.position += offset;
         }

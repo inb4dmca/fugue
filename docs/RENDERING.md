@@ -71,6 +71,11 @@ An animating HUD plane master keeps its filters and matrix at their tweened valu
 changing matrix).
 Static ordinary affine geometry, bounded root-transform trees and some master
 surfaces are supported; general transformed/animated attachment trees are not.
+A master's matrix samples its plane bilinearly as though the plane ended at the part the view shows, rounded out to
+whole pixels (with or without a render target, a colour or a filter that only recolours pixels in place); a relay's
+matrix samples the whole relayed plane, its edge texels repeated. PIXEL_SCALE on either picks the nearest texel by
+stock's rule for a texel boundary. A drop shadow or blur on a master with a matrix is not yet limited as stock limits
+it (tests/data/master-transform-world/README.md).
 
 Pass/surface/pixel workload counters include advisory thresholds. Those are
 separate from hard surface/storage/backend constraints; exceeding an advisory
