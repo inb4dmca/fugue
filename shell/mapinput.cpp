@@ -22,8 +22,11 @@ bool planeInputPart(const MapSprite& s) {
 }
 // A turned master's own overlays carry its matrix about their own centre as well as the plane's: the pointer goes back
 // through the plane's, then the part's (stock 516.1689, master-transform-world clicks on master-turn, master-scale).
+// So do a client image and a vis_contents member with a matrix of their own, clicked and listed where their turned icon
+// is drawn, naming the image's atom or the member (plane-click-world turn90-selfturn, scalex2-selfturn).
 bool turnedPlanePart(const MapSprite& s) {
-    return s.affine && !s.rootAffine && s.kind == MapSprite::Screen && !s.imageIdentity && !s.visHit && !s.maptext &&
+    const bool member = s.kind == MapSprite::Image || s.kind == MapSprite::Vis || s.imageIdentity || s.visHit;
+    return s.affine && !s.rootAffine && (s.kind == MapSprite::Screen || member) && !s.maptext &&
         s.mouseOpacity == 1 && s.blend <= 1 && s.renderSource.isEmpty() && s.renderTarget.isEmpty();
 }
 // Stock popup screenshots establish original rectangles (including alpha holes).
