@@ -265,6 +265,14 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
     });
     net::InputModel im;  // verbs + the mouse subscription mask (Verb / MouseSubs), session thread only
     shell::MapHover hover;
+    auto steadyNs = [] {
+        return int64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                           std::chrono::steady_clock::now().time_since_epoch()).count());
+    };
+    auto sendHover = [&] {
+        if (auto body = hover.due(steadyNs()); !body.empty())
+            s.sendInput(C2S::Command, proto::enc::mouseWireBody(std::move(body), s.wideVerbIds()));
+    };
     bool rightPressSent = false;  // the right press in progress went to the wire (shell::mapPopupAction)
     // The live skin: skin and winset traffic goes in, and wingets are answered from it. Shared with the GUI.
     std::shared_ptr<skin::LiveSkin> live = live_ ? live_ : std::make_shared<skin::LiveSkin>();
@@ -897,21 +905,21 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 const auto& c = p.click;
                 const bool current = shell::mapPointerCurrent(p, w, mapSession_);
                 if (p.kind == shell::MapPointer::Hover || p.kind == shell::MapPointer::Leave) {
-                    uint32_t appid = UINT32_MAX, flags = 0;
-                    if (current && p.kind == shell::MapPointer::Hover) {
-                        if (const auto named = shell::mapPointerTarget(p, w); named && named->appid)
-                            appid = *named->appid;
-                        if (auto a = w.appearances.find(appid); a != w.appearances.end())
-                            flags = a->second.fields.appearanceFlags;
-                    }
-                    // Isolated stock 516 fixtures: enter/exit adds 0x800;
-                    // MouseMove adds 0x180000 as well (extended + move).
-                    auto body = hover.update(p, current, im.clientHover() || (flags & 0x800u),
-                                             im.clientMove() || (flags & 0x100000u));
-                    if (!body.empty())
-                        s.sendInput(C2S::Command, proto::enc::mouseWireBody(std::move(body), s.wideVerbIds()));
+                    auto flagsOf = [&](const shell::MapPointer& named) -> uint32_t {
+                        const auto target = shell::mapPointerTarget(named, w);
+                        if (!target || !target->appid) return 0;
+                        const auto a = w.appearances.find(*target->appid);
+                        return a == w.appearances.end() ? 0 : a->second.fields.appearanceFlags;
+                    };
+                    shell::MapHover::Gate gate{im.clientHover(), im.clientMove()};
+                    if (current && p.kind == shell::MapPointer::Hover) gate.flags = flagsOf(p);
+                    if (const auto* sent = hover.sent()) gate.sentFlags = flagsOf(*sent);
+                    hover.update(p, current, gate, steadyNs());
+                    sendHover();
                     continue;
                 }
+                // Any release clears the hover record (stock 516.1689, tests/data/hover-world).
+                if (p.kind == shell::MapPointer::Up) hover.released();
                 static const bool traceInput = std::getenv("FUGUE_INPUT_TRACE") != nullptr;
                 if (traceInput) {
                     uint32_t appid = UINT32_MAX;
@@ -1021,7 +1029,6 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                 const bool sent =
                     wanted &&
                     s.sendInput(C2S::Command, proto::enc::mouseWireBody(shell::mapPointerBody(event), s.wideVerbIds()));
-                if (sent && event.kind == shell::MapPointer::Drop) hover.dropped(event);
                 if (traceInput)
                     std::fprintf(stderr, "[map-input] event=%d wanted=%d sent=%d\n", int(event.kind), wanted, sent);
             } else if (auto* pick = std::get_if<MapPickJob>(&j)) {
@@ -1196,7 +1203,12 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                   winReply);  // held winget queries: answered the moment the layout is measured, or empty at 3 s
         auto now = std::chrono::steady_clock::now();
         mapClock.setTiming(m.world().tickNanos, m.world().frameNanos, now);
-        const auto wait = mapClock.wait(now, nextTick);
+        sendHover();
+        auto wait = mapClock.wait(now, nextTick);
+        if (const auto at = hover.dueAt()) {  // a waiting hover report goes out on its own time
+            const auto left = std::chrono::ceil<std::chrono::milliseconds>(std::chrono::nanoseconds(*at - steadyNs()));
+            wait = std::clamp(left, std::chrono::milliseconds(0), wait);
+        }
         s.run(wait);
         if (traceFrames) {
             double actual = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - now).count();

@@ -685,7 +685,9 @@ bool mapPointerCurrent(const MapPointer& p, const model::World& w, uint64_t sess
     if (p.session != session || (p.surface && p.surface->expired())) return false;
     if (p.kind == MapPointer::Leave) return true;
     if (p.masterFallback && p.kind != MapPointer::Down && p.kind != MapPointer::Up && p.kind != MapPointer::Click) return false;
-    if (p.backgroundHidden && (!p.source || (p.kind!=MapPointer::Drag && p.kind!=MapPointer::Drop && p.kind!=MapPointer::Up))) return false;
+    // An unrendered pixel names nothing: a hover there (no atom, as over the letterbox), or a gesture's destination.
+    if (p.backgroundHidden && p.kind != MapPointer::Hover &&
+        (!p.source || (p.kind!=MapPointer::Drag && p.kind!=MapPointer::Drop && p.kind!=MapPointer::Up))) return false;
     if (p.z != w.viewZ) return false;
     const bool dragging = p.kind == MapPointer::Drag || p.kind == MapPointer::Drop;
     // Stock 516.1689 drags and drops a client image's atom, a vis_contents member and what a PASS_MOUSE plane relay
@@ -952,16 +954,51 @@ bool sameMapTarget(const MapPointer& a, const MapPointer& b) {
         a.screen == b.screen && a.masterFallback == b.masterFallback && a.haveAtomKey == b.haveAtomKey && a.atomKey == b.atomKey &&
         a.visHit == b.visHit && a.imageId == b.imageId && a.imageIdentity == b.imageIdentity && a.targetIdentity == b.targetIdentity && a.hudIdentity == b.hudIdentity;
 }
-Bytes MapHover::update(const MapPointer& p, bool current, bool entered, bool moved) {
-    if (!current || p.kind == MapPointer::Leave || (!entered && !moved)) {
-        if (!last_) return {};
-        last_.reset();
-        return proto::enc::encodeHoverLeave();
+void MapHover::update(const MapPointer& p, bool current, const Gate& g, int64_t nowNs) {
+    // Stock 516.1689 (tests/data/hover-world): appearance flag 0x800 comes with MouseEntered, MouseExited, MouseMove or
+    // MouseWheel, 0x80000 with MouseMove alone (0x100000 with MouseMove or MouseWheel).
+    constexpr uint32_t kHoverProcs = 0x800, kMoveProc = 0x80000;
+    const bool replacing = pending_.has_value(); // a report still waiting is replaced whatever the gate says
+    if (p.kind == MapPointer::Leave) {
+        // Off the map: an over report naming nothing, null control and no params, then the record is gone. With no
+        // record (nothing picked since a release) nothing is sent.
+        if (!record_) return;
+        record_.reset();
+        if (g.clientHover || (g.sentFlags & kHoverProcs) || replacing) {
+            auto leave = p;
+            leave.click.over = leave.click.loc = proto::enc::nullRef();
+            queue(leave, nowNs);
+        }
+        return;
     }
-    const bool same = last_ && sameMapTarget(*last_, p);
-    const bool changed = !same || mapPointerBody(*last_) != mapPointerBody(p);
-    last_ = p;
-    return !same || (moved && changed) ? mapPointerBody(p) : Bytes{};
+    if (!current || p.kind != MapPointer::Hover) return;
+    const auto& c = p.click;
+    auto pixel = [&](int v, int fallback) {
+        const int tile = c.screenTileSize > 0 ? c.screenTileSize : 32;
+        return std::clamp(v ? v : fallback, 1, tile);
+    };
+    Record r{c.over, c.control, c.locStr, pixel(c.screenPX, c.iconX), pixel(c.screenPY, c.iconY)};
+    const bool over = !record_ || record_->over.kind != r.over.kind || record_->over.ref != r.over.ref ||
+                      record_->over.x != r.over.x || record_->over.y != r.over.y || record_->control != r.control ||
+                      record_->map != r.map;
+    const bool moved = !over && r.over.kind != proto::enc::RefNull && (record_->px != r.px || record_->py != r.py);
+    record_ = std::move(r);
+    if (over ? g.clientHover || (g.flags & kHoverProcs) || (g.sentFlags & kHoverProcs) || replacing
+             : moved && (g.clientMove || (g.flags & kMoveProc) || replacing))
+        queue(p, nowNs);
+}
+void MapHover::queue(const MapPointer& p, int64_t nowNs) {
+    if (!pending_) dueNs_ = (nowNs / kPeriodNs + 1) * kPeriodNs;
+    pending_ = p;
+    pending_->source.reset();
+}
+Bytes MapHover::due(int64_t nowNs) {
+    if (!pending_ || nowNs < dueNs_) return {};
+    auto body = mapPointerBody(*pending_);
+    if (pending_->kind == MapPointer::Hover && pending_->click.over.kind != proto::enc::RefNull) sent_ = std::move(pending_);
+    else sent_.reset();
+    pending_.reset();
+    return body;
 }
 Bytes mapPointerBody(const MapPointer& pointer) {
     // A turf shown from another z (a vis_contents member) is named by its id, since a cell names the turf on the map's

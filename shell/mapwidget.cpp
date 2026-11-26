@@ -69,8 +69,9 @@ MapWidget::MapWidget(QWidget* parent) : QRhiWidget(parent) {
         metrics_->submitted(submittedTiming_);
         submittedTiming_ = {};
         // Re-pick a stationary cursor after natural submissions, using only the
-        // immutable input frame installed by render(). No rendering is requested.
-        if (hoverInside_ && !hoverQueued_) {
+        // immutable input frame installed by render(). No rendering is requested. Stock 516.1689 picks a still
+        // pointer again as the map changes under it, a gliding atom frame by frame (tests/data/hover-world).
+        if (hoverInside_ && hoverArmed_ && !hoverQueued_) {
             hoverQueued_ = true;
             QTimer::singleShot(0, this, [this] {
                 hoverQueued_ = false;
@@ -288,10 +289,11 @@ void MapWidget::refreshHover() {
     if (!hoverInside_ || !input_ || !presses_.isEmpty() || QApplication::activePopupWidget()) return;
     const auto global = QCursor::pos();
     auto p = pointerAt(mapFromGlobal(global), global, QApplication::keyboardModifiers(), Qt::NoButton);
-    if (!p || p->backgroundHidden) {
+    if (!p) {
         leaveHover();
         return;
     }
+    // Empty space inside the map is a pick naming no atom, with the control and screen-loc (stock 516.1689).
     p->kind = MapPointer::Hover;
     if (hoverSent_ && sameMapTarget(*hoverSent_, *p) && mapPointerBody(*hoverSent_) == mapPointerBody(*p)) return;
     hoverSent_ = *p;
@@ -342,6 +344,10 @@ bool MapWidget::event(QEvent* e) {
 }
 void MapWidget::cancelGestures() {
     const auto presses = std::exchange(presses_, {});
+    if (!presses.isEmpty()) {
+        hoverSent_.reset();
+        hoverArmed_ = false;
+    }
     for (const auto& press : presses)
         if (input_) {
             auto p = *press.source;
@@ -430,6 +436,7 @@ void MapWidget::moveGestures(QMouseEvent* e) {
 void MapWidget::mouseMoveEvent(QMouseEvent* e) {
     moveGestures(e);
     hoverInside_ = rect().contains(e->position().toPoint());
+    hoverArmed_ = hoverInside_;
     if (hoverInside_)
         refreshHover();
     else
@@ -438,7 +445,7 @@ void MapWidget::mouseMoveEvent(QMouseEvent* e) {
 }
 void MapWidget::enterEvent(QEnterEvent* e) {
     QRhiWidget::enterEvent(e);
-    hoverInside_ = true;
+    hoverInside_ = hoverArmed_ = true;
     refreshHover();
 }
 void MapWidget::leaveEvent(QEvent* e) {
@@ -484,6 +491,10 @@ void MapWidget::mouseReleaseEvent(QMouseEvent* e) {
         return;
     }
     const auto press = presses_.take(button);
+    // Stock 516.1689 forgets what the pointer was over at any release, click or drop: the next move reports the atom
+    // under it again, even the same one at the same pixel, and leaving before any move reports nothing.
+    hoverSent_.reset();
+    hoverArmed_ = false;
     if (auto p = gesturePointer(e, e->button(), *press.source)) {
         p->source = press.source;
         p->kind = MapPointer::Up;
@@ -491,9 +502,6 @@ void MapWidget::mouseReleaseEvent(QMouseEvent* e) {
         if (press.dragged || !sameMapTarget(*press.source, *p)) {
             p->kind = MapPointer::Drop;
             input_(*p);
-            // Drop implicitly changes server hover. Do not suppress an exact
-            // return to the old pre-press position; worker dedup adopts the Drop.
-            hoverSent_.reset();
         } else if (!p->outside) {
             p->kind = press.dbl ? MapPointer::DoubleClick : MapPointer::Click;
             input_(*p);

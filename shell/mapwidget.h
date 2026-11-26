@@ -80,6 +80,9 @@ private:
     std::optional<MapPointer> gesturePointer(QMouseEvent*, Qt::MouseButton, const MapPointer&) const;
     void moveGestures(QMouseEvent*);
     bool hoverInside_ = false, hoverQueued_ = false;
+    // The pointer has moved over the map since the last button release: only then is a still pointer picked again
+    // when the map changes (stock 516.1689, tests/data/hover-world).
+    bool hoverArmed_ = false;
     std::optional<MapPointer> hoverSent_;
     QElapsedTimer closedPopupTimer_;  // running: the verb menu just closed under a held right button
     void refreshMetrics();

@@ -6,6 +6,7 @@
 #include <QSize>
 #include <QString>
 #include <QVector>
+#include <cstdint>
 #include <optional>
 #include "proto/enc_c2s_0002_input.h"
 #include "shell/mapsprite.h"
@@ -168,14 +169,46 @@ struct MapPointerTarget {
 };
 std::optional<MapPointerTarget> mapPointerTarget(const MapPointer&, const model::World&);
 bool sameMapTarget(const MapPointer&, const MapPointer&);
+// The hover reports of one session, as stock DreamSeeker 516.1689 makes them (tests/data/hover-world). The client keeps
+// one record of what the pointer was last over: the atom, the control, the secondary map's id and the pixel inside the
+// screen tile. A pick that names another atom, control or map is an "over" report; one that only moves the pixel inside
+// the tile, over an atom, is a "move" report; anything else (another icon-x/icon-y under a still pointer, a whole-tile
+// jump inside one big atom) reports nothing. Both are the same message: the server runs MouseExited and MouseEntered
+// when it names another atom than the last one it got, and MouseMove when it names the same one.
 class MapHover {
 public:
-    Bytes update(const MapPointer&, bool current, bool entered, bool moved);
-    // A successfully sent Drop makes the server enter its destination implicitly.
-    // Adopt it without sending Hover/Leave; returning to the old source must enter.
-    void dropped(const MapPointer& p) { last_ = p; last_->kind = MapPointer::Hover; last_->source.reset(); }
+    // Stock reports at most once per tick of about 1/64 s while the pointer moves, whatever the world's tick_lag
+    // (measured at 0.25, 0.5 and 10 ds): what is picked within one tick replaces the report still waiting, and two
+    // steps a millisecond apart give one report. Whether stock holds the report or Windows merges the pointer moves it
+    // reads is not known; either way a world sees the last pick of each tick. Here a report goes out at the end of its
+    // tick of the steady clock.
+    static constexpr int64_t kPeriodNs = 15'625'000;
+    struct Gate {
+        bool clientHover = false, clientMove = false; // the MouseSubs bits: any client hover proc, client/MouseMove
+        uint32_t flags = 0;      // appearance flags of what the pick names
+        uint32_t sentFlags = 0;  // of what the last report that went out named
+    };
+    // A pick of the pointer over the map (Hover) or the pointer leaving it (Leave), at nowNs on any steady clock.
+    // A stale pick (current false) changes nothing.
+    void update(const MapPointer&, bool current, const Gate&, int64_t nowNs);
+    // A button released, by a click, a drop or a cancelled gesture: the record is cleared, so the next pick is an over
+    // report even on the same atom, and a leave before any pick sends nothing.
+    void released() { record_.reset(); }
+    // The waiting report once its time has come (empty before, or when none waits).
+    Bytes due(int64_t nowNs);
+    std::optional<int64_t> dueAt() const { return pending_ ? std::optional<int64_t>(dueNs_) : std::nullopt; }
+    // What the last report that went out named (a Hover pointer), or null before any and after one naming no atom.
+    const MapPointer* sent() const { return sent_ ? &*sent_ : nullptr; }
 private:
-    std::optional<MapPointer> last_;
+    struct Record {
+        proto::enc::AtomRef over;
+        std::string control, map;
+        int px = 0, py = 0;
+    };
+    void queue(const MapPointer&, int64_t nowNs);
+    std::optional<Record> record_;
+    std::optional<MapPointer> pending_, sent_;
+    int64_t dueNs_ = 0;
 };
 struct MapMenuItem { int group = 0; QString atom, label; };
 struct MapMenu { quint64 token = 0; QPoint global; QVector<MapMenuItem> items; };
