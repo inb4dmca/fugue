@@ -72,7 +72,8 @@ struct MapGeometry {
 struct RelayHit;
 struct PlaneMousePath;
 struct MapPointer {
-    enum Kind { Down, Up, Click, DoubleClick, Wheel, Hover, Leave, Drag, Drop } kind = Click;
+    // Released: a button release that names nothing and sends nothing; it only clears the hover record, as an Up does.
+    enum Kind { Down, Up, Click, DoubleClick, Wheel, Hover, Leave, Drag, Drop, Released } kind = Click;
     proto::enc::ClickCmd click;
     int z = 0;
     uint64_t session = 0;

@@ -83,7 +83,9 @@ private:
     // The pointer has moved over the map since the last button release: only then is a still pointer picked again
     // when the map changes (stock 516.1689, tests/data/hover-world).
     bool hoverArmed_ = false;
-    std::optional<MapPointer> hoverSent_;
+    // A pointer event that names nothing on the map: the pointer left it (Leave) or a release with nothing under it
+    // that belongs to the press (Released).
+    void sendUnpicked(MapPointer::Kind);
     QElapsedTimer closedPopupTimer_;  // running: the verb menu just closed under a held right button
     void refreshMetrics();
     void placeMetrics();

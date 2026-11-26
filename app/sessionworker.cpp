@@ -65,6 +65,10 @@ void SessionWorker::postMapPointer(const shell::MapPointer& pointer) {
             last->pointer = pointer;
             return;
         }
+    // The widget hands over every pick and every leave; a leave after a leave says nothing new.
+    if (pointer.kind == shell::MapPointer::Leave && !inbox_.empty())
+        if (auto* last = std::get_if<MapPointerJob>(&inbox_.back()); last && last->pointer.kind == shell::MapPointer::Leave)
+            return;
     if (inbox_.size() >= 4096) {
         // A stalled connection must not retain an old server hover. Collapse
         // excess hover history to a reset followed by the latest observation.
@@ -919,7 +923,8 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
                     continue;
                 }
                 // Any release clears the hover record (stock 516.1689, tests/data/hover-world).
-                if (p.kind == shell::MapPointer::Up) hover.released();
+                if (p.kind == shell::MapPointer::Up || p.kind == shell::MapPointer::Released) hover.released();
+                if (p.kind == shell::MapPointer::Released) continue;
                 static const bool traceInput = std::getenv("FUGUE_INPUT_TRACE") != nullptr;
                 if (traceInput) {
                     uint32_t appid = UINT32_MAX;

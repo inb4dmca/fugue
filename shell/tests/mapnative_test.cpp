@@ -3115,6 +3115,13 @@ private slots:
             QCOMPARE(events.back().kind,MapPointer::Up);
             for (const auto& p:events) QVERIFY(p.kind!=MapPointer::Click && p.kind!=MapPointer::Drop);
         }
+        // The map moved to another z under the button and the release is off the map: it names nothing, and the
+        // session is still told of the release, to forget what the pointer was over.
+        events.clear(); QTest::mousePress(&map,Qt::LeftButton,Qt::NoModifier,{16,16});
+        ++geometry.z; publish();
+        QTest::mouseRelease(&map,Qt::LeftButton,Qt::NoModifier,{270,16});
+        QCOMPARE(events.size(),size_t(2)); QCOMPARE(events.back().kind,MapPointer::Released);
+        --geometry.z; publish();
         events.clear(); QTest::mouseClick(&map,Qt::LeftButton,Qt::NoModifier,{16,16});
         QCOMPARE(events.size(),size_t(3)); QCOMPARE(events.back().kind,MapPointer::Click);
     }

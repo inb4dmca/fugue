@@ -665,13 +665,13 @@ bool mapPointerWanted(MapPointer::Kind kind, const proto::enc::MouseHooks& h, bo
     case MapPointer::Wheel: return wheel;
     case MapPointer::Drag: return h.drag;
     case MapPointer::Drop: return h.drop;
-    case MapPointer::Hover: case MapPointer::Leave: return false; // stateful subscription path
+    case MapPointer::Hover: case MapPointer::Leave: case MapPointer::Released: return false; // stateful subscription path
     }
     return false;
 }
 MapPopupAction mapPopupAction(const MapPointer& p, bool popupMenus, bool pressSent) {
     if (p.click.button != "right" || p.kind == MapPointer::Wheel || p.kind == MapPointer::Hover ||
-        p.kind == MapPointer::Leave) return MapPopupAction::None;
+        p.kind == MapPointer::Leave || p.kind == MapPointer::Released) return MapPopupAction::None;
     // Stock 516.1684 (tests/data/popupmenu-world, parts A and C): flag off at the press and on at the release still
     // sends MouseUp and Click and opens no menu; on then off sends them with no MouseDown. The press that closes an open
     // verb menu sends no MouseDown either way.

@@ -294,9 +294,9 @@ void MapWidget::refreshHover() {
         return;
     }
     // Empty space inside the map is a pick naming no atom, with the control and screen-loc (stock 516.1689).
+    // Every pick goes to the session, which alone keeps what the pointer was last over (MapHover) and reports only
+    // what changes it.
     p->kind = MapPointer::Hover;
-    if (hoverSent_ && sameMapTarget(*hoverSent_, *p) && mapPointerBody(*hoverSent_) == mapPointerBody(*p)) return;
-    hoverSent_ = *p;
     input_(*p);
 }
 void MapWidget::popupClosing() {
@@ -313,29 +313,27 @@ void MapWidget::popupClosed() {
     std::optional<MapPointer> p;
     if (isVisible() && rect().contains(local))
         p = pointerAt(local, global, QApplication::keyboardModifiers(), rightHeld ? Qt::RightButton : Qt::NoButton);
-    if (!p || p->backgroundHidden) {
-        if (hoverSent_) {
-            auto leave = *hoverSent_;
-            leave.kind = MapPointer::Leave;
-            input_(leave);
-        }
-        hoverSent_.reset();
+    if (!p) {
+        sendUnpicked(MapPointer::Leave);
         return;
     }
     hoverInside_ = true;
     p->kind = MapPointer::Hover;
-    if (hoverSent_ && sameMapTarget(*hoverSent_, *p) && mapPointerBody(*hoverSent_) == mapPointerBody(*p)) return;
-    hoverSent_ = *p;
     input_(*p);
 }
 void MapWidget::leaveHover() {
     if (!presses_.isEmpty() || QApplication::activePopupWidget()) return;
-    if (hoverSent_ && input_) {
-        auto p = *hoverSent_;
-        p.kind = MapPointer::Leave;
-        input_(p);
-    }
-    hoverSent_.reset();
+    sendUnpicked(MapPointer::Leave);
+}
+void MapWidget::sendUnpicked(MapPointer::Kind kind) {
+    if (!input_) return;
+    MapPointer p;
+    p.kind = kind;
+    p.session = inputGeometry_.session;
+    p.z = inputGeometry_.z;
+    p.surface = inputSurface_;
+    p.click.over = p.click.loc = proto::enc::nullRef();
+    input_(p);
 }
 bool MapWidget::event(QEvent* e) {
     if (e->type() == QEvent::FocusOut || e->type() == QEvent::WindowDeactivate || e->type() == QEvent::UngrabMouse)
@@ -344,10 +342,7 @@ bool MapWidget::event(QEvent* e) {
 }
 void MapWidget::cancelGestures() {
     const auto presses = std::exchange(presses_, {});
-    if (!presses.isEmpty()) {
-        hoverSent_.reset();
-        hoverArmed_ = false;
-    }
+    if (!presses.isEmpty()) hoverArmed_ = false;
     for (const auto& press : presses)
         if (input_) {
             auto p = *press.source;
@@ -493,9 +488,11 @@ void MapWidget::mouseReleaseEvent(QMouseEvent* e) {
     const auto press = presses_.take(button);
     // Stock 516.1689 forgets what the pointer was over at any release, click or drop: the next move reports the atom
     // under it again, even the same one at the same pixel, and leaving before any move reports nothing.
-    hoverSent_.reset();
+    // The session forgets at the Up it gets, or at a bare Released when the release names nothing.
     hoverArmed_ = false;
+    bool upSent = false;
     if (auto p = gesturePointer(e, e->button(), *press.source)) {
+        upSent = true;
         p->source = press.source;
         p->kind = MapPointer::Up;
         input_(*p);
@@ -512,12 +509,14 @@ void MapWidget::mouseReleaseEvent(QMouseEvent* e) {
         // the release reaches MouseUp and Click of the turf there). Nothing of the old scene is named.
         if (auto p = pointerAt(e->position(), e->globalPosition().toPoint(), e->modifiers(), e->button());
             p && !p->backgroundHidden) {
+            upSent = true;
             p->kind = MapPointer::Up;
             input_(*p);
             p->kind = MapPointer::Click;
             input_(*p);
         }
     }
+    if (!upSent) sendUnpicked(MapPointer::Released);
     e->accept();
 }
 void MapWidget::wheelEvent(QWheelEvent* e) {
