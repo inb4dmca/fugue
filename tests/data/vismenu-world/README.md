@@ -33,7 +33,8 @@ pick on a turf member ran on the holder's turf). The release after a z change ma
 
 ## Differences left
 
-- Fugue offers `near` for the mob with no loc; stock does not.
+- Fugue offered `near` for the mob with no loc; stock does not. Since tests/data/menu-world a member with no loc is
+  reached by no range clause in Fugue's menu (measured there on an obj member; this world was not run again).
 - Fugue lists no entry for the turf from another z; stock lists one whose pick does nothing. Before the change Fugue
   listed the turf of the same cell on the map's own z instead.
 - Fugue does not offer `near` for `copied-turf` (the view's edge cell 18,1); stock does, and picking it ran nothing.

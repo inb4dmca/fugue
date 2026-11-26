@@ -73,8 +73,15 @@ struct AtomTarget {
     bool targetable() const { return kind != kTargetNone; }
 };
 
-bool verbAdmitsTarget(const VerbDef& e, const AtomTarget& t, int px, int py, bool havePos, int view);
-bool verbAdmitsAsArgument(const VerbDef& e, const AtomTarget& t, int px, int py, bool havePos, int view);
+// How far a clause with the default range (`in view()`, `in oview()`, Head or Filter 0x7d) reaches from the player's
+// cell, in cells west, east, south and north. One number: the same every way.
+struct ViewReach {
+    int west = 5, east = 5, south = 5, north = 5;
+    ViewReach(int n = 5) : west(n), east(n), south(n), north(n) {}  // NOLINT: a plain range converts
+    ViewReach(int w, int e, int s, int n) : west(w), east(e), south(s), north(n) {}
+};
+bool verbAdmitsTarget(const VerbDef& e, const AtomTarget& t, int px, int py, bool havePos, const ViewReach& view);
+bool verbAdmitsAsArgument(const VerbDef& e, const AtomTarget& t, int px, int py, bool havePos, const ViewReach& view);
 
 struct MenuVerb {
     VerbDef verb;
@@ -84,11 +91,23 @@ struct MenuVerb {
 // Player position (own mob's cell, else the eye) and the view range (bounds.view, 5 before a Bounds).
 bool playerPos(const World& w, int& x, int& y);
 int worldView(const World& w);
+// The default range of the right-click menu's clauses: the cells the map shows around the player. An even view width
+// shows one more cell east than west, an even height one more north than south (an 18x12 view around 9,6 shows 1..18
+// x 1..12), and stock 516.1689 offers `examine(obj/O as obj in view())` for an obj on the east edge, 9 cells away
+// (tests/data/menu-world changer). Before a Bounds: worldView every way.
+ViewReach menuViewReach(const World& w);
 
 // The menu for one atom: its own verb section (verbAdmitsTarget), then the player's own verbs by argument
-// (verbAdmitsAsArgument), de-duplicated, in DreamSeeker's order: by category ("" sorts as "Commands"), then by name,
-// raw bytes.
+// (verbAdmitsAsArgument), de-duplicated, in DreamSeeker's order: by category (none set sorts as "Commands", `set
+// category = null` as the empty category, first), then by name, raw bytes.
 std::vector<MenuVerb> atomMenu(const World& w, uint32_t appid, AtomTarget target);
+
+// A verb's entry in the right-click menu: its name as the server sent it, and nothing else (stock 516.1689,
+// tests/data/menu-world verbs). The category is not shown and no separator stands between categories; `set name`
+// replaces the proc's name; an underscore in a proc's name arrives as a space (`_under` is " under", `do_thing` "do
+// thing"); case, '&', '<' and the rest are shown as they are; `set desc` is not shown. Text macros are already gone
+// (verbDefOf). Hidden and popup_menu = 0 verbs have no entry (verbAdmitsTarget).
+std::string menuVerbLabel(const VerbDef& v);
 
 // Which atoms of a right-click stack (topmost first) get a row: only those with at least one eligible verb, in the same
 // order. An atom with none is left out rather than shown disabled, and an empty result means no menu opens at all.

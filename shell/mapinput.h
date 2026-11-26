@@ -154,6 +154,8 @@ std::optional<MapPointer> mapPointerAtPresentation(QPointF position, QRectF dest
 // Rectangle stack, topmost first, deduplicated by named atom, at most 128 entries.
 // Each returned reference must still pass worker lifetime validation.
 QVector<MapPointer> mapPointerStack(const MapPointer& pointer);
+// What a click on a sprite names (MapPointer::click.over): the turf of its cell, a copied turf, or its atom.
+proto::enc::AtomRef mapSpriteRef(const MapSprite& sprite);
 Bytes mapPointerBody(const MapPointer& pointer);
 bool mapPointerWanted(MapPointer::Kind kind, const proto::enc::MouseHooks& hooks, bool wheel);
 // Worker routing only; Open still requires surface/session and per-candidate
@@ -257,7 +259,9 @@ private:
     std::optional<MapPointer> sent_;
     std::vector<int64_t> dueNs_; // of each waiting report: the end of the tick it was queued in
 };
-struct MapMenuItem { int group = 0; QString atom, label; };
+// One verb of the right-click menu, under its atom's entry (group). icon: the picture beside the atom's name
+// (shell/mapmenu.h mapMenuIcon), the same for every item of a group; null when the entry shows none.
+struct MapMenuItem { int group = 0; QString atom, label; QImage icon; };
 struct MapMenu { quint64 token = 0; QPoint global; QVector<MapMenuItem> items; };
 }
 Q_DECLARE_METATYPE(fugue::shell::MapMenu)

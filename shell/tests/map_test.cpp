@@ -197,11 +197,18 @@ private slots:
         QSignalSpy picked(&window, &SkinWindow::mapMenuPicked);
         MapMenu menu;
         menu.token = 42; menu.global = QPoint(20, 20);
-        menu.items = {{0, "Floor & tile", "Examine"}, {1, "Object", "Use"}};
+        QImage picture(16, 16, QImage::Format_ARGB32_Premultiplied);
+        picture.fill(Qt::red);
+        menu.items = {{0, "Floor & tile", "Examine"}, {1, "Object", "Use", picture}};
         window.showMapMenu(menu);
         auto* popup = window.findChild<QMenu*>("mapContextMenu");
         QVERIFY(popup);
         QCOMPARE(popup->actions().size(), 2);
+        // The atom's picture beside its name, none for an atom without; the system's menu font, not the menu bar's.
+        QCOMPARE(popup->actions().at(0)->text(), QString("Floor && tile"));
+        QVERIFY(popup->actions().at(0)->icon().isNull());
+        QVERIFY(!popup->actions().at(1)->icon().isNull());
+        QVERIFY(!popup->testAttribute(Qt::WA_SetFont));
         auto* group = popup->actions().at(1)->menu();
         QVERIFY(group);
         group->actions().at(0)->trigger();
