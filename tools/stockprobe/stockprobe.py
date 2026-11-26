@@ -60,9 +60,9 @@ faster. Each is off by default, because each relies on something about the world
 
 --cursor also puts the real mouse pointer on each point before its messages are posted. Stock 516.1689 starts a drag
 only where the real pointer has moved: without --cursor a press moved elsewhere sends no MouseDrag or MouseDrop and
-ends in a Click on the atom it is released over. A posted move sends no MouseEntered or MouseMove either way (stock
-sends MouseEntered after a press, a drop or a closed menu). --cursor moves the user's pointer, and a window over the
-client's at that point gets real moves too: use it with --stock-only.
+ends in a Click on the atom it is released over. --cursor moves the user's pointer, and a window over the client's at
+that point gets real moves too: use it with --stock-only. Hover is measured with hoverprobe.py, which keeps stock's
+window on top and moves the real pointer over it (tests/data/hover-world).
 
 Stock draws by the display scale its process started on (default-size maptext differs between 100 % and 150 %), so
 replay/recorded.tsv keeps the scale of every recording; DreamSeeker's map also stays blank while the display is idle.

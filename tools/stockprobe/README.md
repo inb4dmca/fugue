@@ -26,6 +26,10 @@ exist. Change the output name and work directory for another observation. Only
 processes started by the tool are stopped. Capture failures retain partial
 observations and logs with `complete: false` and an error in `capture.json`.
 
+`hoverprobe.py` drives stock alone with the real pointer for hover: it keeps stock's window on top, moves the
+pointer (SetCursorPos), presses real buttons and posts moves, and keeps per action what the world logged
+(`tests/data/hover-world`). It moves the user's pointer and puts it back at the end.
+
 The fixture supplies `prepare.py` when its assets or skin need special setup.
 It logs `READY <key>` to `events.log` once for each client. After two READY lines
 and `--settle`, the optional trigger file receives a fresh token inside the work
