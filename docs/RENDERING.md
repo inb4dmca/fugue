@@ -150,8 +150,10 @@ turf revision and MAP scope as applicable before dispatch. Slot reuse or a reope
 MAP must not retarget queued input. Click/hover, right-release menus and world/object-
 HUD drag/drop have bounded implementations; general affine gestures, grouped/image/
 vis input combinations and cross-MAP drags remain incomplete. Hover reports follow stock's record of atom, control,
-map and pixel in the screen tile, re-pick a still pointer as frames change it, forget the record at every release and
-go out at most once per 1/64 s (`shell/mapinput.h` MapHover, tests/data/hover-world/README.md).
+map and pixel in the screen tile, one record for all of a session's maps; they re-pick a still pointer as frames
+change it and when a verb menu closes, forget the record at every release but a right release the menu path takes,
+go out at most once per 1/64 s, and a map's leave follows the report of the map the pointer went to
+(`shell/mapinput.h` MapHover, tests/data/hover-world/README.md). Stat panels report hover in stock and not in Fugue.
 
 ## Diagnostics
 
