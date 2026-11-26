@@ -61,8 +61,13 @@ struct Control {
     uint64_t runtimeIdentity = 0;  // zero for file controls
 };
 
+struct DesignGeometry;
+using GeometryOverrides = std::map<std::string, DesignGeometry>;
+// A runtime control (winset `parent=`) laid out into the tree. `geometry` holds its pos / size winsets as LiveSkin read
+// them (keyed by the lower-case "parent.name", DesignGeometry::refW / refH the box they were read in); without an entry
+// its pos / size props are read in the parent window's design coordinates.
 void layoutRuntime(struct Tree&, const File&, const PropStore&, const std::string& name, const std::string& parent,
-                   const std::string& type, uint64_t identity);
+                   const std::string& type, uint64_t identity, const GeometryOverrides* geometry = nullptr);
 
 struct Splitter {
     std::string path;
@@ -90,6 +95,7 @@ struct Slot {
 
 struct Tree {
     Rect client;
+    int below = 0;  // the main window's status strip under `client` (layoutSkin `below`)
     std::vector<Control> controls;
     std::vector<Splitter> splitters;
     std::vector<Slot> slotList;
@@ -108,16 +114,24 @@ const Block* findMainWindow(const File& f);
 // winset asked for. Unlike a .dmf `size`, a zero or negative extent here is that extent, not "fill".
 struct DesignGeometry {
     long long x = 0, y = 0, w = 0, h = 0;
+    int refW = 0, refH = 0;  // the design extent of the box the rect is in (a runtime control's: layoutRuntime)
 };
-// Keyed by the lower-case "window.elem".
-using GeometryOverrides = std::map<std::string, DesignGeometry>;
+// GeometryOverrides (above) is keyed by the lower-case "window.elem".
 
-// Stock DreamSeeker 516 reads a winset `size` (and, unmeasured, `pos`) of a placed control as where it is to be NOW,
-// in the box it is laid out in now, and its anchors move it from there when that box changes size later (516.1689,
+// Stock DreamSeeker 516 reads a winset `size` or `pos` of a placed control as where it is to be NOW, in the box it is
+// laid out in now, and its anchors move it from there when that box changes size later (516.1689,
 // tests/data/winset-size-world: a 0,0 -> 100,100 map set to 160x160 in a 288x288 window is 96x96 once the window is
 // 224x224 again). x, y are the box-relative corner and w, h the extent asked for (LiveSkin has already read a zero
 // `size` as "to the box's far edge"). Returns the design-coordinate rect that lays `c` out there (DesignGeometry).
 DesignGeometry designGeometry(const File& f, const Control& c, long long x, long long y, long long w, long long h);
+// The same for a box of design extent dw x dh, the anchors read from `anchors` (nullptr = none).
+DesignGeometry designGeometry(const Elem* anchors, const Rect& box, int dw, int dh, long long x, long long y,
+                              long long w, long long h);
+// A runtime control's pos / size / anchor1 / anchor2 props as an Elem, as layoutRuntime reads them.
+Elem runtimeElem(const PropStore& props, const std::string& name);
+// The box a runtime control of window `parent` is laid out in: the main window's client area, else the box the window
+// is shown in (empty when it is shown nowhere).
+Rect runtimeParentBox(const Tree& tree, const File& file, const std::string& parent);
 
 // splits: "window.elem" -> fraction (before clamping), the live splitter-drag overrides.
 Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>& splits = {});
@@ -126,8 +140,10 @@ Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>&
 // That is what stock DreamSeeker does until it shows a pane whose on-show claims the side. LiveSkin lays out with
 // inferSlots=false and runs a pane's on-show when the GUI shows it (liveskin.h setPaneShown). `geometry`, when given,
 // places the controls it names and beats their `pos` / `size` props.
+// `below` is the height of the main window's status strip under `client`: its controls are clipped to the client area
+// and the strip together, as stock DreamSeeker's are (a control can cover the strip).
 Tree layoutSkin(const File& f, Rect client, const std::map<std::string, double>& splits, const PropStore* props,
-                bool inferSlots = true, const GeometryOverrides* geometry = nullptr);
+                bool inferSlots = true, const GeometryOverrides* geometry = nullptr, int below = 0);
 
 // Where a control a winset created at runtime (`parent=<window>`) sits, in the coordinates `box` is in: `box` is the box
 // window `window` was laid out in, and pos / size / anchor1 / anchor2 are the control's winset values ("" = unset), in

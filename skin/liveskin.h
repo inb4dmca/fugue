@@ -69,8 +69,15 @@ struct SkinSnapshot {
     std::vector<RuntimeControl> runtime;
     // A winset of the main window's `size` (mainwindow.size=WxH): the client area it asked for, which the GUI gives its
     // window. `client` already has it; windowSizeSeq bumps on every such winset, even to the size the window has.
+    // While the window is maximized (LiveSkin::setWindowState) the size is the one it is to have when it is restored.
     int windowWidth = 0, windowHeight = 0;
     uint64_t windowSizeSeq = 0;
+    // A winset of the main window's `pos`: the screen place of its frame's top-left; windowPosSeq bumps on each.
+    int windowPosX = 0, windowPosY = 0;
+    uint64_t windowPosSeq = 0;
+    // A winset of the main window's `is-maximized`; maximizeSeq bumps on each.
+    bool maximize = false;
+    uint64_t maximizeSeq = 0;
 };
 
 struct WinsetResult {
@@ -156,6 +163,13 @@ public:
     // once shown and the winset value after a move (kept while hidden). A world winset of a popup's pos answers
     // verbatim until the GUI republishes.
     void setWindowPos(const std::string& window, int x, int y);
+    // The GUI's main window: its frame's size (winget `outer-size`, refused until published), the height of its status
+    // strip under the client area (0 = none; a zero `size` fills over it, as stock's does), and whether it is maximized
+    // (or full-screen) with the client size it is to have when restored (winget `size` answers that one meanwhile, and
+    // a `size` winset changes it, as in stock DreamSeeker 516).
+    void setWindowFrame(int w, int h);
+    void setStatusStrip(int h);
+    void setWindowState(bool maximized, int restoreW, int restoreH);
     // The GUI's keyboard focus as DreamSeeker spells it for winget(null, "focus"): "window.control" for a skin
     // control, "<popup>.browser" for a popup's page, "" for the main window itself (the answer is then its name,
     // "mainwindow"). A winset `focus` overrides it until the GUI reports again.
@@ -296,10 +310,20 @@ private:
     bool clientSet_ = false;
     Tree tree_;
     PropStore props_;
-    GeometryOverrides geometry_;  // placed controls' pos / size winsets (skin/layout.h designGeometry)
+    // placed and runtime controls' pos / size winsets (skin/layout.h designGeometry, layoutRuntime)
+    GeometryOverrides geometry_;
     int windowWidth_ = 0, windowHeight_ = 0;  // the main window's size winset (SkinSnapshot::windowSizeSeq)
     uint64_t windowSizeSeq_ = 0;
+    int windowPosX_ = 0, windowPosY_ = 0;  // the main window's pos winset (SkinSnapshot::windowPosSeq)
+    uint64_t windowPosSeq_ = 0;
+    bool maximizeReq_ = false;  // the main window's is-maximized winset (SkinSnapshot::maximizeSeq)
+    uint64_t maximizeSeq_ = 0;
+    int frameW_ = 0, frameH_ = 0;  // setWindowFrame
+    int strip_ = 0;                // setStatusStrip
+    bool maximized_ = false;       // setWindowState
+    int restoreW_ = 0, restoreH_ = 0;
     bool applyGeometryLocked(const WinsetPair& p);
+    bool applyRuntimeGeometryLocked(const WinsetPair& p);
     std::map<std::string, double> splits_;
     std::map<std::string, float> splitPct_;  // "window.elem" -> the splitter value as winset/a drag stored it (winget)
     MacroTable macros_;
