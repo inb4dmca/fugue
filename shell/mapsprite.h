@@ -96,8 +96,8 @@ struct MapSprite {
     std::optional<StaticAffine> rootAffine;
     QSize rootSize;
     bool smooth = false; // stock-verified half-size straight-RGBA sampling
-    // Master: PIXEL_SCALE, so its matrix samples the plane unsmoothed; false keeps the bilinear default. The plane's
-    // turned surface carries it too, which the renderer samples by stock's rule for a texel boundary.
+    // Master or relay: PIXEL_SCALE, so its matrix samples the plane unsmoothed; false keeps the bilinear default. The
+    // plane's turned surface carries it too, which the renderer samples by stock's rule for a texel boundary.
     bool nearest = false;
     int mouseOpacity = 1; // root/target mode; child modes never override ownership
     bool footprint = false; // iconless menu rectangle, never drawn or clicked

@@ -35,6 +35,11 @@ world
 /obj/marker
     icon = 'blue.png'
     name = "marker"
+// The whole view on plane 1 in place of `part` and `other` (case word `grid`): every pixel names itself.
+/obj/grid
+    icon = 'grid.png'
+    plane = 1
+    name = "grid"
 // An ordinary screen object above the relay, put at the relay's screen_loc (case word `mark`).
 /obj/mark
     icon = 'yellow.png'
@@ -91,6 +96,7 @@ world
     if(findtext(kind, "visible")) R.render_source = "p1"
     if(findtext(kind, "nopass")) R.appearance_flags &= ~PASS_MOUSE
     if(findtext(kind, "nokt")) R.appearance_flags &= ~KEEP_TOGETHER
+    if(findtext(kind, "rnear")) R.appearance_flags |= PIXEL_SCALE
     if(findtext(kind, "loc23")) R.screen_loc = "2,3"
     if(findtext(kind, "locpx")) R.screen_loc = "2:5,3:-7"
     if(findtext(kind, "loccenter")) R.screen_loc = "CENTER-2,CENTER-1"   // 2,3 in a 7x7 view
@@ -138,8 +144,11 @@ world
 world/New()
     ..()
     world.log = file("events.log")
-    new /obj/part(locate(5, 4, 1))
-    new /obj/other(locate(2, 5, 1))
+    if(findtext(world.params["set"], "grid"))
+        new /obj/grid(locate(1, 1, 1))
+    else
+        new /obj/part(locate(5, 4, 1))
+        new /obj/other(locate(2, 5, 1))
 /mob/observer
     invisibility = 101
     Login()

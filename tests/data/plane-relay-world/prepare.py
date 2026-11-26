@@ -26,3 +26,7 @@ box((200, 60, 60, 255)).save(t / 'box.png')        # 16x16 at 8..23: `part`
 box((40, 80, 230, 255)).save(t / 'blue.png')       # `other`
 box((60, 200, 60, 255)).save(t / 'green.png')      # the HUD `button`
 box((230, 220, 40, 255)).save(t / 'yellow.png')    # `mark`, an ordinary screen object at the relay's screen_loc
+# The whole view, for the `grid` cases: red is the pixel's column and green its row, blue a one-pixel checker.
+grid = Image.new('RGBA', (224, 224))
+grid.putdata([(x, y, 255 if (x + y) % 2 == 0 else 0, 255) for y in range(224) for x in range(224)])
+grid.save(t / 'grid.png')

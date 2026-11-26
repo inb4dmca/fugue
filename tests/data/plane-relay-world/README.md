@@ -17,7 +17,9 @@ the second round: `locleft`, `locright`, `locroff`, `locws` (`LEFT+1,BOTTOM+2`, 
 `WEST+1,SOUTH+2`), `locpb`, `locpd`, `locpe`, `locpf`, `locpg` (`1+25%,1+40%`, `1+10%,1+10%`, `1-20%,1-20%`,
 `RIGHT-90%,TOP-90%`, `1+40%,1+25%`), `locrange`, `locrow` (`1,1 to 3,3`, `2,3 to 4,3`), `rpx`, `rpw` (the relay's
 `pixel_x = 10, pixel_y = 5`, or `pixel_w = 10, pixel_z = 5`) and `mark` (an ordinary screen object `mark`, yellow, on
-plane 6, at the relay's screen_loc).
+plane 6, at the relay's screen_loc). The third round's words: `grid` (in place of `part` and `other`, a 224 px icon
+on plane 1 at 1,1 whose red is the pixel's column, green its row and blue a one-pixel checker) and `rnear` (PIXEL_SCALE
+on the relay).
 
 Every atom logs `Click()` with its name and icon-x/y, and has one verb, `poke_<name>`, so that an entry of the
 right-click menu is known by its verb.
@@ -33,7 +35,8 @@ stands, and on empty floor. `clicks.py <output> 516.1689 2026-11-25` kept stock'
 second round's cases (`locleft`, `locright`, `locroff`, `rpx`, `rpw-loc23`, `locpd-mark`, `locpe`, `locpf-mark`,
 `locrange`, `locrow`) were recorded the same way on 2026-11-26, a few points each: inside a drawn box, just outside it
 where an unmoved, differently rounded or offset picture would draw it, and on empty floor; their `clicks.py` output
-was appended to `clicks.json`, each case with its date.
+was appended to `clicks.json`, each case with its date. The third round (`grid-*`, 2026-11-26, display at 96 dpi, no
+clicks) was recorded the same way, with `--port 18920 --jobs 4`.
 `mapinput_test::planeRelaysLikeStock` replays each case without a server and asks the real hit test and menu stack for
 every point; `compositiongpu_test::planeRelayReplay` draws each case and compares it with stock's grab.
 
@@ -80,6 +83,12 @@ nor are the `pair` grabs of `locws`, `locpb`, `locpg`, `rpx-loc23` and `rpx-locr
   171,45). A relay without PASS_MOUSE is listed itself over the whole rectangle of the picture it draws (`nopass` at
   100,150) and lists nothing through it.
 - A relay of a visible target draws the plane once more (`visible-loc23`).
+- **A relay's matrix samples the whole plane, bilinearly, and repeats its edge texels past it.** Enlarged by 2
+  (`grid-rm_2_0_0_0_2_0`) the view's border mixes with the plane just past the part the view shows (a master's matrix
+  would not: master-transform-world `fx-grid-s200`); moved so that the plane's bottom right quarter fills the view
+  (`grid-rm_2_0_-112_0_2_112`) the last column and row are the plane's own, not faded to the floor.
+- **PIXEL_SCALE on the relay samples nearest**, by a master's rule: the texel the pixel's centre falls in, on a
+  boundary the one before it, nothing past the plane's edge (`grid-rnear-rm_0.5_0_0_0_0.5_0`, `-0.6_..`).
 
 ## Fugue
 
@@ -96,6 +105,10 @@ and down instead of towards zero horizontally, for ordinary screen objects as we
 pixel too high). `rpx` and `rpw-loc23` already drew and clicked as stock, since the offsets never reach the relay's
 appearance; a relay whose appearance does carry them is no longer dropped and is drawn unmoved (inferred). After: all
 33 grabs match stock (checked on Vulkan), and all 190 clicks and 169 menus.
+
+Third round: Fugue faded the relayed plane at its edge (`grid-rm_2_0_-112_0_2_112`: 447 pixels) and sampled a
+PIXEL_SCALE relay bilinearly (`grid-rnear-*`: 12480 and 15948 pixels). After: all 37 grabs match stock (Direct3D 11,
+OpenGL and Vulkan).
 
 ## Not covered
 

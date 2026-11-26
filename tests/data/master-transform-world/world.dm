@@ -34,6 +34,13 @@ world
     plane = 1
     name = "master"
     screen_loc = "1,1"
+// Draws the master's hidden target *p1, as SS13 codebases relay their planes (fx-grid-relay-*, fx-grid-rth-*).
+/obj/relay
+    appearance_flags = PASS_MOUSE | KEEP_TOGETHER | NO_CLIENT_COLOR
+    plane = 5
+    name = "relay"
+    screen_loc = "1,1"
+    render_source = "*p1"
 /proc/turned(angle)
     var/matrix/M = matrix()
     M.Turn(angle)
@@ -73,6 +80,15 @@ world
             var/matrix/M = matrix(2, 0, 0, 0, 2, 0)
             M.Turn(30)
             return M
+        if("s200e") return matrix(2, 0, -112, 0, 2, 112)   // the plane's bottom right quarter fills the view
+        if("s300t1")
+            var/matrix/M = matrix(3, 0, 0, 0, 3, 0)
+            M.Turn(1)
+            return M
+        if("s400t4")
+            var/matrix/M = matrix(4, 0, 0, 0, 4, 0)
+            M.Turn(4)
+            return M
     world.log << "UNKNOWN SHAPE [name]"
     return matrix()
 /proc/set_master(obj/master/M, kind)
@@ -93,8 +109,34 @@ world
     if(findtext(kind, "scalex2")) M.transform = matrix(2, 0, 0, 0, 1, 0)
     if(findtext(kind, "turn90")) M.transform = turned(90)
     if(findtext(kind, "half")) M.transform = matrix(0.5, 0, 0, 0, 0.5, 0)
-    if(findtext(kind, "grid")) M.transform = shape(copytext(kind, findlasttext(kind, "-") + 1))
-    if(findtext(kind, "pxs")) M.appearance_flags |= PIXEL_SCALE
+    // fx-grid-kt-*: the grid is a KEEP_TOGETHER group (it carries its own icon as an overlay) and takes the matrix
+    // itself, not the master. fx-grid-relay-*: the master has the hidden target *p1 and a relay draws it through the
+    // matrix. "pxs" puts PIXEL_SCALE on whatever takes the matrix. fx-grid-rth-*: the master keeps the matrix, with the
+    // hidden target *p1, and a relay without a matrix draws it; fx-grid-rtv-*: the visible target p1, and no relay.
+    var/matrix/shaped = findtext(kind, "grid") ? shape(copytext(kind, findlasttext(kind, "-") + 1)) : null
+    var/pxs = findtext(kind, "pxs") ? PIXEL_SCALE : 0
+    if(findtext(kind, "grid-kt-"))
+        for(var/obj/grid/G in world)
+            G.overlays += icon('grid.png')
+            G.appearance_flags |= KEEP_TOGETHER | pxs
+            G.transform = shaped
+    else if(findtext(kind, "grid-relay-"))
+        M.render_target = "*p1"
+        var/obj/relay/R = new
+        R.appearance_flags |= pxs
+        R.transform = shaped
+        usr.client.screen += R
+    else if(shaped)
+        M.transform = shaped
+        M.appearance_flags |= pxs
+    else if(pxs) M.appearance_flags |= PIXEL_SCALE
+    if(findtext(kind, "grid-rth-"))
+        M.render_target = "*p1"
+        usr.client.screen += new /obj/relay
+    if(findtext(kind, "grid-rtv-")) M.render_target = "p1"
+    if(findtext(kind, "dim")) M.alpha = 192
+    if(findtext(kind, "tint")) M.color = rgb(255, 255, 128)
+    if(findtext(kind, "cover")) M.filters += filter(type = "alpha", icon = icon('cover.png'))
     if(findtext(kind, "outline1")) M.filters += filter(type = "outline", size = 1, color = "#00ff00")
     if(findtext(kind, "outline4")) M.filters += filter(type = "outline", size = 4, color = "#00ff00")
     if(findtext(kind, "blur2")) M.filters += filter(type = "blur", size = 2)

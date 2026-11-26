@@ -30,7 +30,8 @@ static std::optional<std::array<double,6>> gridMatrix(const QString& shape) {
         {"sx50y75",{.5,0,0,0,.75,0}}, {"s50m",{.5,0,16,0,.5,8}}, {"s50m3",{.5,0,3,0,.5,-5}},
         {"s150",{1.5,0,0,0,1.5,0}}, {"s200",{2,0,0,0,2,0}}, {"s300",{3,0,0,0,3,0}}, {"sx200y300",{2,0,0,0,3,0}},
         {"s200m3",{2,0,3,0,2,-5}}, {"s200t90",turned({2,0,0,0,2,0},90)}, {"s200t30",turned({2,0,0,0,2,0},30)},
-        {"s50t90",turned({.5,0,0,0,.5,0},90)}, {"s50t30",turned({.5,0,0,0,.5,0},30)}};
+        {"s50t90",turned({.5,0,0,0,.5,0},90)}, {"s50t30",turned({.5,0,0,0,.5,0},30)},
+        {"s200e",{2,0,-112,0,2,112}}, {"s300t1",turned({3,0,0,0,3,0},1)}, {"s400t4",turned({4,0,0,0,4,0},4)}};
     const auto found = shapes.find(shape);
     if (found == shapes.end()) return std::nullopt;
     return found->second;
@@ -228,7 +229,8 @@ private slots:
     }
     // tests/data/plane-relay-world/replay: a plane drawn through a relay (render_source of the master's render target)
     // that stands elsewhere (an edge, a percent, a range), carries pixel offsets or a matrix of its own, or relays a
-    // master with a matrix, replayed through the real
+    // master with a matrix; the "grid" sets relay a view-sized icon whose pixels name themselves through a matrix, with
+    // PIXEL_SCALE on the relay for "rnear" (which texel each pixel takes), replayed through the real
     // scene assembly from what DreamDaemon 516.1689 sent (stockprobe.py record) and compared with stock's grab of the
     // same case: no channel of any pixel more than 8 levels from stock's.
     void planeRelayReplay_data() {
@@ -242,7 +244,7 @@ private slots:
             if (!line.isEmpty() && !line.startsWith('#')) sets.push_back(line.section('\t',0,0));
         }
         sets.sort();
-        QCOMPARE(sets.size(),33);
+        QCOMPARE(sets.size(),37);
         for (const auto& suffix:{QString(".png"),QString(".txt")}) {
             QStringList expected;
             for (const auto& set:sets) expected.push_back(set+suffix);
@@ -370,13 +372,14 @@ private slots:
     // tests/data/master-transform-world/filters: the map stock DreamSeeker 516.1689 drew for a plane master with a
     // matrix, a filter of each kind or both over a red 16 px box at (5,4) and, for "edge", a blue tile at (7,4);
     // "pxs" adds PIXEL_SCALE to the master. The "grid" cases put a 224 px icon whose pixels name themselves under a
-    // master that shrinks, turns, moves or enlarges its plane: which plane pixel each map pixel shows.
+    // master that shrinks, turns, moves or enlarges its plane: which plane pixel each map pixel shows; with a render
+    // target ("rtv", "rth"), a tint ("dim", "tint"), a filter, or the matrix on a KEEP_TOGETHER group ("kt") instead.
     // Rebuilt here from sprites; no channel of any pixel may be more than 8 levels from stock's.
     void masterTransformFilters_data() {
         QTest::addColumn<QString>("name");
         const QDir directory(QString(FUGUE_TEST_DATA_DIR)+"/master-transform-world/filters");
         const auto files=directory.entryList({"fx-*.png"},QDir::Files,QDir::Name);
-        QVERIFY2(files.size()==66,qPrintable(directory.path()+": expected 66 stock grabs"));
+        QVERIFY2(files.size()==78,qPrintable(directory.path()+": expected 78 stock grabs"));
         for (const auto& file:files) QTest::newRow(qPrintable(file.chopped(4))) << file.chopped(4);
     }
     void masterTransformFilters() {
@@ -392,10 +395,21 @@ private slots:
             // one-pixel checker; the case's last part names the master's matrix (world.dm shape()).
             auto grid=test::ink(1); grid.image=QImage(224,224,QImage::Format_RGBA8888);
             for (int y=0;y<224;++y) for (int x=0;x<224;++x) grid.image.setPixelColor(x,y,QColor(x,y,(x+y)%2 ? 0 : 255));
-            grid.iconBottom={0,224}; grid.position={0,0}; scene.push_back(grid);
+            grid.iconBottom={0,224}; grid.position={0,0};
             const auto matrix=gridMatrix(name.section('-',-1));
             QVERIFY2(matrix,qPrintable("unknown shape in "+name));
-            effects->matrix=*matrix;
+            if (name.contains("-kt-")) {
+                // A KEEP_TOGETHER group (the grid with its own icon as an overlay) takes the matrix, about the icon's
+                // centre, and the master none; "pxs" is PIXEL_SCALE on the group.
+                const auto& m=*matrix;
+                auto group=std::make_shared<AppearanceGroup>();
+                group->transform=QTransform(m[0],-m[3],-m[1],m[4],m[2],-m[5]);
+                group->matrix=m; group->nearest=name.contains("pxs");
+                grid.appearanceGroup=group; grid.groupOccurrence=1; grid.groupOrigin={112,112};
+                scene.push_back(grid);
+                grid.groupLayer=1;
+            } else effects->matrix=*matrix;
+            scene.push_back(grid);
         } else {
             auto box=test::ink(1); box.image.fill(Qt::transparent);
             for (int y=8;y<24;++y) for (int x=8;x<24;++x) box.image.setPixelColor(x,y,QColor(200,60,60));
@@ -422,13 +436,23 @@ private slots:
             for (int y=0;y<32;++y) for (int x=0;x<16;++x) mask.setPixelColor(x,y,Qt::white);
             f.kind=PlaneFilter::AlphaMask; f.icon=1; f.image=std::make_shared<const QImage>(mask); f.x=32;
         }
-        if ((!name.contains("grid") || name.contains("outline")) && !name.endsWith("plain") && !name.endsWith("scalex2") && !name.endsWith("turn90") &&
+        if (name.contains("cover")) {   // an alpha mask that hides nothing: a 224 px opaque icon
+            QImage cover(224,224,QImage::Format_RGBA8888); cover.fill(Qt::white);
+            f.kind=PlaneFilter::AlphaMask; f.icon=2; f.image=std::make_shared<const QImage>(cover);
+        }
+        const bool gridFilter=name.contains("outline") || name.contains("blur2") || name.contains("swap") || name.contains("cover");
+        if ((!name.contains("grid") || gridFilter) && !name.endsWith("plain") && !name.endsWith("scalex2") && !name.endsWith("turn90") &&
             !name.endsWith("half-edge"))
             effects->filters={f};
         QVERIFY(effects->valid(source.size()));
-        auto master=test::master(1); master.planeEffects=effects;
-        master.nearest=name.contains("pxs"); // PIXEL_SCALE on the master
+        // "rtv": the master has the visible render target p1; "rth": the hidden *p1, drawn by a relay at 1,1.
+        auto master=test::master(1,name.contains("-rtv-") ? "p1" : name.contains("-rth-") ? "*p1" : QString());
+        master.planeEffects=effects;
+        master.nearest=name.contains("pxs") && !name.contains("-kt-"); // PIXEL_SCALE on the master
+        if (name.contains("dim")) master.tint[3]=192.f/255;   // the master's alpha 192
+        if (name.contains("tint")) master.tint={1,1,128.f/255,1};   // its colour rgb(255,255,128)
         scene.push_back(master);
+        if (name.contains("-rth-")) { auto relay=test::relay(5,"*p1"); relay.iconBottom={0,224}; scene.push_back(relay); }
         auto& gpu = transformGpu_;
         if (!gpu) {
             gpu = std::make_unique<GpuComparison>();
@@ -443,8 +467,10 @@ private slots:
         // the texel before it six times in seven and the one after it otherwise, by its own interpolation's rounding
         // (fx-grid-pxs-s50t90, 1792 of its pixels): there, either texel of the two passes.
         std::optional<QTransform> ties;
-        if (name.contains("grid") && name.contains("pxs") && name.endsWith("t90")) {
-            const auto m=*effects->matrix;   // BYOND's y is up: screen = pivot + A (texel - pivot) + t
+        // A KEEP_TOGETHER group's surface halved does the same in a triangle of every seventh column
+        // (fx-grid-kt-pxs-s50, 904 pixels).
+        if (name.contains("grid") && name.contains("pxs") && (name.endsWith("t90") || name.contains("-kt-"))) {
+            const auto m=*gridMatrix(name.section('-',-1));   // BYOND's y is up: screen = pivot + A (texel - pivot) + t
             ties=(QTransform::fromTranslate(-112,-112)*QTransform(m[0],-m[3],-m[1],m[4],m[2],-m[5])*
                   QTransform::fromTranslate(112,112)).inverted();
         }

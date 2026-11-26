@@ -228,7 +228,7 @@ void main() {
             result = src + vec4(effectColor.rgb*ring,ring);
         } else if (effect.x > 7.5) {
             // effect.y: the surface is read as though it ended at effectColor (left, top, right, bottom in pixels), its
-            // edge texels repeated past it; a stock master's plane through its matrix (see the planner).
+            // edge texels repeated past it; a stock master's or relay's plane through its matrix (see the planner).
             vec2 p = uv/texel.xy;
             if (effect.y > 0.5) p = clamp(p,effectColor.xy+vec2(0.5),effectColor.zw-vec2(0.5));
             result = borderLinear(p-vec2(0.5));
@@ -258,10 +258,10 @@ void main() {
     }
     vec2 at = uv;
     if (texel.w > 0.5) {
-        // A PIXEL_SCALE master's turned plane (texel.xy: one over its size). Stock 516.1689 takes the texel the
-        // pixel's centre falls in and, exactly on a boundary, the one before it on each axis (master-transform-world
-        // fx-grid-pxs-s50: a half-size plane keeps the even columns and rows). The margin absorbs interpolation
-        // error, which is far smaller; past the surface's edge nothing is drawn.
+        // A PIXEL_SCALE master's or relay's turned plane (texel.xy: one over its size). Stock 516.1689 takes the texel
+        // the pixel's centre falls in and, exactly on a boundary, the one before it on each axis (master-transform-world
+        // fx-grid-pxs-s50; plane-relay-world grid-rnear-*: a half-size plane keeps the even columns and rows). The
+        // margin absorbs interpolation error, which is far smaller; past the surface's edge nothing is drawn.
         vec2 dimensions = round(vec2(1.0)/texel.xy);
         vec2 t = floor(uv*dimensions-vec2(1.0/1024.0));
         if (any(lessThan(t,vec2(0.0))) || any(greaterThanEqual(t,dimensions))) { result = vec4(0.0); return; }

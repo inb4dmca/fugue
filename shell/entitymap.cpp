@@ -752,7 +752,7 @@ EntityMap::Template EntityMap::TemplateBuilder::construct(const TemplateRequest&
             part.color = material;
             part.blend = blend;
             part.master = ap.master;
-            part.nearest = ap.master && ap.pixelScale;
+            part.nearest = ap.pixelScale;   // a master's or a relay's matrix samples its surface unsmoothed
             const bool overlayRelay = !root && !ap.master && !ap.renderSource.isEmpty() && !localCapture;
             part.planeEffects =
                 ap.master || (sourceTree && root) || overlayRelay ? withMasks(ap.planeEffects, next.complete) : nullptr;

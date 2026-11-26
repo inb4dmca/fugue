@@ -258,9 +258,9 @@ uint64_t SpriteRenderer::prepare(QRhiResourceUpdateBatch* updates, const MapSpri
             rect = sprite.affine->forward.mapRect(QRectF(-.5,-.5,sprite.size.width()+1,sprite.size.height()+1))
                 .toAlignedRect().translated(sprite.position);
         } else if (premultiplied && sprite.affine && sprite.nearest && !item.hardEdge) {
-            // A PIXEL_SCALE master's turned plane: the shader picks the texel itself (texel.w), so that a pixel whose
-            // centre falls exactly on a texel boundary takes the texel before it, as stock 516.1689 does, and a pixel
-            // past the surface's edge stays clear.
+            // A PIXEL_SCALE master's or relay's turned plane: the shader picks the texel itself (texel.w), so that a pixel
+            // whose centre falls exactly on a texel boundary takes the texel before it, as stock 516.1689 does, and a
+            // pixel past the surface's edge stays clear.
             effect[8] = 1.0f/sprite.size.width(); effect[9] = 1.0f/sprite.size.height(); effect[11] = 1;
         }
         const int input = premultiplied ? 1 : sprite.kind == MapSprite::Blackness ? 2 : 0;
