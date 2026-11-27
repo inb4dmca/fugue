@@ -9,6 +9,7 @@
 #include <QIcon>
 #include <QPalette>
 #include <QStyleFactory>
+#include <QSurfaceFormat>
 #include <QMetaType>
 #include <QCommandLineParser>
 #include <QTimer>
@@ -24,6 +25,7 @@
 #include <cstdio>
 #include "fugue_version.h"
 #include "app/sessionworker.h"
+#include "shell/gpubackend.h"
 #include "shell/browserpane.h"
 #include "shell/focusfilter.h"
 #include "shell/fugueicon.h"
@@ -98,6 +100,14 @@ int clientMain(int argc, char** argv) {  // called by app/launcher.cpp's main() 
         preQtPtrs.push_back(argv[i]);
     }
     QApplication app(argc, argv);
+    // Vulkan on Wayland presents without vsync: KWin releases a vsync (FIFO) present only every 50 ms while the screen is
+    // captured or streamed, holding the window near 15 frames a second. Wayland compositors do not tear unless asked
+    // to, and the map paces itself (it redraws only when a newer frame is published). Before any window exists.
+    if (fugue::shell::gpuApi() == "vulkan" && QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+        QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+        format.setSwapInterval(0);
+        QSurfaceFormat::setDefaultFormat(format);
+    }
     fugue::shell::installTrueTypeMetrics();  // MeasureText's TrueType faces (render/dsmaptext.h)
     fugue::shell::installMaptextGlyphs();    // map text glyphs (render/maptextpaint.h)
     // DreamSeeker is light whatever the desktop theme: its controls use fixed system colours. Fusion with this palette
