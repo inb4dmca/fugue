@@ -7,6 +7,8 @@
 #include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QScopeGuard>
+#include <optional>
+#include <vector>
 #include <QStyleFactory>
 #include "shell/browsehost.h"
 #include "shell/gpubackend.h"
@@ -73,6 +75,13 @@ private slots:
         QCOMPARE(unknown.api(),ordinary.api());
         qputenv("FUGUE_GPU_BACKEND","vulkan");MapWidget vulkan;
         QCOMPARE(vulkan.api(),QRhiWidget::Api::Vulkan);
+        // A software device names its API first: the map takes the API, the device is the drivers' business.
+        qputenv("FUGUE_GPU_BACKEND","opengl-llvmpipe");MapWidget llvmpipe;
+        QCOMPARE(llvmpipe.api(),QRhiWidget::Api::OpenGL);
+        qputenv("FUGUE_GPU_BACKEND","vulkan-lavapipe");MapWidget lavapipe;
+        QCOMPARE(lavapipe.api(),QRhiWidget::Api::Vulkan);
+        qputenv("FUGUE_GPU_BACKEND","d3d11-warp");MapWidget warp;
+        QCOMPARE(warp.api(),QRhiWidget::Api::Direct3D11);
         // A widget's own selection still overrides the environment.
         forced.setApi(ordinary.api());QCOMPARE(forced.api(),ordinary.api());
     }
@@ -105,6 +114,43 @@ private slots:
 #ifdef Q_OS_MACOS
         QCOMPARE(settled(nullptr,nullptr,[]{return false;}),QByteArray("opengl")); // a Mac without Metal
         QCOMPARE(settled("metal",nullptr,[]{return false;}),QByteArray("metal")); // asked for by name: as given
+#endif
+        // A software device: our variable keeps it, Qt's names the API, the drivers are told which device to load and
+        // web pages are drawn in software. The variables this sets are this process's, so put them back.
+        const char* touched[]={"LIBGL_ALWAYS_SOFTWARE","__GLX_VENDOR_LIBRARY_NAME","__EGL_VENDOR_LIBRARY_FILENAMES",
+                               "VK_LOADER_DRIVERS_SELECT","QSG_RHI_PREFER_SOFTWARE_RENDERER","QTWEBENGINE_CHROMIUM_FLAGS"};
+        std::vector<std::optional<QByteArray>> before;
+        for(const char* name:touched) before.push_back(qEnvironmentVariableIsSet(name) ? std::optional(qgetenv(name)) : std::nullopt);
+        const auto restoreDrivers=qScopeGuard([&] {
+            for(size_t i=0;i<std::size(touched);++i)
+                if(before[i]) qputenv(touched[i],*before[i]); else qunsetenv(touched[i]);
+        });
+        auto software=[](const char* asked) {
+            qputenv("FUGUE_GPU_BACKEND",asked);qunsetenv("QTWEBENGINE_CHROMIUM_FLAGS");
+            return settleGpuBackend();
+        };
+#if defined(Q_OS_WIN)
+        QCOMPARE(software("d3d11-warp"),QByteArray("d3d11-warp"));
+        QCOMPARE(qgetenv("QSG_RHI_BACKEND"),QByteArray("d3d11"));
+        QCOMPARE(qgetenv("QSG_RHI_PREFER_SOFTWARE_RENDERER"),QByteArray("1"));
+        QVERIFY(qgetenv("QTWEBENGINE_CHROMIUM_FLAGS").split(' ').contains("--disable-gpu"));
+#elif !defined(Q_OS_MACOS)
+        QCOMPARE(software("opengl-llvmpipe"),QByteArray("opengl-llvmpipe"));
+        QCOMPARE(qgetenv("QSG_RHI_BACKEND"),QByteArray("opengl"));
+        QCOMPARE(qgetenv("LIBGL_ALWAYS_SOFTWARE"),QByteArray("1"));
+        QCOMPARE(qgetenv("__GLX_VENDOR_LIBRARY_NAME"),QByteArray("mesa"));
+        QVERIFY(qgetenv("QTWEBENGINE_CHROMIUM_FLAGS").split(' ').contains("--disable-gpu"));
+        QCOMPARE(software("vulkan-lavapipe"),QByteArray("vulkan-lavapipe"));
+        QCOMPARE(qgetenv("QSG_RHI_BACKEND"),QByteArray("vulkan"));
+        QCOMPARE(qgetenv("VK_LOADER_DRIVERS_SELECT"),QByteArray("*lvp*"));
+        // Flags already given are kept, and --disable-gpu is not added twice.
+        qputenv("FUGUE_GPU_BACKEND","opengl-llvmpipe");qputenv("QTWEBENGINE_CHROMIUM_FLAGS","--foo --disable-gpu");
+        settleGpuBackend();
+        QCOMPARE(qgetenv("QTWEBENGINE_CHROMIUM_FLAGS"),QByteArray("--foo --disable-gpu"));
+        // Another platform's software device is not this platform's backend.
+        QTest::ignoreMessage(QtWarningMsg,QRegularExpression("FUGUE_GPU_BACKEND=d3d11-warp"));
+        QCOMPARE(software("d3d11-warp"),usual);
+        QVERIFY(qgetenv("QTWEBENGINE_CHROMIUM_FLAGS").isEmpty()); // a hardware backend leaves Chromium alone
 #endif
     }
     void displaySettingsRoute() {
