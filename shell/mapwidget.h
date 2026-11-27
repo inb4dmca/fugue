@@ -98,6 +98,8 @@ private:
     void applyFrame(const QImage& terrain, const QRect& source, MapMetrics::FrameTiming timing);
     std::shared_ptr<MapMailbox> mailbox_;
     uint64_t renderedSequence_ = 0;
+    int64_t lastRedrawNs_ = 0;  // requestMapFrame's redraw cap without vsync
+    bool redrawQueued_ = false;
     MapMetrics::FrameTiming pendingTiming_, submittedTiming_;
     std::optional<MapPointer> pointerAt(QPointF position, QPoint global, Qt::KeyboardModifiers mods,
                                         Qt::MouseButton button) const;

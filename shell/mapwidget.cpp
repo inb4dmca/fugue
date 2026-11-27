@@ -9,6 +9,7 @@
 #include <cmath>
 #include <QLabel>
 #include <QTimer>
+#include <QSurfaceFormat>
 #include <QScreen>
 #include <QStringList>
 #include <QFontDatabase>
@@ -252,7 +253,28 @@ void MapWidget::setMailbox(std::shared_ptr<MapMailbox> mailbox) {
     requestMapFrame();
 }
 void MapWidget::requestMapFrame() {
-    if (mailbox_ && mailbox_->newerThan(renderedSequence_)) update();
+    if (!mailbox_ || !mailbox_->newerThan(renderedSequence_)) return;
+    // Without vsync (Vulkan on Wayland, app/main.cpp) nothing holds redraws to the display: the worker publishes up to
+    // its own rate (100 a second), and every frame past the screen's refresh is drawn and never seen, which with a
+    // software device is CPU spent for nothing. Redraw at most once per refresh; the newest frame waits for the next.
+    if (QSurfaceFormat::defaultFormat().swapInterval() != 0) {
+        update();
+        return;
+    }
+    const QScreen* display = screen();
+    const double hz = display && display->refreshRate() > 0 ? display->refreshRate() : 60;
+    const int64_t now = MapMetrics::nowNs();
+    const int64_t wait = lastRedrawNs_ + int64_t(1e9 / hz) - now;
+    if (wait <= 0) {
+        lastRedrawNs_ = now;
+        update();
+    } else if (!redrawQueued_) {
+        redrawQueued_ = true;
+        QTimer::singleShot(std::chrono::milliseconds((wait + 999'999) / 1'000'000), Qt::PreciseTimer, this, [this] {
+            redrawQueued_ = false;
+            requestMapFrame();
+        });
+    }
 }
 void MapWidget::applyFrame(const QImage& terrain, const QRect& source, MapMetrics::FrameTiming timing) {
     if (image_.cacheKey() != terrain.cacheKey()) {
