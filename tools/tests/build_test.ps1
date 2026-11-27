@@ -8,7 +8,7 @@ try {
     $qt = Join-Path $temp "qt"
     $deps = Join-Path $temp "deps"
     $build = Join-Path $temp "build"
-    $bin = Join-Path $build "release/app/Release"
+    $bin = Join-Path $build "release/app"
     New-Item -ItemType Directory -Force "$qt/bin", "$deps/bin", $bin | Out-Null
     [IO.File]::WriteAllText("$qt/bin/windeployqt.exe", "unused")
     $config = Join-Path $temp "build.local.psd1"
@@ -74,11 +74,13 @@ try {
     if ($failure -ne "fixture: stop before deployment") { throw "Unexpected failure: $failure" }
     if ($env:FUGUE_BUILD_TEST -ne $before) { throw "Compiler environment leaked into caller" }
     $configure, $compile = $commands
-    if ($configure[$configure.IndexOf("-G") + 1] -ne "Ninja Multi-Config" -or $configure -contains "-A") {
-        throw "Expected Ninja without Visual Studio architecture flags"
+    if ($configure[$configure.IndexOf("-G") + 1] -ne "Ninja" -or $configure -notcontains "-DCMAKE_BUILD_TYPE=Release" -or
+        $configure -contains "-A") {
+        throw "Expected single-config Ninja (Release) without Visual Studio architecture flags"
     }
+    if ($compile -contains "--config") { throw "A single-config build takes no --config" }
     if ($compile[$compile.IndexOf("--parallel") + 1] -ne "3" -or
-        $compile[1] -ne (Join-Path $temp "build/ninja/release")) { throw "Wrong build jobs/path" }
+        $compile[1] -ne (Join-Path $temp "build/windows/release")) { throw "Wrong build jobs/path" }
     Write-Host "PASS: Ninja is the default; job overrides and child-only compiler environment work."
 } finally {
     if ($null -ne $lock) { $lock.Dispose() }

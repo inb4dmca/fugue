@@ -73,8 +73,8 @@ were stopped by identity. No live-game or broad performance parity is claimed.
 python -B tests/data/local-relay-world/prepare.py build/new-relay-runtime
 # Or add --group; wait for GROUP_READY in events.log.
 # Compile world.dme with DreamMaker; start an owned isolated DreamDaemon.
-cmake --build build/ninja/release --config Release --target relay_wire_probe --parallel 2
-./build/ninja/release/tools/Release/relay_wire_probe.exe PORT build/new-relay-guest build/new-relay-runtime/fields.txt
+cmake --build build/windows/release --target relay_wire_probe --parallel 2
+./build/windows/release/tools/relay_wire_probe.exe PORT build/new-relay-guest build/new-relay-runtime/fields.txt
 ```
 
 Adjust the executable path for a single-config generator and supply the configured

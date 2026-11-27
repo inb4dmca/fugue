@@ -50,12 +50,12 @@ Precedence is explicit parameters, then local-file settings, then `QTDIR` /
 and `BuildRoot`; relative SDK/output paths are relative to the repository.
 Use `-ConfigFile <path>` to select another data file; unknown settings or an
 explicitly selected missing file are errors.
-The script uses Ninja Multi-Config with the Visual Studio 2022 x64 compiler,
+The script uses Ninja with the Visual Studio 2022 x64 compiler,
 initializing MSVC automatically for child processes. Builds use separate
-`build/ninja/debug` and `build/ninja/release` trees; old Visual Studio trees are
-left untouched. Override their parent with `-BuildRoot` (use a new directory).
+`build/windows/debug` and `build/windows/release` trees; older trees made with other
+generators (such as `build/ninja/`) are left untouched. Override their parent with `-BuildRoot` (use a new directory).
 Build concurrency defaults to physical cores, capped at one job per available GiB
-after reserving 2 GiB; `-Jobs N` overrides it. The limit is recomputed for each build. Executables are under each tree's `app/Debug` or `app/Release`.
+after reserving 2 GiB; `-Jobs N` overrides it. The limit is recomputed for each build. Executables are under each tree's `app`.
 It sets `FUGUE_RELEASE` appropriately, deploys Qt/WebEngine and matching dependency
 DLLs, then checks `--version`. Release opens the launcher by default; use the
 `pager` argument to open it in Debug.
@@ -70,7 +70,7 @@ All DLLs in the selected dependency tree's `bin` (Release) or `debug/bin` (Debug
 are copied, including transitive dependencies. Prefer a dedicated dependency tree
 to avoid copying unrelated packages. Keep the output directory together; do not
 copy just the `.exe`. For distributable packages, use `packaging/windows/package.ps1`
-with `-BuildDir build/ninja/release` and the matching `-DependencyBin`.
+with `-BuildDir build/windows/release` and the matching `-DependencyBin`.
 
 ### One-command local tests
 
@@ -85,10 +85,10 @@ with `-BuildDir build/ninja/release` and the matching `-DependencyBin`.
 ./tools/test.ps1 -Backends all      # the GPU and native suites on every graphics backend, not only the default
 ```
 
-It builds `RelWithDebInfo` in `build/ninja/relwithdebinfo` by default: an optimised development build that keeps
+It builds `RelWithDebInfo` in `build/windows/relwithdebinfo` by default: an optimised development build that keeps
 the test hooks and debug information, links release Qt and the dependency tree's release libraries, and runs the
 suite several times faster than `Debug` (the CPU-bound suites about ten times). Run tests in it unless you need
-the debugger's view of unoptimised code; `Debug` uses `build.ps1`'s `build/ninja/debug` tree with the debug
+the debugger's view of unoptimised code; `Debug` uses `build.ps1`'s `build/windows/debug` tree with the debug
 libraries. The two differ as the configurations do: `RelWithDebInfo` defines `NDEBUG` and `QT_NO_DEBUG`, so
 `assert`, `Q_ASSERT` and the debug runtime's container and heap checks apply only in `Debug`. `-Label`, `-ExcludeLabel` and `-Regex` are CTest's `-L`, `-LE`
 and `-R` (see [test profiles](#test-profiles)); `-TestJobs N` sets the number of concurrent test processes and
@@ -104,13 +104,13 @@ prompt in the repository root (adjust the two SDK paths):
 ```powershell
 $qt = "C:/Qt/6.11.3/msvc2022_64"
 $vcpkg = "C:/vcpkg"
-cmake -S . -B build/ninja/release -G "Ninja Multi-Config" -DCMAKE_CXX_COMPILER=cl `
+cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl `
   "-DCMAKE_PREFIX_PATH=$qt" `
   "-DCMAKE_TOOLCHAIN_FILE=$vcpkg/scripts/buildsystems/vcpkg.cmake" `
   -DVCPKG_TARGET_TRIPLET=x64-windows -DFUGUE_RELEASE=ON -DFUGUE_OPENMPT=ON
-cmake --build build/ninja/release --config Release --parallel (cmake -P cmake/BuildJobs.cmake)
-$env:PATH = "$qt/bin;$pwd/build/ninja/release/vcpkg_installed/x64-windows/bin;$env:PATH"
-./build/ninja/release/app/Release/fugue-qt.exe
+cmake --build build/release --parallel (cmake -P cmake/BuildJobs.cmake)
+$env:PATH = "$qt/bin;$pwd/build/release/vcpkg_installed/x64-windows/bin;$env:PATH"
+./build/release/app/fugue-qt.exe
 ```
 
 Native Windows audio uses the default Windows playback device (waveOut); no external PCM player is required.
@@ -122,7 +122,7 @@ Run tests:
 $env:QT_QPA_PLATFORM = "offscreen"
 $env:FUGUE_AUDIO = "none"
 $env:QTWEBENGINE_CHROMIUM_FLAGS = "--no-sandbox --disable-gpu"
-ctest --test-dir build/ninja/release -C Release -L portable --no-tests=error --output-on-failure --timeout 120
+ctest --test-dir build/release -L portable --no-tests=error --output-on-failure --timeout 120
 Remove-Item Env:QT_QPA_PLATFORM, Env:FUGUE_AUDIO, Env:QTWEBENGINE_CHROMIUM_FLAGS
 ```
 
@@ -132,8 +132,8 @@ The Git attributes preserve captured resource bytes on Windows; do not apply new
 Create a portable directory (including Qt plugins, WebEngine helper/resources, MSVC runtime and dependency DLLs):
 
 ```powershell
-./packaging/windows/package.ps1 -QtDir $qt -BuildDir build/ninja/release `
-  -DependencyBin build/ninja/release/vcpkg_installed/x64-windows/bin
+./packaging/windows/package.ps1 -QtDir $qt -BuildDir build/release `
+  -DependencyBin build/release/vcpkg_installed/x64-windows/bin
 ./dist/bin/fugue-qt.exe --version
 ```
 
@@ -221,9 +221,8 @@ cmake --build build --parallel 2
 ctest --test-dir build -L portable --no-tests=error --output-on-failure
 ```
 
-For Windows multi-config builds, use `tools/test.ps1` ([above](#one-command-local-tests)), or the
-configured build directory and its configuration (`-C RelWithDebInfo`, `-C Release`) with Qt/dependency
-DLLs on PATH. Keep compiler/test logs locally; inspect failures and report skipped cases separately from passes.
+On Windows, use `tools/test.ps1` ([above](#one-command-local-tests)), or the configured build directory with
+Qt/dependency DLLs on PATH. Keep compiler/test logs locally; inspect failures and report skipped cases separately from passes.
 
 Test an optimised build. A single-config tree defaults to `RelWithDebInfo`; an unoptimised `Debug` build
 against debug Qt runs the same checks several times slower and is for debugging a failure. While editing,
@@ -244,8 +243,7 @@ ctest --test-dir build --print-labels
 All suites share the `fugue_tests` executable; CTest runs each selected entry in a
 separate process. For direct debugging, use `fugue_tests <suite> [QtTest arguments]`,
 and use `fugue_tests --list` to discover suites. The executable is in
-the build root for single-config builds and its configuration subdirectory for
-multi-config builds, such as `build/Release/fugue_tests.exe`. Prefer CTest for normal
+the build root, such as `build/fugue_tests.exe` on Windows. Prefer CTest for normal
 runs because it applies each entry's arguments and environment.
 
 A long CPU-bound suite is registered as several entries (`shell_entitymap_1of4` ... `_4of4`) so that

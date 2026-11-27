@@ -10,7 +10,7 @@ receipts. `capture` adds a reusable timed recording, independent of a particular
 world's actions or expected values:
 
 ```powershell
-python -B tools/stockprobe/stockprobe.py --world tests/data/clientanim-directset-world --client build/ninja/release/app/Release/fugue-qt.exe --work build/directset-runtime --out build/observations --map 352x352 --settle 1 --duration 4 --interval 0.025 --trigger-file capture.txt capture directset-01
+python -B tools/stockprobe/stockprobe.py --world tests/data/clientanim-directset-world --client build/windows/release/app/fugue-qt.exe --work build/directset-runtime --out build/observations --map 352x352 --settle 1 --duration 4 --interval 0.025 --trigger-file capture.txt capture directset-01
 ```
 
 `record`, `pair` and `click @script` take any number of cases in one run and

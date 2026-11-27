@@ -81,7 +81,7 @@ retroactively establish the other historical animation expectations.
 Use the shared [stock observation tools](../../../tools/stockprobe/README.md):
 
 ```powershell
-python -B tools/stockprobe/stockprobe.py --world tests/data/clientanim-directset-world --client build/ninja/release/app/Release/fugue-qt.exe --work build/directset-runtime --out build/observations --port 18791 --map 352x352 --settle 1 --duration 4 --interval 0.025 --trigger-file capture.txt capture directset
+python -B tools/stockprobe/stockprobe.py --world tests/data/clientanim-directset-world --client build/windows/release/app/fugue-qt.exe --work build/directset-runtime --out build/observations --port 18791 --map 352x352 --settle 1 --duration 4 --interval 0.025 --trigger-file capture.txt capture directset
 python -B tools/stockprobe/measure.py build/observations/directset/capture.json --crop 0 0 352 352 --colour player=200,40,40 --colour clock=255,255,255 --colour running=220,180,20 --colour assigned=180,20,220 --colour settled=20,220,80 --output build/observations/directset/measurements.json
 ```
 

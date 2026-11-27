@@ -4,5 +4,5 @@
     VcpkgRoot = 'C:/vcpkg'
     # Optional: use a different installed dependency tree or output parent.
     # DependencyRoot = 'C:/dependencies/x64-windows'
-    # BuildRoot = 'build/ninja'
+    # BuildRoot = 'build/windows'
 }

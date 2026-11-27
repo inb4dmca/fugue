@@ -36,7 +36,7 @@ foreach ($key in @("QtDir", "VcpkgRoot", "DependencyRoot", "BuildRoot")) {
         Set-Variable -Name $key -Value (Join-Path $root $value)
     }
 }
-if (!$BuildRoot) { $BuildRoot = Join-Path $root "build/ninja" }
+if (!$BuildRoot) { $BuildRoot = Join-Path $root "build/windows" }
 if (!$QtDir) { throw "Set QtDir in build.local.psd1, supply -QtDir, or set QTDIR." }
 if (!$DependencyRoot) {
     if (!$VcpkgRoot) { throw "Set VcpkgRoot or DependencyRoot in build.local.psd1, supply the matching parameter, or set VCPKG_ROOT." }
@@ -47,10 +47,10 @@ $DependencyRoot = (Resolve-Path $DependencyRoot).Path
 $BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
 $build = Join-Path $BuildRoot $Configuration.ToLowerInvariant()
 $cache = Join-Path $build "CMakeCache.txt"
-if ((Test-Path $cache) -and !(Select-String -Path $cache -SimpleMatch -Quiet "CMAKE_GENERATOR:INTERNAL=Ninja Multi-Config")) {
+if ((Test-Path $cache) -and !(Select-String -Path $cache -Quiet "^CMAKE_GENERATOR:INTERNAL=Ninja$")) {
     throw "Build tree uses another generator; choose a new BuildRoot. Nothing removed."
 }
-$bin = Join-Path $build "app/$Configuration"
+$bin = Join-Path $build "app"
 $exe = Join-Path $bin "fugue-qt.exe"
 $deploy = Join-Path $QtDir "bin/windeployqt.exe"
 $dependencyBin = Join-Path $DependencyRoot "bin"
@@ -98,14 +98,14 @@ if (!$Jobs) {
     $Jobs = & cmake -P "$root/cmake/BuildJobs.cmake"
     if ($LASTEXITCODE -ne 0) { throw "Could not determine build job limit." }
 }
-Write-Host "Ninja Multi-Config / MSVC: $Jobs build jobs"
+Write-Host "Ninja / MSVC: $Jobs build jobs"
 Invoke-Checked "cmake" @(
-    "-S", $root, "-B", $build, "-G", "Ninja Multi-Config", "-DCMAKE_CXX_COMPILER=cl",
+    "-S", $root, "-B", $build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=$Configuration", "-DCMAKE_CXX_COMPILER=cl",
     "-DCMAKE_PREFIX_PATH=$QtDir;$DependencyRoot",
     "-DOPENMPT_LIBRARY=$openmpt", "-DZLIB_LIBRARY_DEBUG=$zlib", "-DZLIB_LIBRARY_RELEASE=$zlib",
     "-DFUGUE_RELEASE=$release", "-DFUGUE_OPENMPT=ON", "-DFUGUE_HEADLESS_ONLY=OFF", "-DFUGUE_BUILD_SHELL=ON"
 )
-Invoke-Checked "cmake" @("--build", $build, "--config", $Configuration, "--target", "fugue-qt", "--parallel", "$Jobs")
+Invoke-Checked "cmake" @("--build", $build, "--target", "fugue-qt", "--parallel", "$Jobs")
 $mode = "--" + $Configuration.ToLowerInvariant()
 Invoke-Checked $deploy @($mode, "--compiler-runtime", $exe)
 # Copy the selected dependency tree's DLLs, including transitive dependencies.

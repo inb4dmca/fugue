@@ -49,7 +49,7 @@ foreach ($key in @("QtDir", "VcpkgRoot", "DependencyRoot", "BuildRoot")) {
         Set-Variable -Name $key -Value (Join-Path $root $value)
     }
 }
-if (!$BuildRoot) { $BuildRoot = Join-Path $root "build/ninja" }
+if (!$BuildRoot) { $BuildRoot = Join-Path $root "build/windows" }
 if (!$QtDir) { throw "Set QtDir in build.local.psd1, supply -QtDir, or set QTDIR." }
 if (!$DependencyRoot) {
     if (!$VcpkgRoot) { throw "Set VcpkgRoot or DependencyRoot in build.local.psd1, supply the matching parameter, or set VCPKG_ROOT." }
@@ -62,7 +62,7 @@ $BuildRoot = [IO.Path]::GetFullPath($BuildRoot)
 # The Debug tree is build.ps1's; build.ps1's release tree has no test hooks, so it is not used here.
 $build = Join-Path $BuildRoot $Configuration.ToLowerInvariant()
 $cache = Join-Path $build "CMakeCache.txt"
-if ((Test-Path $cache) -and !(Select-String -Path $cache -SimpleMatch -Quiet "CMAKE_GENERATOR:INTERNAL=Ninja Multi-Config")) {
+if ((Test-Path $cache) -and !(Select-String -Path $cache -Quiet "^CMAKE_GENERATOR:INTERNAL=Ninja$")) {
     throw "Build tree uses another generator; choose a new BuildRoot. Nothing removed."
 }
 $dependencyBin = Join-Path $DependencyRoot "bin"
@@ -104,20 +104,20 @@ if (!$NoBuild) {
     foreach ($entry in (& "$PSScriptRoot/msvc-env.ps1" | ConvertFrom-Json).PSObject.Properties) {
         $compilerEnv[$entry.Name] = $entry.Value
     }
-    Write-Host "Ninja Multi-Config / MSVC / ${Configuration}: $Jobs build jobs"
+    Write-Host "Ninja / MSVC / ${Configuration}: $Jobs build jobs"
     Invoke-Checked "cmake" @(
-        "-S", $root, "-B", $build, "-G", "Ninja Multi-Config", "-DCMAKE_CXX_COMPILER=cl",
+        "-S", $root, "-B", $build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=$Configuration", "-DCMAKE_CXX_COMPILER=cl",
         "-DCMAKE_PREFIX_PATH=$QtDir;$DependencyRoot",
         "-DOPENMPT_LIBRARY=$openmpt", "-DZLIB_LIBRARY_DEBUG=$zlib", "-DZLIB_LIBRARY_RELEASE=$zlib",
         "-DFUGUE_RELEASE=OFF", "-DFUGUE_OPENMPT=ON", "-DFUGUE_HEADLESS_ONLY=OFF", "-DFUGUE_BUILD_SHELL=ON",
         "-DFUGUE_TEST_GPU_BACKENDS=$($Backends -replace ',', ';')"
     ) $compilerEnv
     # CTest does not rebuild: a failed build stops here, before stale binaries could be tested.
-    Invoke-Checked "cmake" @("--build", $build, "--config", $Configuration, "--parallel", "$Jobs") $compilerEnv
+    Invoke-Checked "cmake" @("--build", $build, "--parallel", "$Jobs") $compilerEnv
 } elseif (!(Test-Path $cache)) {
     throw "No build tree at $build; run without -NoBuild first."
 }
-$ctest = @("--test-dir", $build, "-C", $Configuration, "-j", "$TestJobs", "--no-tests=error", "--output-on-failure")
+$ctest = @("--test-dir", $build, "-j", "$TestJobs", "--no-tests=error", "--output-on-failure")
 if ($Label) { $ctest += @("-L", $Label) }
 if ($ExcludeLabel) { $ctest += @("-LE", $ExcludeLabel) }
 if ($Regex) { $ctest += @("-R", $Regex) }
