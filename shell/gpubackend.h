@@ -91,7 +91,7 @@ inline QByteArray gpuApi() { return gpuApi(qgetenv("FUGUE_GPU_BACKEND").toLower(
 //   d3d11, d3d11-warp (Windows), metal (macOS), opengl, vulkan, opengl-llvmpipe, vulkan-lavapipe (Mesa, not on
 //   Windows or macOS).
 // A software device is chosen here through the drivers' own variables, for OpenGL both its X11 (GLX) and its Wayland
-// (EGL) dispatcher, so it holds whichever window system Qt uses. With none, an unknown name or another platform's
+// (EGL) dispatcher, so it holds whichever window system Qt uses; web pages are then drawn in software as well. With none, an unknown name or another platform's
 // software device asked for, the platform's usual one: Vulkan on Windows, or Direct3D 11 on a machine without Vulkan; OpenGL on
 // Linux; and Metal on macOS unless metalWorks is given and says no, then OpenGL (Qt makes the same fallback on its
 // own, but only while its variable is unset). A backend asked for by name is used as given and fails visibly where
@@ -129,6 +129,14 @@ inline QByteArray settleGpuBackend(bool (*metalWorks)() = nullptr) {
         qputenv("LIBGL_ALWAYS_SOFTWARE", "1");
     } else if (backend == "vulkan-lavapipe") {
         qputenv("VK_LOADER_DRIVERS_SELECT", "*lvp*");
+    }
+    if (backend.contains('-')) {
+        // A software device draws web pages in software too. Chromium otherwise renders them on its own GPU device
+        // and hands Qt GPU images, which lavapipe imports with the wrong row layout (each page shows its top lines
+        // repeated); in software it hands over plain pixels, which every device draws.
+        QByteArray flags = qgetenv("QTWEBENGINE_CHROMIUM_FLAGS");
+        if (!flags.split(' ').contains("--disable-gpu"))
+            qputenv("QTWEBENGINE_CHROMIUM_FLAGS", flags.isEmpty() ? QByteArray("--disable-gpu") : flags + " --disable-gpu");
     }
     qputenv("FUGUE_GPU_BACKEND", backend);
     qputenv("QSG_RHI_BACKEND", gpuApi(backend));
