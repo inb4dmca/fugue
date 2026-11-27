@@ -1383,10 +1383,13 @@ net::SessionEnding SessionWorker::runSession(net::Session& s, bool first, bool a
         }
         if (traceFrames && now - traceAt >= std::chrono::seconds(1)) {
             double seconds = std::chrono::duration<double>(now - traceAt).count();
+            // map/s counts frames composed here; shown/s the map frames that reached the screen: the window had
+            // composed them and handed them on for display (QRhiWidget::frameSubmitted, counted by the map widget).
+            const double shown = mapMetrics_ ? mapMetrics_->snapshot().submittedPerSecond : 0;
             std::fprintf(stderr,
-                         "[frame-trace] target=%.1f map/s=%.1f missed/s=%.1f compose=%.3fms compare=%.3fms waits=%llu "
-                         "requested=%.3fms actual=%.3fms max-over=%.3fms\n",
-                         1e9 / mapClock.periodNs(), traceMaps / seconds, traceMissed / seconds,
+                         "[frame-trace] target=%.1f map/s=%.1f shown/s=%.1f missed/s=%.1f compose=%.3fms compare=%.3fms "
+                         "waits=%llu requested=%.3fms actual=%.3fms max-over=%.3fms\n",
+                         1e9 / mapClock.periodNs(), traceMaps / seconds, shown, traceMissed / seconds,
                          traceMaps ? traceCompose / traceMaps : 0, traceMaps ? traceCompare / traceMaps : 0,
                          static_cast<unsigned long long>(traceRuns), traceRuns ? traceWait / traceRuns : 0,
                          traceRuns ? traceActual / traceRuns : 0, traceMaxOver);

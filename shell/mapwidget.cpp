@@ -66,6 +66,7 @@ MapWidget::MapWidget(QWidget* parent) : QRhiWidget(parent) {
     timer->setInterval(1000);
     connect(timer, &QTimer::timeout, this, &MapWidget::refreshMetrics);
     timer->start();
+    // Emitted once the top-level window has composed the frame and handed it on for display: a frame shown.
     connect(this, &QRhiWidget::frameSubmitted, this, [this] {
         metrics_->submitted(submittedTiming_);
         submittedTiming_ = {};
@@ -95,7 +96,7 @@ void MapWidget::refreshMetrics() {
         std::set<qint64> textures;
         for (const auto& sprite : sprites_) textures.insert(sprite.image.cacheKey());
         std::fprintf(stderr,
-                     "[render-trace] view=%dx%d sprites=%lld textures=%zu submitted/s=%.1f record=%.3fms "
+                     "[render-trace] view=%dx%d sprites=%lld textures=%zu shown/s=%.1f record=%.3fms "
                      "record-p95=%.3fms qt-submit=%.3fms upload=%.3fMB/s queue=%.3fms\n",
                      viewSize_.width(), viewSize_.height(), static_cast<long long>(sprites_.size()), textures.size(),
                      s.submittedPerSecond, s.recording.average, s.recording.p95, s.qtSubmitWait.average,
@@ -142,7 +143,7 @@ void MapWidget::refreshMetrics() {
     const auto summary =
         QStringList{"PERFORMANCE",
                     pair("Target", number(s.targetFps) + " FPS", "Display", refresh + " Hz"),
-                    pair("Map", number(s.mapsPerSecond) + "/s", "Submitted", number(s.submittedPerSecond) + "/s"),
+                    pair("Map", number(s.mapsPerSecond) + "/s", "Shown", number(s.submittedPerSecond) + "/s"),
                     "",
                     row("TIME (ms)", "AVG", "P95"),
                     timing("Compose", s.compose),
