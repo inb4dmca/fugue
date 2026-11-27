@@ -89,8 +89,7 @@ A command-line flag, where one exists, wins.
 | Variable | Meaning |
 |---|---|
 | `FUGUE_AUDIO` | audio sink; same as `--audio` |
-| `FUGUE_GPU_BACKEND` | the graphics backend of the whole window, `d3d11`, `metal`, `opengl` or `vulkan` (default: `vulkan` on Windows or `d3d11` on a machine without Vulkan, `metal` on macOS or `opengl` where Metal is missing, `opengl` on Linux). Qt's `QSG_RHI_BACKEND` is overwritten with the same choice at start-up |
-| `FUGUE_GPU_SOFTWARE` | `1` prefers a software GPU adapter (D3D11 WARP) |
+| `FUGUE_GPU_BACKEND` | the graphics backend of the whole window: `d3d11`, `d3d11-warp` (software) on Windows; `metal` on macOS; `opengl`, `vulkan` everywhere; `opengl-llvmpipe`, `vulkan-lavapipe` (Mesa's software renderers) on Linux. Default: `vulkan` on Windows or `d3d11` on a machine without Vulkan, `metal` on macOS or `opengl` where Metal is missing, `opengl` on Linux. Qt's `QSG_RHI_BACKEND` is overwritten with its API at start-up |
 | `FUGUE_APPEARANCE_GC` | `0`: keep every appearance the server ever sent (default: erase the unreferenced ones and ask for them back with c2s 0x000c, as stock does; `model/appgc.h`) |
 | `FUGUE_IDENTITY` | path of the identity file to log in with |
 | `FUGUE_PAGER_CONFIG` | path of `pager.json` |

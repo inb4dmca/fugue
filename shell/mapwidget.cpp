@@ -1,3 +1,4 @@
+#include "shell/gpubackend.h"
 #include "shell/mapwidget.h"
 #include "shell/spriterenderer.h"
 #include <QFile>
@@ -41,7 +42,7 @@ bool metalAvailable() {
 MapWidget::MapWidget(QWidget* parent) : QRhiWidget(parent) {
     // FUGUE_GPU_BACKEND picks the map's graphics API; start-up has settled it and Qt's own variable on one backend
     // (shell/gpubackend.h). Qt's variable alone does not move a QRhiWidget.
-    const QByteArray backend = qgetenv("FUGUE_GPU_BACKEND").toLower();
+    const QByteArray backend = gpuApi();
     if (backend == "opengl") setApi(QRhiWidget::Api::OpenGL);
     else if (backend == "d3d11") setApi(QRhiWidget::Api::Direct3D11);
     else if (backend == "metal") setApi(QRhiWidget::Api::Metal);
@@ -609,7 +610,7 @@ void MapWidget::initialize(QRhiCommandBuffer*) {
         if (presentPipeline_->create()) return;
     }
     releaseResources();
-    // The backend and device actually created (FUGUE_GPU_BACKEND and FUGUE_GPU_SOFTWARE only ask).
+    // The backend and device actually created (FUGUE_GPU_BACKEND only asks).
     if (std::getenv("FUGUE_FRAME_TRACE") && rhi())
         std::fprintf(stderr, "[render-trace] backend=%s device=%s\n", rhi()->backendName(),
                      rhi()->driverInfo().deviceName.constData());

@@ -97,8 +97,6 @@ int clientMain(int argc, char** argv) {  // called by app/launcher.cpp's main() 
         preQtArgs.push_back(argv[i]);
         preQtPtrs.push_back(argv[i]);
     }
-    // FUGUE_GPU_SOFTWARE=1 (docs/USAGE.md): ask Qt for a software adapter (D3D11 WARP) for every RHI surface.
-    if (qEnvironmentVariableIntValue("FUGUE_GPU_SOFTWARE") == 1) qputenv("QSG_RHI_PREFER_SOFTWARE_RENDERER", "1");
     QApplication app(argc, argv);
     fugue::shell::installTrueTypeMetrics();  // MeasureText's TrueType faces (render/dsmaptext.h)
     fugue::shell::installMaptextGlyphs();    // map text glyphs (render/maptextpaint.h)

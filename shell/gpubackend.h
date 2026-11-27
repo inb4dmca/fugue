@@ -1,10 +1,13 @@
-// The one graphics backend of the process. FUGUE_GPU_BACKEND (docs/USAGE.md) is the only supported way to choose it.
+// The one graphics backend of the process. FUGUE_GPU_BACKEND (docs/USAGE.md) is the only supported way to choose it,
+// including a software device.
 // A window has one graphics device, which the map, Qt Quick and browser content in it all draw with, so they must
 // agree. Qt Quick and WebEngine follow QSG_RHI_BACKEND, the map follows ours: settleGpuBackend() makes both name
 // the same backend, always, before anything of Qt's reads them. Header-only, QtCore alone.
 #pragma once
 #include <QtCore/QByteArray>
 #include <QtCore/QDebug>
+#include <QtCore/QDir>
+#include <QtCore/QList>
 #include <QtCore/QLibrary>
 #include <cstdint>
 #include <QtCore/qtenvironmentvariables.h>
@@ -62,17 +65,48 @@ inline bool vulkanAvailable() {
     return false;
 #endif
 }
-// Call first thing in main(). Afterwards FUGUE_GPU_BACKEND and QSG_RHI_BACKEND hold the same name, one of d3d11,
-// metal, opengl, vulkan: the one asked for or, when none or an unknown one was, the platform's usual one. That is
-// Vulkan on Windows, or Direct3D 11 on a machine without Vulkan; OpenGL on Linux; and Metal on macOS unless
-// metalWorks is given and says no, then OpenGL (Qt makes the same fallback on its own, but only while its variable
-// is unset). A backend asked for by name is used as given and fails visibly where it does not exist.
+// Where Mesa's EGL vendor file is: glvnd's EGL dispatcher chooses its driver by vendor file, not by name, and the
+// directory differs between systems (/usr/share or /etc, a prefix in XDG_DATA_DIRS, a Flatpak GL extension).
+inline QByteArray mesaEglVendorFile() {
+    QList<QByteArray> dirs{"/etc/glvnd/egl_vendor.d"};
+    const QByteArray data = qgetenv("XDG_DATA_DIRS");
+    for (const QByteArray& dir : (data.isEmpty() ? QByteArray("/usr/local/share:/usr/share") : data).split(':'))
+        if (!dir.isEmpty()) dirs.push_back(dir + "/glvnd/egl_vendor.d");
+    for (const QByteArray& dir : dirs) {
+        const QDir found(QString::fromLocal8Bit(dir), QStringLiteral("*mesa*.json"), QDir::Name, QDir::Files);
+        if (!found.isEmpty()) return found.absoluteFilePath(found[0]).toLocal8Bit();
+    }
+    return {};
+}
+// The graphics API of a backend name: "opengl" for "opengl-llvmpipe". The map widget and Qt follow the API; the
+// device part only chooses the driver, before any is loaded.
+inline QByteArray gpuApi(const QByteArray& backend) {
+    const qsizetype dash = backend.indexOf('-');
+    return dash < 0 ? backend : backend.left(dash);
+}
+inline QByteArray gpuApi() { return gpuApi(qgetenv("FUGUE_GPU_BACKEND").toLower()); }
+
+// Call first thing in main(). Afterwards FUGUE_GPU_BACKEND holds one backend and QSG_RHI_BACKEND its API. A backend
+// is an API, optionally with the software device to draw on:
+//   d3d11, d3d11-warp (Windows), metal (macOS), opengl, vulkan, opengl-llvmpipe, vulkan-lavapipe (Mesa, not on
+//   Windows or macOS).
+// A software device is chosen here through the drivers' own variables, for OpenGL both its X11 (GLX) and its Wayland
+// (EGL) dispatcher, so it holds whichever window system Qt uses. With none, an unknown name or another platform's
+// software device asked for, the platform's usual one: Vulkan on Windows, or Direct3D 11 on a machine without Vulkan; OpenGL on
+// Linux; and Metal on macOS unless metalWorks is given and says no, then OpenGL (Qt makes the same fallback on its
+// own, but only while its variable is unset). A backend asked for by name is used as given and fails visibly where
+// its API or device does not exist.
 inline QByteArray settleGpuBackend(bool (*metalWorks)() = nullptr) {
     QByteArray backend = qgetenv("FUGUE_GPU_BACKEND").toLower();
-    const bool known = backend == "d3d11" || backend == "metal" || backend == "opengl" || backend == "vulkan";
+    bool known = backend == "d3d11" || backend == "metal" || backend == "opengl" || backend == "vulkan";
+#if defined(Q_OS_WIN)
+    known = known || backend == "d3d11-warp";
+#elif !defined(Q_OS_MACOS)
+    known = known || backend == "opengl-llvmpipe" || backend == "vulkan-lavapipe";
+#endif
     if (!known) {
         if (!backend.isEmpty())
-            qWarning("FUGUE_GPU_BACKEND=%s is not d3d11, metal, opengl or vulkan; using the platform's backend",
+            qWarning("FUGUE_GPU_BACKEND=%s is not a backend of this platform; using the platform's backend",
                      backend.constData());
 #if defined(Q_OS_WIN)
         backend = vulkanAvailable() ? "vulkan" : "d3d11";
@@ -84,8 +118,20 @@ inline QByteArray settleGpuBackend(bool (*metalWorks)() = nullptr) {
         Q_UNUSED(metalWorks);
 #endif
     }
+    if (backend == "d3d11-warp") {
+        qputenv("QSG_RHI_PREFER_SOFTWARE_RENDERER", "1");
+    } else if (backend == "opengl-llvmpipe") {
+        qputenv("__GLX_VENDOR_LIBRARY_NAME", "mesa");
+        if (const QByteArray vendor = mesaEglVendorFile(); !vendor.isEmpty())
+            qputenv("__EGL_VENDOR_LIBRARY_FILENAMES", vendor);
+        else
+            qWarning("FUGUE_GPU_BACKEND=opengl-llvmpipe: Mesa's EGL vendor file was not found");
+        qputenv("LIBGL_ALWAYS_SOFTWARE", "1");
+    } else if (backend == "vulkan-lavapipe") {
+        qputenv("VK_LOADER_DRIVERS_SELECT", "*lvp*");
+    }
     qputenv("FUGUE_GPU_BACKEND", backend);
-    qputenv("QSG_RHI_BACKEND", backend);
+    qputenv("QSG_RHI_BACKEND", gpuApi(backend));
     return backend;
 }
 } // namespace fugue::shell
